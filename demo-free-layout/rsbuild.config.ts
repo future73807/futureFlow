@@ -27,8 +27,14 @@ export default defineConfig({
     rspack: {
       /**
        * ignore warnings from @coze-editor/editor/language-typescript
+       * 和 typescript 包在浏览器环境使用 __filename/__dirname 的提示(被 mock,不影响运行)
        */
-      ignoreWarnings: [/Critical dependency: the request of a dependency is an expression/],
+      ignoreWarnings: [
+        /Critical dependency: the request of a dependency is an expression/,
+        /__filename is used and has been mocked/,
+        /__dirname is used and has been mocked/,
+        /Module parse warning/,
+      ],
     },
   },
 });
