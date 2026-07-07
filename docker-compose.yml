@@ -1,0 +1,44 @@
+# futureFlow 基础设施:PostgreSQL + Dify
+# 使用方式:
+#   1. docker compose up -d postgres          # 启动 PostgreSQL(网关用)
+#   2. docker compose up -d                   # 启动全部(含 Dify)
+# Dify 完整部署请参考官方 docker-compose:
+#   https://github.com/langgenius/dify/tree/main/docker
+# 这里仅包含网关所需的 PostgreSQL 与一个精简 Dify 声明(需挂载官方 compose)
+
+services:
+  # ============================================================
+  # PostgreSQL: 网关数据库(用户/余额/流水/运行记录)
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: futureflow-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-futureflow}
+      POSTGRES_USER: ${POSTGRES_USER:-futureflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-futureflow123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-futureflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Dify: 执行层(无头模式)
+  # 完整部署请 clone dify 仓库后使用其 docker-compose:
+  #   git clone https://github.com/langgenius/dify
+  #   cd dify/docker
+  #   docker compose up -d
+  # 然后在 .env 中配置 DIFY_API_BASE 指向 http://localhost/v1
+  # ============================================================
+  # dify:
+  #   image: langgenius/dify-api:0.15.3
+  #   ... (使用官方 compose 文件部署)
+
+volumes:
+  postgres-data:

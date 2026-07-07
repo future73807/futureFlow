@@ -1,0 +1,47 @@
+import {
+  Injectable,
+  MiddlewareConsumer,
+  NestModule,
+  Module,
+} from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { User } from '../database/entities/user.entity';
+import { AuthMiddleware } from './auth.middleware';
+
+/**
+ * VIP 等级与可用节点类型映射
+ */
+export const VIP_NODE_PERMISSIONS: Record<string, string[]> = {
+  free: ['start', 'end', 'llm'],
+  pro: ['start', 'end', 'llm', 'http', 'code'],
+  enterprise: ['start', 'end', 'llm', 'http', 'code', 'condition', 'loop'],
+};
+
+/**
+ * 权限校验工具:检查用户 VIP 等级是否有权使用指定节点类型
+ */
+@Injectable()
+export class PermissionChecker {
+  checkNodePermissions(
+    vipLevel: string,
+    nodeTypes: string[],
+  ): { allowed: boolean; deniedNodes: string[] } {
+    const allowedTypes = VIP_NODE_PERMISSIONS[vipLevel] || VIP_NODE_PERMISSIONS.free;
+    const deniedNodes = nodeTypes.filter((type) => !allowedTypes.includes(type));
+    return {
+      allowed: deniedNodes.length === 0,
+      deniedNodes,
+    };
+  }
+}
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  providers: [PermissionChecker],
+  exports: [PermissionChecker, TypeOrmModule],
+})
+export class AuthModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AuthMiddleware).forRoutes('workflows/run');
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "futureflow",
+  "version": "0.1.0",
+  "description": "AI 工作流平台 - FlowGram 画布 + 自研网关 + 无头 Dify",
+  "private": true,
+  "scripts": {
+    "install:all": "pnpm install",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "gateway": "pnpm --filter futureflow-gateway start:dev",
+    "frontend": "pnpm --filter @flowgram.ai/demo-free-layout start",
+    "dev": "pnpm run gateway & pnpm run frontend",
+    "dev:concurrent": "concurrently -n GATEWAY,FRONTEND -c blue,green \"pnpm:gateway\" \"pnpm:frontend\"",
+    "start": "pnpm run db:up && pnpm run dev:concurrent",
+    "build:gateway": "pnpm --filter futureflow-gateway build",
+    "build:frontend": "pnpm --filter @flowgram.ai/demo-free-layout build:prod",
+    "ts-check": "pnpm -r exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  }
+}
