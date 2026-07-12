@@ -22,7 +22,7 @@ import '@flowgram.ai/free-layout-editor/index.css';
 import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
 import { useEditorProps } from '../../hooks';
-import { getToken } from '../../utils/auth';
+import { getToken, removeToken } from '../../utils/auth';
 
 const GATEWAY_URL = 'http://localhost:3001';
 
@@ -73,6 +73,11 @@ export const CanvasPage = () => {
     try {
       const flowgramJson = editorRef.current.document.toJSON();
       const token = getToken();
+      if (!token) {
+        Toast.warning('登录已过期，请重新登录');
+        navigate('/login', { replace: true });
+        return;
+      }
       const res = await fetch(`${GATEWAY_URL}/workflows/${id}`, {
         method: 'PUT',
         headers: {
@@ -86,16 +91,20 @@ export const CanvasPage = () => {
       });
       if (res.ok) {
         Toast.success('已保存');
+      } else if (res.status === 401) {
+        Toast.error('登录已过期，请重新登录');
+        removeToken();
+        navigate('/login', { replace: true });
       } else {
         const err = await res.json().catch(() => ({}));
-        Toast.error(err.message || '保存失败');
+        Toast.error(err.message || `保存失败 (${res.status})`);
       }
-    } catch {
-      Toast.error('保存失败');
+    } catch (e: any) {
+      Toast.error(`保存失败: ${e?.message || '网络错误'}`);
     } finally {
       setSaving(false);
     }
-  }, [id, workflowName]);
+  }, [id, workflowName, navigate]);
 
   if (loading) {
     return (

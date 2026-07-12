@@ -37,7 +37,8 @@ import { AdminModule } from './admin/admin.module';
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('GATEWAY_JWT_SECRET', 'change-me-in-production'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN', '1h'),
+          // 默认 7 天过期，避免画布长时间编辑后保存失败
+          expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d'),
         } as any,
       }),
     }),
