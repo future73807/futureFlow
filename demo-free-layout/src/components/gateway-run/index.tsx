@@ -8,14 +8,13 @@ import {
   useClientContext,
   useRefresh,
 } from '@flowgram.ai/free-layout-editor';
-import { Button, SideSheet, Tag, Typography, Spin } from '@douyinfe/semi-ui';
+import { Button, SideSheet, Tag, Typography, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconPlay, IconClose } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
+import { getToken } from '../../utils/auth';
 
 // 网关地址(开发环境)
 const GATEWAY_URL = 'http://localhost:3001';
-// 默认测试 API Key(由网关 SeedService 创建)
-const API_KEY = 'demo-api-key-001';
 
 interface NodeStatus {
   nodeId: string;
@@ -53,6 +52,13 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
   const abortRef = useRef<AbortController | null>(null);
 
   const handleRun = useCallback(async () => {
+    // 0. 检查登录态
+    const token = getToken();
+    if (!token) {
+      Toast.warning('请先登录后再执行工作流');
+      return;
+    }
+
     // 1. 获取画布 JSON
     const flowgramJson = ctx.document.toJSON();
 
@@ -69,7 +75,7 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${API_KEY}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ flowgram: flowgramJson }),
         signal: controller.signal,
@@ -173,6 +179,14 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
                   status: 'failed',
                   error: event.data?.message || '未知错误',
                 }));
+                break;
+
+              case 'engine_degraded':
+                // Dify 未配置，系统自动降级到直接 LLM 模式
+                Toast.info({
+                  content: 'Dify 未配置，已降级到直接 LLM 模式',
+                  duration: 4,
+                });
                 break;
             }
             refresh();

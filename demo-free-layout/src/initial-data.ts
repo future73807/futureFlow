@@ -43,15 +43,15 @@ export const initialData: FlowDocumentJSON = {
         inputsValues: {
           modelName: {
             type: 'constant',
-            content: 'deepseek-chat',
+            content: 'deepseek-v4-pro',
           },
           apiKey: {
             type: 'constant',
-            content: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            content: '***REMOVED***',
           },
           apiHost: {
             type: 'constant',
-            content: 'https://api.deepseek.com/v1',
+            content: 'https://api.deepseek.com',
           },
           temperature: {
             type: 'constant',

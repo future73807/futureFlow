@@ -17,9 +17,13 @@ async function bootstrap() {
     }),
   );
 
-  // CORS:允许前端 FlowGram 画布跨域调用
+  // CORS:白名单模式，仅允许配置的前端来源
+  const corsOrigins = config
+    .get<string>('CORS_ORIGIN', 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim());
   app.enableCors({
-    origin: true,
+    origin: corsOrigins,
     credentials: true,
   });
 

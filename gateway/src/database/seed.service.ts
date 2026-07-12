@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
 
 /**
@@ -30,17 +32,22 @@ export class SeedService implements OnModuleInit {
       return;
     }
 
+    const passwordHash = await bcrypt.hash('demo123456', 10);
+
     const user = this.userRepo.create({
       username: 'demo',
+      email: 'demo@futureflow.ai',
+      passwordHash,
       apiKey: 'demo-api-key-001',
       vipLevel: 'pro',
-      balance: 100, // 初始余额 100 元
+      balance: 100,
       frozenBalance: 0,
+      status: 'active',
     });
 
     await this.userRepo.save(user);
     this.logger.log(
-      '默认用户已创建: username=demo, apiKey=demo-api-key-001, balance=100, vip=pro',
+      '默认用户已创建: username=demo, password=demo123456, apiKey=demo-api-key-001, balance=100, vip=pro',
     );
   }
 }

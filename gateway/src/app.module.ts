@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
@@ -24,8 +25,20 @@ import { WorkflowsModule } from './workflows/workflows.module';
       password: process.env.POSTGRES_PASSWORD || 'futureflow123',
       database: process.env.POSTGRES_DB || 'futureflow',
       autoLoadEntities: true,
-      synchronize: true, // 开发环境自动同步表结构,生产环境应关闭
+      // 开发环境自动同步表结构,生产环境关闭
+      synchronize: process.env.NODE_ENV !== 'production',
       logging: false,
+    }),
+    // JWT 配置（全局可用）
+    JwtModule.registerAsync({
+      global: true,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('GATEWAY_JWT_SECRET', 'change-me-in-production'),
+        signOptions: {
+          expiresIn: config.get<string>('JWT_EXPIRES_IN', '1h'),
+        } as any,
+      }),
     }),
     DatabaseModule,
     AuthModule,

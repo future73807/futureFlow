@@ -1,10 +1,12 @@
-# futureFlow 基础设施:PostgreSQL + Dify
+# ============================================================
+# futureFlow 基础设施:PostgreSQL + Dify 执行引擎
+# ============================================================
 # 使用方式:
-#   1. docker compose up -d postgres          # 启动 PostgreSQL(网关用)
-#   2. docker compose up -d                   # 启动全部(含 Dify)
-# Dify 完整部署请参考官方 docker-compose:
-#   https://github.com/langgenius/dify/tree/main/docker
-# 这里仅包含网关所需的 PostgreSQL 与一个精简 Dify 声明(需挂载官方 compose)
+#   docker compose up -d postgres          # 仅启动 PostgreSQL
+#   docker compose up -d                   # 启动全部(含 Dify)
+#   docker compose down                    # 停止全部
+#   docker compose logs -f dify-api        # 查看 Dify API 日志
+# ============================================================
 
 services:
   # ============================================================
@@ -29,16 +31,140 @@ services:
       retries: 5
 
   # ============================================================
-  # Dify: 执行层(无头模式)
-  # 完整部署请 clone dify 仓库后使用其 docker-compose:
-  #   git clone https://github.com/langgenius/dify
-  #   cd dify/docker
-  #   docker compose up -d
-  # 然后在 .env 中配置 DIFY_API_BASE 指向 http://localhost/v1
+  # Dify Redis: Dify 内部依赖
   # ============================================================
-  # dify:
-  #   image: langgenius/dify-api:0.15.3
-  #   ... (使用官方 compose 文件部署)
+  dify-redis:
+    image: redis:7-alpine
+    container_name: futureflow-dify-redis
+    restart: unless-stopped
+    volumes:
+      - dify-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ============================================================
+  # Dify PostgreSQL: Dify 自身数据库(与网关 DB 隔离)
+  # ============================================================
+  dify-postgres:
+    image: postgres:16-alpine
+    container_name: futureflow-dify-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dify
+      POSTGRES_USER: dify
+      POSTGRES_PASSWORD: dify123456
+    volumes:
+      - dify-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Dify API: 核心服务(工作流引擎 + 模型代理)
+  # ============================================================
+  dify-api:
+    image: langgenius/dify-api:0.15.3
+    container_name: futureflow-dify-api
+    restart: unless-stopped
+    depends_on:
+      dify-redis:
+        condition: service_healthy
+      dify-postgres:
+        condition: service_healthy
+    ports:
+      - "5001:5001"   # Dify API 端口(映射到 5001 避免与网关冲突)
+    environment:
+      # --- 数据库 ---
+      SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
+      # --- Redis ---
+      REDIS_HOST: dify-redis
+      REDIS_PORT: 6379
+      # --- 模式 ---
+      MODE: api
+      # --- 安全 ---
+      SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
+      CONSOLE_API_URL: http://localhost:5001
+      SERVICE_API_URL: http://localhost:5001
+      APP_WEB_URL: http://localhost:5001
+      # --- 存储模式(本地) ---
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/api/storage
+      # --- 向量存储(无,简化部署) ---
+      VECTOR_STORE: weaviate
+      WEAVIATE_HOST: dify-weaviate
+      WEAVIATE_PORT: 8080
+    volumes:
+      - dify-storage:/app/api/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # Dify Worker: 异步任务处理器
+  # ============================================================
+  dify-worker:
+    image: langgenius/dify-api:0.15.3
+    container_name: futureflow-dify-worker
+    restart: unless-stopped
+    depends_on:
+      dify-redis:
+        condition: service_healthy
+      dify-postgres:
+        condition: service_healthy
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
+      REDIS_HOST: dify-redis
+      REDIS_PORT: 6379
+      MODE: worker
+      SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/api/storage
+      VECTOR_STORE: weaviate
+      WEAVIATE_HOST: dify-weaviate
+      WEAVIATE_PORT: 8080
+    volumes:
+      - dify-storage:/app/api/storage
+
+  # ============================================================
+  # Dify Web: 前端控制台(用于创建工作流应用、获取 API Key)
+  # ============================================================
+  dify-web:
+    image: langgenius/dify-web:0.15.3
+    container_name: futureflow-dify-web
+    restart: unless-stopped
+    depends_on:
+      dify-api:
+        condition: service_healthy
+    ports:
+      - "8080:3000"   # Dify 控制台: http://localhost:8080
+
+  # ============================================================
+  # Weaviate: 向量数据库(Dify 向量存储依赖)
+  # ============================================================
+  dify-weaviate:
+    image: semitechnologies/weaviate:1.19.0
+    container_name: futureflow-dify-weaviate
+    restart: unless-stopped
+    volumes:
+      - dify-weaviate-data:/var/lib/weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "false"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      CLUSTER_HOSTNAME: "node1"
 
 volumes:
   postgres-data:
+  dify-redis-data:
+  dify-postgres-data:
+  dify-storage:
+  dify-weaviate-data:

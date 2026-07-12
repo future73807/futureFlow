@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../database/entities/user.entity';
+import { ApiKey } from '../database/entities/api-key.entity';
 import { AuthMiddleware } from './auth.middleware';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtAuthGuard } from './jwt.guard';
+import { ApiKeyService } from './api-key.service';
+import { ApiKeyController } from './api-key.controller';
 
 /**
  * VIP 等级与可用节点类型映射
@@ -36,9 +42,10 @@ export class PermissionChecker {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])],
-  providers: [PermissionChecker],
-  exports: [PermissionChecker, TypeOrmModule],
+  imports: [TypeOrmModule.forFeature([User, ApiKey])],
+  controllers: [AuthController, ApiKeyController],
+  providers: [PermissionChecker, AuthService, JwtAuthGuard, ApiKeyService],
+  exports: [PermissionChecker, TypeOrmModule, AuthService, JwtAuthGuard],
 })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

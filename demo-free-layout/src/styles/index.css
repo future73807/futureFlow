@@ -3,6 +3,60 @@
  * SPDX-License-Identifier: MIT
  */
 
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* ====== 全局 Modal 美化 ====== */
+.semi-modal-content {
+  border-radius: 16px !important;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+.semi-modal-header {
+  padding: 20px 24px 12px !important;
+}
+
+.semi-modal-body {
+  padding: 12px 24px 20px !important;
+}
+
+.semi-modal-footer {
+  padding: 0 24px 20px !important;
+}
+
+/* Modal 左侧弹出动画 + 左偏移定位 */
+.semi-modal-container {
+  justify-content: flex-start !important;
+  align-items: center !important;
+  padding-left: 48px !important;
+}
+
+.semi-modal {
+  animation: semi-modal-slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin: auto 0 !important;
+}
+
+@keyframes semi-modal-slide-in-left {
+  from {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 :root {
   /* Port colors */
   --g-workflow-port-color-primary: #4d53e8;
@@ -49,18 +103,22 @@
 }
 .demo-editor {
   flex-grow: 1;
+  flex: 1;
   position: relative;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .demo-container {
-  position: absolute;
+  position: relative;
   left: 0px;
   top: 0px;
   display: flex;
   width: 100%;
   height: 100%;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .demo-tools {

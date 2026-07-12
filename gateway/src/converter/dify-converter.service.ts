@@ -38,6 +38,8 @@ export class DifyConverterService {
     'claude-3.5-sonnet': 'anthropic',
     'deepseek-chat': 'deepseek',
     'deepseek-reasoner': 'deepseek',
+    'deepseek-v4-pro': 'deepseek',
+    'deepseek-v4-flash': 'deepseek',
     'gemini-pro': 'google',
     'gemini-1.5-pro': 'google',
     'gemini-1.5-flash': 'google',
@@ -54,7 +56,6 @@ export class DifyConverterService {
 
     const startNode = flowgram.nodes.find((n) => n.type === 'start');
     const endNode = flowgram.nodes.find((n) => n.type === 'end');
-    const llmNodes = flowgram.nodes.filter((n) => n.type === 'llm');
 
     if (!startNode) {
       throw new BadRequestException('工作流缺少 Start 节点');
@@ -70,14 +71,20 @@ export class DifyConverterService {
       this.convertEdge(edge, flowgram.nodes),
     );
 
-    // 如果没有 End 节点,自动补充一个指向最后一个 LLM 的输出
-    if (!endNode && llmNodes.length > 0) {
-      const lastLLM = llmNodes[llmNodes.length - 1];
-      const endId = 'end_auto';
-      difyNodes.push(this.createEndNode(endId, lastLLM.id, 1200, 0));
-      difyEdges.push(
-        this.createEdge(lastLLM.id, endId, 'llm', 'end'),
+    // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
+    if (!endNode) {
+      const executableNodes = flowgram.nodes.filter(
+        (n) => ['llm', 'http', 'code'].includes(n.type),
       );
+      if (executableNodes.length > 0) {
+        const lastNode = executableNodes[executableNodes.length - 1];
+        const outputKey = lastNode.type === 'llm' ? 'text' : 'result';
+        const endId = 'end_auto';
+        difyNodes.push(this.createEndNode(endId, lastNode.id, 1200, 0, outputKey));
+        difyEdges.push(
+          this.createEdge(lastNode.id, endId, lastNode.type, 'end'),
+        );
+      }
     }
 
     const dsl: DifyDSL = {
@@ -129,9 +136,13 @@ export class DifyConverterService {
     if (json.nodes.length === 0) {
       throw new BadRequestException('工作流至少需要一个节点');
     }
-    const llmNodes = json.nodes.filter((n) => n.type === 'llm');
-    if (llmNodes.length === 0) {
-      throw new BadRequestException('当前仅支持包含 LLM 节点的工作流');
+    const executableNodes = json.nodes.filter(
+      (n) => ['llm', 'http', 'code'].includes(n.type),
+    );
+    if (executableNodes.length === 0) {
+      throw new BadRequestException(
+        '工作流至少需要一个可执行节点(llm/http/code)',
+      );
     }
   }
 
@@ -156,9 +167,13 @@ export class DifyConverterService {
         return { ...base, height: 98, data: this.convertLLMNode(node) };
       case 'end':
         return { ...base, height: 90, data: this.convertEndNode(node) };
+      case 'http':
+        return { ...base, height: 120, data: this.convertHttpNode(node) };
+      case 'code':
+        return { ...base, height: 120, data: this.convertCodeNode(node) };
       default:
         throw new BadRequestException(
-          `暂不支持的节点类型: ${node.type}(当前 MVP 仅支持 start/llm/end)`,
+          `暂不支持的节点类型: ${node.type}(当前支持 start/llm/end/http/code)`,
         );
     }
   }
@@ -274,6 +289,67 @@ export class DifyConverterService {
     };
   }
 
+  /** 转换 HTTP 请求节点 */
+  private convertHttpNode(node: FlowNodeJSON): any {
+    const inputsValues = node.data.inputsValues || {};
+
+    const method = String(
+      this.getInputValue(inputsValues.method, 'get'),
+    ).toLowerCase();
+    const url = String(this.getInputValue(inputsValues.url, ''));
+    const headers = String(this.getInputValue(inputsValues.headers, ''));
+    const body = String(this.getInputValue(inputsValues.body, ''));
+
+    return {
+      type: 'http-request',
+      title: node.data.title || 'HTTP 请求',
+      desc: '',
+      selected: false,
+      method,
+      url: this.convertVariableRefs(url),
+      headers: this.convertVariableRefs(headers),
+      params: '',
+      body: this.convertVariableRefs(body),
+      body_type: body ? 'raw' : 'none',
+      timeout: 30,
+      variables: [],
+    };
+  }
+
+  /** 转换代码执行节点 */
+  private convertCodeNode(node: FlowNodeJSON): any {
+    const inputsValues = node.data.inputsValues || {};
+
+    const codeLanguage = String(
+      this.getInputValue(inputsValues.codeLanguage, 'python3'),
+    );
+    const code = String(this.getInputValue(inputsValues.code, ''));
+
+    // 从 outputs.properties 提取输出变量定义
+    const outputsProps =
+      (node.data.outputs?.properties as Record<string, any>) || {};
+    const outputs = Object.keys(outputsProps).map((key) => ({
+      variable: key,
+      type: outputsProps[key]?.type || 'string',
+    }));
+
+    if (outputs.length === 0) {
+      outputs.push({ variable: 'result', type: 'string' });
+    }
+
+    return {
+      type: 'code',
+      title: node.data.title || '代码执行',
+      desc: '',
+      selected: false,
+      code_language:
+        codeLanguage === 'javascript' ? 'javascript' : 'python3',
+      code: this.convertVariableRefs(code),
+      variables: [],
+      outputs,
+    };
+  }
+
   /** 转换边 */
   private convertEdge(
     edge: FlowGramJSON['edges'][0],
@@ -301,9 +377,10 @@ export class DifyConverterService {
   /** 创建 End 节点(自动补充) */
   private createEndNode(
     id: string,
-    llmNodeId: string,
+    sourceNodeId: string,
     x: number,
     y: number,
+    outputKey: string = 'text',
   ): DifyNode {
     return {
       id,
@@ -322,7 +399,7 @@ export class DifyConverterService {
         outputs: [
           {
             variable: 'result',
-            value_selector: [llmNodeId, 'text'],
+            value_selector: [sourceNodeId, outputKey],
           },
         ],
       },

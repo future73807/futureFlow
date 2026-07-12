@@ -1,5 +1,9 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { DifyConfigService } from './dify-config.service';
 
 /**
  * Dify SSE 事件类型
@@ -28,21 +32,85 @@ export interface WorkflowExecutionResult {
 /**
  * Dify 客户端服务
  * 负责调用 Dify 的 Service API,执行工作流并处理 SSE 流式响应
+ *
+ * 配置校验委托给 DifyConfigService:
+ *  - isConfigured() 检查 API Key 是否为有效的 app- 前缀密钥
+ *  - 未配置时返回友好错误信息，由 WorkflowsService 降级处理
  */
 @Injectable()
 export class DifyClientService {
   private readonly logger = new Logger(DifyClientService.name);
-  private readonly apiBase: string;
-  private readonly apiKey: string;
 
-  constructor(private config: ConfigService) {
-    this.apiBase = this.config.get<string>('DIFY_API_BASE', 'http://localhost/v1');
-    this.apiKey = this.config.get<string>('DIFY_API_KEY', '');
+  constructor(private readonly difyConfig: DifyConfigService) {}
+
+  /**
+   * 检查 Dify 是否已配置有效的 API Key
+   * 委托给 DifyConfigService 进行格式校验
+   */
+  isConfigured(): boolean {
+    return this.difyConfig.isConfigured();
   }
 
-  /** 检查 Dify 是否已配置有效的 API Key */
-  isConfigured(): boolean {
-    return !!this.apiKey && this.apiKey !== 'app-xxxxxxxxxxxxxxxx';
+  /**
+   * 获取未配置时的友好提示信息
+   */
+  getNotConfiguredMessage(): string {
+    const v = this.difyConfig.getValidation();
+    return `Dify API Key 未配置。${v.message}。${v.suggestion}`;
+  }
+
+  /**
+   * 探测 Dify 服务是否可达（不执行工作流，仅检查连通性）
+   * 用于健康检查
+   */
+  async ping(): Promise<{ reachable: boolean; latency?: number; error?: string }> {
+    if (!this.isConfigured()) {
+      return {
+        reachable: false,
+        error: 'Dify API Key 未配置',
+      };
+    }
+
+    const apiBase = this.difyConfig.getApiBase();
+    const apiKey = this.difyConfig.getApiKey();
+    const start = Date.now();
+
+    try {
+      // 调用一个轻量级接口检查连通性
+      const url = `${apiBase.replace(/\/v1\/?$/, '')}/v1/workflows/run`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs: {},
+          response_mode: 'blocking',
+          user: 'health-check',
+        }),
+        signal: AbortSignal.timeout(5000), // 5 秒超时
+      });
+
+      const latency = Date.now() - start;
+
+      // 401/403 说明 Key 无效，但服务可达
+      if (response.status === 401 || response.status === 403) {
+        return {
+          reachable: true,
+          latency,
+          error: `Dify 服务可达，但 API Key 无效 (${response.status})`,
+        };
+      }
+
+      // 其他状态码都说明服务可达
+      return { reachable: true, latency };
+    } catch (err) {
+      return {
+        reachable: false,
+        error: `Dify 服务不可达: ${err.message}`,
+      };
+    }
   }
 
   /**
@@ -52,34 +120,75 @@ export class DifyClientService {
    * @param inputs 工作流输入变量
    * @param user 用户标识
    * @returns AsyncGenerator 逐个 yield SSE 事件
+   * @throws InternalServerErrorException 当 Dify 未配置或调用失败时
    */
   async *runWorkflowStream(
     inputs: Record<string, any>,
     user: string,
   ): AsyncGenerator<DifySSEEvent> {
-    const url = `${this.apiBase}/workflows/run`;
+    // 二次校验配置
+    if (!this.isConfigured()) {
+      throw new InternalServerErrorException({
+        code: 'dify_not_configured',
+        message: this.getNotConfiguredMessage(),
+      });
+    }
+
+    const apiBase = this.difyConfig.getApiBase();
+    const apiKey = this.difyConfig.getApiKey();
+    const url = `${apiBase}/workflows/run`;
 
     this.logger.log(`调用 Dify 工作流: ${url}, user=${user}`);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs,
-        response_mode: 'streaming',
-        user,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs,
+          response_mode: 'streaming',
+          user,
+        }),
+        signal: AbortSignal.timeout(120000), // 2 分钟超时
+      });
+    } catch (err) {
+      this.logger.error(`Dify 连接失败: ${err.message}`);
+      throw new InternalServerErrorException(
+        `Dify 服务连接失败: ${err.message}。请确认 Dify 已启动且 ${apiBase} 可达。`,
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      this.logger.error(`Dify API 错误: ${response.status} ${errorText}`);
-      throw new InternalServerErrorException(
-        `Dify 执行失败: ${response.status} ${errorText}`,
+      this.logger.error(
+        `Dify API 错误: ${response.status} ${errorText.slice(0, 500)}`,
       );
+
+      // 友好的错误消息
+      let friendlyMessage: string;
+      switch (response.status) {
+        case 401:
+          friendlyMessage = 'Dify API Key 无效或已过期，请检查 .env 中的 DIFY_API_KEY';
+          break;
+        case 404:
+          friendlyMessage = `Dify 工作流应用不存在，请确认 API Key 对应的工作流已发布。URL: ${url}`;
+          break;
+        case 500:
+          friendlyMessage = `Dify 内部错误: ${errorText.slice(0, 200)}`;
+          break;
+        default:
+          friendlyMessage = `Dify API 返回错误 ${response.status}: ${errorText.slice(0, 200)}`;
+      }
+
+      throw new InternalServerErrorException({
+        code: 'dify_api_error',
+        status: response.status,
+        message: friendlyMessage,
+      });
     }
 
     if (!response.body) {
@@ -110,21 +219,20 @@ export class DifyClientService {
 
         // 按双换行分割 SSE 消息
         const messages = buffer.split('\n\n');
-        buffer = messages.pop() || ''; // 最后一段可能不完整,保留
+        buffer = messages.pop() || '';
 
         for (const message of messages) {
           const line = message.trim();
           if (!line) continue;
 
-          // SSE 行格式: "data: {json}" 或 "event: xxx" 或 ": ping"
           if (line.startsWith('data:')) {
             const jsonStr = line.slice(5).trim();
             if (!jsonStr) continue;
             try {
               const event: DifySSEEvent = JSON.parse(jsonStr);
               yield event;
-            } catch (e) {
-              this.logger.warn(`SSE JSON 解析失败: ${jsonStr}`);
+            } catch {
+              this.logger.warn(`SSE JSON 解析失败: ${jsonStr.slice(0, 100)}`);
             }
           }
         }
@@ -148,7 +256,6 @@ export class DifyClientService {
 
   /**
    * 从 SSE 事件流中提取执行结果汇总
-   * 在流结束后调用
    */
   extractResult(events: DifySSEEvent[]): WorkflowExecutionResult {
     const workflowFinished = events.find(
@@ -185,7 +292,6 @@ export class DifyClientService {
 
   /**
    * 从 SSE 事件流中累计 token 用量
-   * 用于执行过程中实时扣费
    */
   accumulateTokenUsage(events: DifySSEEvent[]): number {
     let totalTokens = 0;
