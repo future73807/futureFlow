@@ -102,6 +102,7 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       vipLevel: user.vipLevel,
+      role: user.role,
       status: user.status,
     };
 
@@ -117,6 +118,7 @@ export class AuthService {
       username: user.username,
       email: user.email,
       vipLevel: user.vipLevel,
+      role: user.role,
       balance: parseFloat(user.balance.toString()),
       frozenBalance: parseFloat(user.frozenBalance.toString()),
       status: user.status,

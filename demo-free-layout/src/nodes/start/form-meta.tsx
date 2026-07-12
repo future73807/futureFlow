@@ -57,7 +57,7 @@ export const formMeta: FormMeta<FlowNodeJSON> = {
   render: renderForm,
   validateTrigger: ValidateTrigger.onChange,
   validate: {
-    title: ({ value }: { value: string }) => (value ? undefined : 'Title is required'),
+    title: ({ value }: { value: string }) => (value ? undefined : '标题不能为空'),
   },
   effect: {
     title: syncVariableTitle,

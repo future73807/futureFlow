@@ -190,6 +190,9 @@ export const ProfilePage = () => {
         <Card style={{ borderRadius: 12, border: '1px solid #eee' }}>
           <div style={{ padding: 20 }}>
             <SectionHeader>
+              <Typography.Title heading={5} style={{ margin: 0 }}>
+                API Key 管理
+              </Typography.Title>
               <Button
                 theme="solid"
                 type="primary"
@@ -200,9 +203,6 @@ export const ProfilePage = () => {
               >
                 新建 Key
               </Button>
-              <Typography.Title heading={5} style={{ margin: 0 }}>
-                API Key 管理
-              </Typography.Title>
             </SectionHeader>
 
             <Table
@@ -378,7 +378,7 @@ const InfoValue = styled.div`
 
 const SectionHeader = styled.div`
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
 `;

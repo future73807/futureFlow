@@ -62,15 +62,15 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
   const renderDesc = () => {
     const getDesc = () => {
       if (isNodeProcessing) {
-        return 'Running';
+        return '运行中';
       } else if (isNodePending) {
-        return 'Run terminated';
+        return '运行已终止';
       } else if (isNodeSucceed) {
-        return 'Succeed';
+        return '成功';
       } else if (isNodeFailed) {
-        return 'Failed';
+        return '失败';
       } else if (isNodeCancelled) {
-        return 'Cancelled';
+        return '已取消';
       }
     };
 
@@ -89,7 +89,7 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
       return null;
     }
 
-    const count = <p className={styles.count}>Total: {snapshots.length}</p>;
+    const count = <p className={styles.count}>总数: {snapshots.length}</p>;
 
     if (snapshots.length <= displayCount) {
       return (
@@ -142,7 +142,7 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
               [styles.inactive]: currentSnapshotIndex < displayCount,
             })}
             size="small"
-            placeholder="Select"
+            placeholder="选择"
           >
             {snapshots.slice(displayCount).map((_, index) => {
               const actualIndex = index + displayCount;
@@ -177,10 +177,10 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
           <div className={styles.error}>{currentSnapshot.error}</div>
         )}
         {renderSnapshotNavigation()}
-        <NodeStatusGroup title="Inputs" data={currentSnapshot?.inputs} />
-        <NodeStatusGroup title="Outputs" data={currentSnapshot?.outputs} />
-        <NodeStatusGroup title="Branch" data={currentSnapshot?.branch} optional />
-        <NodeStatusGroup title="Data" data={currentSnapshot?.data} optional />
+        <NodeStatusGroup title="输入" data={currentSnapshot?.inputs} />
+        <NodeStatusGroup title="输出" data={currentSnapshot?.outputs} />
+        <NodeStatusGroup title="分支" data={currentSnapshot?.branch} optional />
+        <NodeStatusGroup title="数据" data={currentSnapshot?.data} optional />
       </div>
     </NodeStatusHeader>
   );

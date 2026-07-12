@@ -116,19 +116,19 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       position="bottomRight"
       render={
         <Dropdown.Menu>
-          <Dropdown.Item onClick={handleEditTitle}>Edit Title</Dropdown.Item>
-          {canMoveOut && <Dropdown.Item onClick={handleMoveOut}>Move out</Dropdown.Item>}
+          <Dropdown.Item onClick={handleEditTitle}>编辑标题</Dropdown.Item>
+          {canMoveOut && <Dropdown.Item onClick={handleMoveOut}>移出容器</Dropdown.Item>}
           <Dropdown.Item onClick={handleCopy} disabled={registry.meta!.copyDisable === true}>
-            Create Copy
+            创建副本
           </Dropdown.Item>
           {registry.meta.isContainer && (
-            <Dropdown.Item onClick={handleAutoLayout}>Auto Layout</Dropdown.Item>
+            <Dropdown.Item onClick={handleAutoLayout}>自动布局</Dropdown.Item>
           )}
           <Dropdown.Item
             onClick={handleDelete}
             disabled={!!(registry.canDelete?.(clientContext, node) || registry.meta!.deleteDisable)}
           >
-            Delete
+            删除
           </Dropdown.Item>
         </Dropdown.Menu>
       }

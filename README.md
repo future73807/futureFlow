@@ -277,3 +277,71 @@ DIFY_API_KEY=app-xxxxxxxxxxxxxxxx
     └─ 否 → 降级模式：直接调用大模型 API
            └─ 使用环境变量 LLM_API_KEY（网关内置）
 ```
+
+---
+
+## 七、 管理员后台
+
+futureFlow 内置管理员后台，用于管理用户、API Key、工作流和财务流水。仅在用户 `role = 'admin'` 时可见。
+
+### 访问入口
+
+登录后，管理员账号的左侧导航栏会多出 **「管理员后台」** 菜单项，或直接访问 `http://localhost:3000/admin`。
+
+**默认管理员账号**（首次启动自动创建）：
+
+| 账号 | 密码 | 角色 |
+|------|------|------|
+| `demo` | `demo123456` | `admin` |
+
+### 功能模块
+
+| 模块 | 功能说明 |
+|------|----------|
+| **仪表盘** | 统计注册用户数、API Key 数、工作流数、运行总次数、Token 消耗与总费用；展示最近 7 天运行趋势柱状图 |
+| **用户管理** | 查看所有用户、调整任意用户余额、修改 VIP 等级（free/pro/enterprise）、封禁/解封账号、删除用户 |
+| **API Key 管理** | 查看全站所有 API Key（含所属用户、使用时间、吊销状态），管理员可一键吊销任意 Key |
+| **工作流管理** | 查看所有用户创建的工作流列表 |
+| **运行记录** | 查看全站工作流运行历史（状态、Token、费用、耗时、错误信息） |
+| **余额流水** | 查看所有余额变动记录（冻结/扣费/充值/退款），含变动后余额，溯源每一笔交易 |
+
+### 管理员 API 接口
+
+所有管理员接口位于 `http://localhost:3001/admin/*`，需要 JWT Token 且 `role = 'admin'`：
+
+```
+GET    /admin/stats                    # 仪表盘统计
+GET    /admin/users                    # 用户列表（分页）
+PATCH  /admin/users/:id/balance        # 调整余额 { delta, remark }
+PATCH  /admin/users/:id/vip            # 修改 VIP { vipLevel }
+PATCH  /admin/users/:id/status         # 修改状态 { status }
+DELETE /admin/users/:id                # 删除用户
+GET    /admin/api-keys                 # API Key 列表
+DELETE /admin/api-keys/:id             # 吊销 API Key
+GET    /admin/workflows                # 工作流列表
+GET    /admin/runs                     # 运行记录
+GET    /admin/balance-logs             # 余额流水
+```
+
+调用示例：
+
+```bash
+# 获取仪表盘统计
+curl http://localhost:3001/admin/stats \
+  -H "Authorization: Bearer <ADMIN_JWT>"
+
+# 给用户充值 100 元
+curl -X PATCH http://localhost:3001/admin/users/<USER_ID>/balance \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"delta": 100, "remark": "管理员充值"}'
+```
+
+### 普通用户提升为管理员
+
+直接操作数据库修改 `users` 表：
+
+```sql
+-- 将某个用户提升为管理员
+UPDATE users SET role = 'admin' WHERE username = '<username>';
+```

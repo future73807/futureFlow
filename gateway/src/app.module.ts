@@ -8,6 +8,7 @@ import { BillingModule } from './billing/billing.module';
 import { ConverterModule } from './converter/converter.module';
 import { DifyModule } from './dify/dify.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
     ConverterModule,
     DifyModule,
     WorkflowsModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

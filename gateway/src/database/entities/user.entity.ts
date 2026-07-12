@@ -33,6 +33,9 @@ export class User {
   @Column({ type: 'varchar', default: 'free' })
   vipLevel: string; // free / pro / enterprise
 
+  @Column({ type: 'varchar', default: 'user' })
+  role: string; // user / admin
+
   @Column({ type: 'varchar', default: 'active' })
   status: string; // active / banned / suspended
 

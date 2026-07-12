@@ -10,6 +10,7 @@ import {
   IconApps,
   IconUser,
   IconExit,
+  IconSetting,
 } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 import {
@@ -19,8 +20,9 @@ import {
 } from '../../utils/auth';
 
 const NAV_ITEMS = [
-  { key: '/', label: '工作流列表', icon: <IconApps /> },
-  { key: '/profile', label: '个人中心', icon: <IconUser /> },
+  { key: '/', label: '工作流列表', icon: <IconApps />, adminOnly: false },
+  { key: '/profile', label: '个人中心', icon: <IconUser />, adminOnly: false },
+  { key: '/admin', label: '管理员后台', icon: <IconSetting />, adminOnly: true },
 ];
 
 export const MainLayout = () => {
@@ -76,7 +78,7 @@ export const MainLayout = () => {
 
         {/* 导航菜单 */}
         <NavMenu>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
             <NavItem
               key={item.key}
               $active={currentPath === item.key}

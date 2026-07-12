@@ -51,7 +51,7 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
               precision={0}
               value={field.value}
               onChange={(value) => field.onChange(value)}
-              placeholder="Please input integer"
+              placeholder="请输入整数"
             />
           </div>
         );
@@ -61,7 +61,7 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
             <InputNumber
               value={field.value}
               onChange={(value) => field.onChange(value)}
-              placeholder="Please input number"
+              placeholder="请输入数字"
             />
           </div>
         );
@@ -83,7 +83,7 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
             <Input
               value={field.value}
               onChange={(value) => field.onChange(value)}
-              placeholder="Please input text"
+              placeholder="请输入文本"
             />
           </div>
         );
@@ -95,8 +95,8 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
     return (
       <div className={styles.formContainer}>
         <div className={styles.emptyState}>
-          <div className={styles.emptyText}>Empty</div>
-          <div className={styles.emptyText}>No inputs found in start node</div>
+          <div className={styles.emptyText}>暂无数据</div>
+          <div className={styles.emptyText}>开始节点未找到输入字段</div>
         </div>
       </div>
     );

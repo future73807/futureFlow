@@ -11,8 +11,9 @@ import { LoginRegisterPage } from './pages/login';
 import { MainLayout } from './pages/main-layout';
 import { WorkflowListPage } from './pages/workflow-list';
 import { ProfilePage } from './pages/profile';
+import { AdminPage } from './pages/admin';
 import { CanvasPage } from './pages/canvas';
-import { isLoggedIn } from './utils/auth';
+import { isLoggedIn, getUser } from './utils/auth';
 
 /**
  * React 18/19 polyfill for form-materials
@@ -22,6 +23,15 @@ unstableSetCreateRoot(createRoot);
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn()) {
     return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** 管理员路由:需要 role === 'admin' */
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const user = getUser();
+  if (!isLoggedIn() || user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }
@@ -42,6 +52,14 @@ app.render(
       >
         <Route index element={<WorkflowListPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route
+          path="admin"
+          element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          }
+        />
       </Route>
       <Route
         path="/canvas/:id"

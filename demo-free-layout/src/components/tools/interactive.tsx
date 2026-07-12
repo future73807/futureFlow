@@ -44,7 +44,7 @@ export const Interactive = () => {
   const [showInteractivePanel, setShowInteractivePanel] = useState(false);
 
   const mousePadTooltip =
-    interactiveType === InteractiveType.Mouse ? 'Mouse-Friendly' : 'Touchpad-Friendly';
+    interactiveType === InteractiveType.Mouse ? '鼠标模式' : '触控板模式';
 
   useEffect(() => {
     // read from localStorage

@@ -17,7 +17,7 @@ export const SwitchLine = () => {
   }, [linesManager]);
 
   return (
-    <Tooltip content={'Switch Line'}>
+    <Tooltip content={'切换连线样式'}>
       <IconButton type="tertiary" theme="borderless" onClick={switchLine} icon={IconSwitchLine} />
     </Tooltip>
   );

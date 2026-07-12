@@ -31,7 +31,7 @@ export const AutoLayout = () => {
   }, [tools]);
 
   return (
-    <Tooltip content={'Auto Layout'}>
+    <Tooltip content={'自动布局'}>
       <IconButton
         disabled={playground.config.readonly}
         type="tertiary"

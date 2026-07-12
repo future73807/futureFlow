@@ -40,6 +40,7 @@ export class SeedService implements OnModuleInit {
       passwordHash,
       apiKey: 'demo-api-key-001',
       vipLevel: 'pro',
+      role: 'admin',
       balance: 100,
       frozenBalance: 0,
       status: 'active',
@@ -47,7 +48,7 @@ export class SeedService implements OnModuleInit {
 
     await this.userRepo.save(user);
     this.logger.log(
-      '默认用户已创建: username=demo, password=demo123456, apiKey=demo-api-key-001, balance=100, vip=pro',
+      '默认用户已创建: username=demo, password=demo123456, role=admin, balance=100, vip=pro',
     );
   }
 }

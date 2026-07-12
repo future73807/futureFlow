@@ -225,4 +225,10 @@ const LoadingCenter = styled.div`
   justify-content: center;
   align-items: center;
   height: 100%;
+  gap: 12px;
+
+  /* 让 Spin 的 tip 文本不换行，与 spinner 同行显示 */
+  :global(.semi-spin-content) {
+    white-space: nowrap;
+  }
 `;

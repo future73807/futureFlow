@@ -195,6 +195,14 @@ export const WorkflowListPage = () => {
   return (
     <PageContainer>
       <PageHeader>
+        <HeaderTitle>
+          <Typography.Title heading={3} style={{ margin: 0, fontWeight: 600 }}>
+            我的工作流
+          </Typography.Title>
+          <Typography.Text type="tertiary" style={{ marginTop: 4, display: 'block' }}>
+            创建和管理你的 AI 工作流画布
+          </Typography.Text>
+        </HeaderTitle>
         <Button
           theme="solid"
           type="primary"
@@ -204,14 +212,6 @@ export const WorkflowListPage = () => {
         >
           创建画布
         </Button>
-        <HeaderTitle>
-          <Typography.Title heading={3} style={{ margin: 0, fontWeight: 600 }}>
-            我的工作流
-          </Typography.Title>
-          <Typography.Text type="tertiary" style={{ marginTop: 4, display: 'block' }}>
-            创建和管理你的 AI 工作流画布
-          </Typography.Text>
-        </HeaderTitle>
       </PageHeader>
 
       {loading ? (
@@ -328,8 +328,8 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   display: flex;
-  justify-content: flex-start;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
   margin-bottom: 32px;
 `;

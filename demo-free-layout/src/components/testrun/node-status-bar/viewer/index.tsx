@@ -27,7 +27,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({ label, value, level, isLast = false
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    Toast.success('Copied');
+    Toast.success('已复制');
   };
 
   const isExpandable = (val: any) =>
