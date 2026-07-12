@@ -90,19 +90,15 @@ export const WorkflowListPage = () => {
                 title: 'LLM_1',
                 inputsValues: {
                   modelName: { type: 'constant', content: 'deepseek-v4-pro' },
-                  apiKey: { type: 'constant', content: '***REMOVED***' },
-                  apiHost: { type: 'constant', content: 'https://api.deepseek.com' },
                   temperature: { type: 'constant', content: 0.7 },
                   systemPrompt: { type: 'template', content: '你是一个友好的 AI 助手，请用简洁的中文回答用户的问题。' },
                   prompt: { type: 'template', content: '{{start_0.query}}' },
                 },
                 inputs: {
                   type: 'object',
-                  required: ['modelName', 'apiKey', 'apiHost', 'temperature', 'prompt'],
+                  required: ['modelName', 'temperature', 'prompt'],
                   properties: {
                     modelName: { type: 'string' },
-                    apiKey: { type: 'string' },
-                    apiHost: { type: 'string' },
                     temperature: { type: 'number' },
                     systemPrompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
                     prompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
@@ -199,23 +195,23 @@ export const WorkflowListPage = () => {
   return (
     <PageContainer>
       <PageHeader>
-        <div>
+        <Button
+          theme="solid"
+          type="primary"
+          icon={<IconPlus />}
+          onClick={() => setCreateVisible(true)}
+          style={{ borderRadius: 8, height: 40, flexShrink: 0 }}
+        >
+          创建画布
+        </Button>
+        <HeaderTitle>
           <Typography.Title heading={3} style={{ margin: 0, fontWeight: 600 }}>
             我的工作流
           </Typography.Title>
           <Typography.Text type="tertiary" style={{ marginTop: 4, display: 'block' }}>
             创建和管理你的 AI 工作流画布
           </Typography.Text>
-        </div>
-        <Button
-          theme="solid"
-          type="primary"
-          icon={<IconPlus />}
-          onClick={() => setCreateVisible(true)}
-          style={{ borderRadius: 8, height: 40 }}
-        >
-          创建画布
-        </Button>
+        </HeaderTitle>
       </PageHeader>
 
       {loading ? (
@@ -249,22 +245,20 @@ export const WorkflowListPage = () => {
               </CardMeta>
               <CardActions>
                 <ActionButton
-                  icon={<IconEdit />}
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/canvas/${wf.id}`);
                   }}
                 >
-                  编辑
+                  <IconEdit /> 编辑
                 </ActionButton>
                 <ActionButton
-                  icon={<IconCopy />}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDuplicate(wf.id);
                   }}
                 >
-                  复制
+                  <IconCopy /> 复制
                 </ActionButton>
                 <Popconfirm
                   title="确认删除此工作流？"
@@ -277,10 +271,9 @@ export const WorkflowListPage = () => {
                 >
                   <ActionButton
                     $danger
-                    icon={<IconDelete />}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    删除
+                    <IconDelete /> 删除
                   </ActionButton>
                 </Popconfirm>
               </CardActions>
@@ -335,9 +328,15 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 32px;
+`;
+
+const HeaderTitle = styled.div`
+  display: flex;
+  flex-direction: column;
 `;
 
 const LoadingCenter = styled.div`

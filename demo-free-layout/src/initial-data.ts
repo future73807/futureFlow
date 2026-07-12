@@ -45,14 +45,6 @@ export const initialData: FlowDocumentJSON = {
             type: 'constant',
             content: 'deepseek-v4-pro',
           },
-          apiKey: {
-            type: 'constant',
-            content: '***REMOVED***',
-          },
-          apiHost: {
-            type: 'constant',
-            content: 'https://api.deepseek.com',
-          },
           temperature: {
             type: 'constant',
             content: 0.7,
@@ -68,15 +60,9 @@ export const initialData: FlowDocumentJSON = {
         },
         inputs: {
           type: 'object',
-          required: ['modelName', 'apiKey', 'apiHost', 'temperature', 'prompt'],
+          required: ['modelName', 'temperature', 'prompt'],
           properties: {
             modelName: {
-              type: 'string',
-            },
-            apiKey: {
-              type: 'string',
-            },
-            apiHost: {
               type: 'string',
             },
             temperature: {

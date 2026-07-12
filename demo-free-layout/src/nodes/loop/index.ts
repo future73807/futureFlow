@@ -21,7 +21,7 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
   info: {
     icon: iconLoop,
     description:
-      'Used to repeatedly execute a series of tasks by setting the number of iterations and logic.',
+      '用于重复执行一系列任务，可设置迭代次数和逻辑。',
   },
   meta: {
     /**

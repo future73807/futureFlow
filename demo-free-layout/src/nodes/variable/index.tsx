@@ -16,7 +16,7 @@ export const VariableNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Variable,
   info: {
     icon: iconVariable,
-    description: 'Variable Assign and Declaration',
+    description: '变量赋值与声明',
   },
   meta: {
     size: {

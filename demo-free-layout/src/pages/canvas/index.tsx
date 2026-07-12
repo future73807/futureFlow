@@ -12,6 +12,7 @@ import {
   EditorRenderer,
   FreeLayoutEditorProvider,
   useClientContext,
+  type FreeLayoutPluginContext,
 } from '@flowgram.ai/free-layout-editor';
 import { LocaleProvider as SemiLocaleProvider } from '@douyinfe/semi-ui';
 import zh_CN from '@douyinfe/semi-ui/lib/es/locale/source/zh_CN';
@@ -32,7 +33,7 @@ export const CanvasPage = () => {
   const [workflowName, setWorkflowName] = useState('');
   const [flowgramData, setFlowgramData] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<FreeLayoutPluginContext | null>(null);
 
   useEffect(() => {
     const loadWorkflow = async () => {
@@ -64,7 +65,10 @@ export const CanvasPage = () => {
   }, [id, navigate]);
 
   const handleSave = useCallback(async () => {
-    if (!id || !editorRef.current) return;
+    if (!id || !editorRef.current) {
+      Toast.warning('编辑器尚未就绪');
+      return;
+    }
     setSaving(true);
     try {
       const flowgramJson = editorRef.current.document.toJSON();
@@ -83,7 +87,8 @@ export const CanvasPage = () => {
       if (res.ok) {
         Toast.success('已保存');
       } else {
-        Toast.error('保存失败');
+        const err = await res.json().catch(() => ({}));
+        Toast.error(err.message || '保存失败');
       }
     } catch {
       Toast.error('保存失败');
@@ -113,7 +118,6 @@ export const CanvasPage = () => {
             value={workflowName}
             onChange={setWorkflowName}
             style={{ width: 240 }}
-            onBlur={handleSave}
           />
         </LeftGroup>
         <Button
@@ -143,18 +147,31 @@ export const CanvasPage = () => {
 };
 
 /**
- * 内部编辑器组件，接收 onReady 回调暴露 context
+ * 内部编辑器组件
+ * useClientContext 必须在 FreeLayoutEditorProvider 内部的子组件中调用，
+ * 否则 ctx 永远是 undefined，导致保存功能失效
  */
 const CanvasEditor = ({
   initialData,
   onReady,
 }: {
   initialData: any;
-  onReady: (ctx: any) => void;
+  onReady: (ctx: FreeLayoutPluginContext) => void;
 }) => {
   const editorProps = useEditorProps(initialData, nodeRegistries);
-  const ctx = useClientContext();
 
+  return (
+    <FreeLayoutEditorProvider {...editorProps}>
+      <CanvasInner onReady={onReady} />
+    </FreeLayoutEditorProvider>
+  );
+};
+
+/**
+ * 在 Provider 内部调用 useClientContext，确保能拿到 ctx
+ */
+const CanvasInner = ({ onReady }: { onReady: (ctx: FreeLayoutPluginContext) => void }) => {
+  const ctx = useClientContext();
   useEffect(() => {
     if (ctx) {
       onReady(ctx);
@@ -162,13 +179,11 @@ const CanvasEditor = ({
   }, [ctx, onReady]);
 
   return (
-    <FreeLayoutEditorProvider {...editorProps}>
-      <div className="demo-container">
-        <DockedPanelLayer>
-          <EditorRenderer className="demo-editor" />
-        </DockedPanelLayer>
-      </div>
-    </FreeLayoutEditorProvider>
+    <div className="demo-container">
+      <DockedPanelLayer>
+        <EditorRenderer className="demo-editor" />
+      </DockedPanelLayer>
+    </div>
   );
 };
 

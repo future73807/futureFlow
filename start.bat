@@ -21,11 +21,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 1. 检查 .env 文件
+REM 1. 检查 .env 文件(三层 API Key 体系自动配置)
 if not exist ".env" (
     echo [1/4] 未找到 .env 文件,从模板复制...
     copy /Y .env.example .env >nul
-    echo       已创建 .env,请按需编辑(尤其是 Dify API Key)
+    echo       已创建 .env
+    echo.
+    echo   三层 API Key 体系说明(详见 README):
+    echo     * LLM_API_KEY   sk-xxx   网关调用 DeepSeek/OpenAI,自动内置
+    echo     * DIFY_API_KEY  app-xxx  网关调用 Dify Service API,自动内置
+    echo     * 平台 API Key  ff-xxx   用户在个人中心创建(无需在此配置)
+    echo.
+    echo   首次启动请在 .env 中填写 LLM_API_KEY ^(必填^)
+    echo   DIFY_API_KEY 未配置时自动降级为直接 LLM 模式
 ) else (
     echo [1/4] .env 已存在
 )

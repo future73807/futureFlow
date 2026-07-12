@@ -120,7 +120,6 @@ export class AuthService {
       balance: parseFloat(user.balance.toString()),
       frozenBalance: parseFloat(user.frozenBalance.toString()),
       status: user.status,
-      apiKey: user.apiKey ? `${user.apiKey.slice(0, 11)}...` : null,
       createdAt: user.createdAt,
     };
   }

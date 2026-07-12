@@ -179,14 +179,7 @@ export const ProfilePage = () => {
                 <InfoLabel>注册时间</InfoLabel>
                 <InfoValue>{new Date(user.createdAt).toLocaleString('zh-CN')}</InfoValue>
               </InfoItem>
-              <InfoItem>
-                <InfoLabel>旧版 API Key</InfoLabel>
-                <InfoValue>
-                  <code style={{ background: '#f5f5f5', padding: '2px 8px', borderRadius: 4, fontSize: 13 }}>
-                    {user.apiKey || '(无)'}
-                  </code>
-                </InfoValue>
-              </InfoItem>
+
             </InfoGrid>
           </div>
         </Card>
@@ -197,19 +190,19 @@ export const ProfilePage = () => {
         <Card style={{ borderRadius: 12, border: '1px solid #eee' }}>
           <div style={{ padding: 20 }}>
             <SectionHeader>
-              <Typography.Title heading={5} style={{ margin: 0 }}>
-                API Key 管理
-              </Typography.Title>
               <Button
                 theme="solid"
                 type="primary"
                 size="small"
                 icon={<IconPlus />}
                 onClick={() => setCreateVisible(true)}
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 6, flexShrink: 0 }}
               >
                 新建 Key
               </Button>
+              <Typography.Title heading={5} style={{ margin: 0 }}>
+                API Key 管理
+              </Typography.Title>
             </SectionHeader>
 
             <Table
@@ -385,8 +378,9 @@ const InfoValue = styled.div`
 
 const SectionHeader = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 12px;
 `;
 
 const Center = styled.div`

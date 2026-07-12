@@ -1,15 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FlowGramJSON, FlowNodeJSON } from '../converter/types';
 import { DifySSEEvent } from '../dify/dify-client.service';
 
 /**
  * 直接 LLM 执行服务（绕过 Dify）
- * 从 FlowGram JSON 中提取 LLM 节点配置，直接调用 OpenAI 兼容 API
+ * 从环境变量读取 API Key 和 Host，直接调用 OpenAI 兼容 API
  * 以与 Dify SSE 相同的事件格式返回，前端无需改动
+ *
+ * 环境变量:
+ *   LLM_API_KEY  - 大模型 API Key（默认 DeepSeek）
+ *   LLM_API_HOST - 大模型 API 地址（默认 https://api.deepseek.com）
  */
 @Injectable()
 export class DirectLlmService {
   private readonly logger = new Logger(DirectLlmService.name);
+  private readonly defaultApiKey: string;
+  private readonly defaultApiHost: string;
+
+  constructor(private readonly config: ConfigService) {
+    this.defaultApiKey = this.config.get<string>('LLM_API_KEY', '').trim();
+    this.defaultApiHost = this.config
+      .get<string>('LLM_API_HOST', 'https://api.deepseek.com')
+      .trim();
+  }
 
   /**
    * 直接执行工作流（流式）
@@ -268,6 +282,7 @@ export class DirectLlmService {
 
   /**
    * 从 LLM 节点提取配置
+   * apiKey 和 apiHost 从环境变量读取，而非节点数据
    */
   private extractLlmConfig(
     node: FlowNodeJSON,
@@ -295,8 +310,9 @@ export class DirectLlmService {
 
     return {
       model: String(get('modelName', 'deepseek-v4-pro')),
-      apiKey: String(get('apiKey', '')),
-      apiHost: String(get('apiHost', 'https://api.deepseek.com')),
+      // API Key 和 Host 从环境变量读取，用户无需在画布上配置
+      apiKey: this.defaultApiKey,
+      apiHost: this.defaultApiHost,
       temperature: parseFloat(String(get('temperature', 0.7))),
       systemPrompt: String(get('systemPrompt', '')),
       userPrompt,

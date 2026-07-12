@@ -14,7 +14,6 @@ import {
 import styled from 'styled-components';
 import {
   isLoggedIn,
-  getUser,
   removeToken,
   fetchProfile,
 } from '../../utils/auth';

@@ -15,7 +15,7 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
   info: {
     icon: iconLLM,
     description:
-      'Call the large language model and use variables and prompt words to generate responses.',
+      '调用大语言模型，使用变量和提示词生成回复。',
   },
   meta: {
     size: {
@@ -34,14 +34,6 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
             type: 'constant',
             content: 'deepseek-v4-pro',
           },
-          apiKey: {
-            type: 'constant',
-            content: '***REMOVED***',
-          },
-          apiHost: {
-            type: 'constant',
-            content: 'https://api.deepseek.com',
-          },
           temperature: {
             type: 'constant',
             content: 0.5,
@@ -57,15 +49,9 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
         },
         inputs: {
           type: 'object',
-          required: ['modelName', 'apiKey', 'apiHost', 'temperature', 'prompt'],
+          required: ['modelName', 'temperature', 'prompt'],
           properties: {
             modelName: {
-              type: 'string',
-            },
-            apiKey: {
-              type: 'string',
-            },
-            apiHost: {
               type: 'string',
             },
             temperature: {

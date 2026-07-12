@@ -26,7 +26,7 @@ export const ContinueNodeRegistry: FlowNodeRegistry = {
   info: {
     icon: iconContinue,
     description:
-      'The final node of the workflow, used to return the result information after the workflow is run.',
+      '跳过当前循环迭代，进入下一次循环。',
   },
   /**
    * Render node via formMeta

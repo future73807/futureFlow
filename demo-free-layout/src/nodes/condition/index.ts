@@ -15,7 +15,7 @@ export const ConditionNodeRegistry: FlowNodeRegistry = {
   info: {
     icon: iconCondition,
     description:
-      'Connect multiple downstream branches. Only the corresponding branch will be executed if the set conditions are met.',
+      '连接多个下游分支，满足条件时仅执行对应分支。',
   },
   meta: {
     defaultPorts: [{ type: 'input' }],
@@ -33,7 +33,7 @@ export const ConditionNodeRegistry: FlowNodeRegistry = {
       id: `condition_${nanoid(5)}`,
       type: 'condition',
       data: {
-        title: 'Condition',
+        title: '条件分支',
         conditions: [
           {
             key: `if_${nanoid(5)}`,

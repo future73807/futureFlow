@@ -79,13 +79,20 @@ services:
     ports:
       - "5001:5001"   # Dify API 端口(映射到 5001 避免与网关冲突)
     environment:
-      # --- 数据库 ---
+      # --- 数据库(Dify 0.15.x 需要独立 DB_* 变量,SQLALCHEMY_DATABASE_URI 不生效) ---
+      DB_USERNAME: dify
+      DB_PASSWORD: dify123456
+      DB_HOST: dify-postgres
+      DB_PORT: "5432"
+      DB_DATABASE: dify
       SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
       # --- Redis ---
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
       # --- 模式 ---
       MODE: api
+      # --- 启动时自动执行数据库迁移 ---
+      MIGRATION_ENABLED: "true"
       # --- 安全 ---
       SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
       CONSOLE_API_URL: http://localhost:5001
@@ -120,10 +127,18 @@ services:
       dify-postgres:
         condition: service_healthy
     environment:
+      # --- 数据库(Dify 0.15.x 需要独立 DB_* 变量) ---
+      DB_USERNAME: dify
+      DB_PASSWORD: dify123456
+      DB_HOST: dify-postgres
+      DB_PORT: "5432"
+      DB_DATABASE: dify
       SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
       MODE: worker
+      # --- 启动时自动执行数据库迁移 ---
+      MIGRATION_ENABLED: "true"
       SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
       STORAGE_TYPE: local
       STORAGE_LOCAL_PATH: /app/api/storage
@@ -157,7 +172,7 @@ services:
       - dify-weaviate-data:/var/lib/weaviate
     environment:
       QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "false"
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
       DEFAULT_VECTORIZER_MODULE: "none"
       CLUSTER_HOSTNAME: "node1"

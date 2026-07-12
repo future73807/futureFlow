@@ -23,7 +23,18 @@ html, body {
 }
 
 .semi-modal-header {
-  padding: 20px 24px 12px !important;
+  padding: 16px 20px 8px !important;
+  margin: 0 !important;
+}
+
+.semi-modal-title {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.semi-modal-close {
+  top: 16px !important;
+  right: 20px !important;
 }
 
 .semi-modal-body {
@@ -34,25 +45,24 @@ html, body {
   padding: 0 24px 20px !important;
 }
 
-/* Modal 左侧弹出动画 + 左偏移定位 */
+/* Modal 居中 + 淡入动画 */
+.semi-modal {
+  animation: semi-modal-fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Modal 左对齐 */
 .semi-modal-container {
   justify-content: flex-start !important;
-  align-items: center !important;
   padding-left: 48px !important;
 }
 
-.semi-modal {
-  animation: semi-modal-slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  margin: auto 0 !important;
-}
-
-@keyframes semi-modal-slide-in-left {
+@keyframes semi-modal-fade-in {
   from {
-    transform: translateX(-60px);
+    transform: scale(0.96) translateX(-12px);
     opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: scale(1) translateX(0);
     opacity: 1;
   }
 }

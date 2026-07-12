@@ -5,7 +5,7 @@
 import { useState, useCallback } from 'react';
 import { Modal, Form, Button, Tabs, Typography, Toast } from '@douyinfe/semi-ui';
 import { IconUser, IconLock, IconMail } from '@douyinfe/semi-icons';
-import { login, register, isLoggedIn, getUser, removeToken } from '../../utils/auth';
+import { login, register, isLoggedIn, getUser } from '../../utils/auth';
 
 interface LoginDialogProps {
   visible: boolean;
