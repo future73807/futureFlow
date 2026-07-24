@@ -3,6 +3,7 @@ import {
   MiddlewareConsumer,
   NestModule,
   Module,
+  RequestMethod,
 } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../database/entities/user.entity';
@@ -18,9 +19,12 @@ import { ApiKeyController } from './api-key.controller';
  * VIP 等级与可用节点类型映射
  */
 export const VIP_NODE_PERMISSIONS: Record<string, string[]> = {
-  free: ['start', 'end', 'llm'],
-  pro: ['start', 'end', 'llm', 'http', 'code'],
-  enterprise: ['start', 'end', 'llm', 'http', 'code', 'condition', 'loop'],
+  // 条件分支已同时接入 Dify 转换和直接 LLM 执行，应作为所有工作流
+  // 的基础能力，而不是在运行时被误拒绝。
+  free: ['start', 'end', 'llm', 'condition', 'multi-condition'],
+  pro: ['start', 'end', 'llm', 'condition', 'multi-condition', 'http', 'code'],
+  // Loop 仍未实现可验证的执行语义，继续拒绝而非生成不可执行工作流。
+  enterprise: ['start', 'end', 'llm', 'condition', 'multi-condition', 'http', 'code'],
 };
 
 /**
@@ -49,6 +53,9 @@ export class PermissionChecker {
 })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AuthMiddleware).forRoutes('workflows/run');
+    consumer.apply(AuthMiddleware).forRoutes(
+      'workflows/run',
+      { path: 'workflows/:id/execute', method: RequestMethod.POST },
+    );
   }
 }

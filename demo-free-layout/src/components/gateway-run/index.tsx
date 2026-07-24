@@ -81,14 +81,16 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const messages = buffer.split('\n\n');
+        const messages = buffer.split(/\r?\n\r?\n/);
         buffer = messages.pop() || '';
 
         for (const message of messages) {
-          const line = message.trim();
-          if (!line.startsWith('data:')) continue;
-
-          const jsonStr = line.slice(5).trim();
+          const jsonStr = message
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n')
+            .trim();
           if (!jsonStr) continue;
 
           try {

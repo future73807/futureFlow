@@ -89,6 +89,11 @@ services:
       # --- Redis ---
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
+      # Dify 0.15 does not derive Celery's broker from REDIS_HOST. Without
+      # this explicit URL it silently falls back to RabbitMQ on localhost,
+      # leaving every async workflow job permanently unconsumed.
+      CELERY_BROKER_URL: redis://dify-redis:6379/1
+      CELERY_BACKEND: redis
       # --- 模式 ---
       MODE: api
       # --- 启动时自动执行数据库迁移 ---
@@ -136,6 +141,9 @@ services:
       SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
+      # Keep the API producer and Worker consumer on the same Redis broker.
+      CELERY_BROKER_URL: redis://dify-redis:6379/1
+      CELERY_BACKEND: redis
       MODE: worker
       # --- 启动时自动执行数据库迁移 ---
       MIGRATION_ENABLED: "true"

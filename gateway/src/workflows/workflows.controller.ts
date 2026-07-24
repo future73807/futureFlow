@@ -3,17 +3,20 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Res,
+  Headers,
   HttpCode,
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { WorkflowsService } from './workflows.service';
-import { RunWorkflowDto } from './dto/run-workflow.dto';
+import { RunPublishedWorkflowDto, RunWorkflowDto } from './dto/run-workflow.dto';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
 import { DifyClientService } from '../dify/dify-client.service';
 import { Request as ExpressRequest } from 'express';
+import { WorkflowCrudService } from './workflow-crud.service';
 
 /**
  * 工作流控制器
@@ -31,6 +34,7 @@ export class WorkflowsController {
     private readonly workflowsService: WorkflowsService,
     private readonly difyConfig: DifyConfigService,
     private readonly difyClient: DifyClientService,
+    private readonly workflowCrudService: WorkflowCrudService,
   ) {}
 
   /**
@@ -51,50 +55,105 @@ export class WorkflowsController {
   async runWorkflow(
     @Body() dto: RunWorkflowDto,
     @Res() res: Response,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     const req = res.req as ExpressRequest & { user: any };
-    const user = req.user;
+    return this.streamWorkflow(
+      dto.flowgram as FlowGramJSON,
+      dto.inputs || {},
+      req.user,
+      res,
+      undefined,
+      { source: 'manual', idempotencyKey },
+    );
+  }
 
+  /**
+   * 执行已发布的工作流快照。
+   * 认证支持 JWT 和平台 API Key，客户端只能传入 Start 节点定义的 inputs。
+   */
+  @Post(':id/execute')
+  @HttpCode(200)
+  async executePublishedWorkflow(
+    @Param('id') id: string,
+    @Body() dto: RunPublishedWorkflowDto,
+    @Res() res: Response,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const req = res.req as ExpressRequest & { user: any };
+    if (!req.user) {
+      res.status(401).json({ error: '未认证' });
+      return;
+    }
+
+    const workflow = await this.workflowCrudService.getPublished(id, req.user.id);
+    return this.streamWorkflow(
+      workflow.publishedFlowgramJson as FlowGramJSON,
+      dto.inputs || {},
+      req.user,
+      res,
+      id,
+      {
+        source: 'api',
+        idempotencyKey,
+        workflowVersion: workflow.publishedVersion || undefined,
+      },
+    );
+  }
+
+  private async streamWorkflow(
+    flowgram: FlowGramJSON,
+    inputs: Record<string, string | number | boolean>,
+    user: any,
+    res: Response,
+    workflowId?: string,
+    executionContext: {
+      source?: string;
+      triggerId?: string;
+      idempotencyKey?: string;
+      workflowVersion?: number;
+    } = {},
+  ) {
     if (!user) {
       res.status(401).json({ error: '未认证' });
       return;
     }
 
     // 设置 SSE 响应头
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
     this.logger.log(
       `开始执行工作流: userId=${user.id}, username=${user.username}`,
     );
 
     try {
       const stream = this.workflowsService.runWorkflow(
-        dto.flowgram as FlowGramJSON,
+        flowgram,
         user,
+        inputs,
+        workflowId,
+        executionContext,
       );
 
+      // Admission and validation execute before HTTP 200 + SSE headers.
+      const first = await stream.next();
+      this.openSse(res);
+      if (!first.done) this.writeSse(res, first.value);
       for await (const event of stream) {
-        const data = JSON.stringify(event);
-        res.write(`data: ${data}\n\n`);
+        this.writeSse(res, event);
 
-        if (typeof (res as any).flush === 'function') {
-          (res as any).flush();
-        }
-
-        // 工作流结束或出错时关闭连接
-        if (
-          event.event === 'workflow_finished' ||
-          event.event === 'error'
-        ) {
-          break;
-        }
+        // 不在 workflow_finished/error 事件处提前 break。
+        // WorkflowsService 会在最后一个事件之后完成扣费结算或失败退款，
+        // 必须继续迭代到生成器自然结束。
       }
     } catch (error) {
       this.logger.error(`工作流执行错误: ${error.message}`);
+      if (!res.headersSent) {
+        const status = typeof error.getStatus === 'function' ? error.getStatus() : error.status || 500;
+        res.status(status).json({
+          error: error.response?.message || error.message,
+          code: error.response?.code || error.code || 'workflow_execution_failed',
+        });
+        return;
+      }
       const errorEvent = {
         event: 'error',
         data: {
@@ -105,8 +164,21 @@ export class WorkflowsController {
       };
       res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
     } finally {
-      res.end();
+      if (!res.writableEnded) res.end();
     }
+  }
+
+  private openSse(res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+  }
+
+  private writeSse(res: Response, event: any) {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (typeof (res as any).flush === 'function') (res as any).flush();
   }
 
   /**
@@ -148,7 +220,7 @@ export class WorkflowsController {
         latency: connectivity.latency,
         error: connectivity.error,
       },
-      executionMode: this.difyConfig.isConfigured() ? 'dify' : 'direct-llm',
+      executionMode: (await this.difyClient.isConfigured()) ? 'dify' : 'direct-llm',
     };
   }
 }

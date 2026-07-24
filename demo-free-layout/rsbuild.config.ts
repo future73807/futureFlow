@@ -8,8 +8,18 @@ import { pluginLess } from '@rsbuild/plugin-less';
 import { defineConfig } from '@rsbuild/core';
 
 export default defineConfig({
+  server: {
+    // Keeps the default product address stable while allowing a second local
+    // stack to run beside an existing developer session during verification.
+    port: Number(process.env.FRONTEND_PORT || 3000),
+  },
   plugins: [pluginReact(), pluginLess()],
   source: {
+    define: {
+      __GATEWAY_URL__: JSON.stringify(
+        process.env.PUBLIC_GATEWAY_URL || 'http://localhost:3001',
+      ),
+    },
     entry: {
       index: './src/app.tsx',
     },
@@ -21,7 +31,7 @@ export default defineConfig({
     },
   },
   html: {
-    title: 'demo-free-layout',
+    title: 'futureFlow',
   },
   tools: {
     rspack: {

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { ApiKey } from '../database/entities/api-key.entity';
+import { User } from '../database/entities/user.entity';
 
 @Injectable()
 export class ApiKeyService {
@@ -19,6 +20,11 @@ export class ApiKeyService {
   }
 
   async create(userId: string, name: string): Promise<{ apiKey: ApiKey; plaintext: string }> {
+    const normalizedName = name.trim() || 'default';
+    if (normalizedName.length > 64) {
+      throw new BadRequestException('API Key 名称不能超过 64 个字符');
+    }
+
     // 生成 API Key: ff-<32 hex chars>
     const raw = randomBytes(16).toString('hex');
     const plaintext = `ff-${raw}`;
@@ -27,7 +33,7 @@ export class ApiKeyService {
 
     const apiKey = this.apiKeyRepo.create({
       userId,
-      name: name || 'default',
+      name: normalizedName,
       keyPrefix,
       keyHash,
     });
@@ -48,5 +54,18 @@ export class ApiKeyService {
       where: { keyHash: hash, revoked: false },
       relations: ['user'],
     });
+  }
+
+  /** 校验明文 API Key，并更新最后使用时间。 */
+  async authenticate(plaintext: string): Promise<User | null> {
+    if (!plaintext.startsWith('ff-')) return null;
+
+    const hash = createHash('sha256').update(plaintext).digest('hex');
+    const apiKey = await this.findByHash(hash);
+    if (!apiKey?.user || apiKey.user.status !== 'active') return null;
+    if (apiKey.expiresAt && apiKey.expiresAt.getTime() <= Date.now()) return null;
+
+    await this.apiKeyRepo.update(apiKey.id, { lastUsedAt: new Date() });
+    return apiKey.user;
   }
 }

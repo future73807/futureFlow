@@ -37,7 +37,7 @@ export const MultiConditionNodeRegistry: FlowNodeRegistry = {
   onAdd() {
     return {
       id: `multi_condition_${nanoid(5)}`,
-      type: 'condition',
+      type: WorkflowNodeType.MultiCondition,
       data: {
         title: `multi_condition_${++index}`,
         branch: [

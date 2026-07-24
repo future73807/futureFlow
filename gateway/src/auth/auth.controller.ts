@@ -45,6 +45,7 @@ export class AuthController {
       'http',
       'code',
       'condition',
+      'multi-condition',
       'loop',
     ];
     const deniedNodes = allNodeTypes.filter(

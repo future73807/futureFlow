@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,10 +13,10 @@ import { FlowGramJSON } from '../converter/types';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { DifyClientService, DifySSEEvent } from '../dify/dify-client.service';
 import { DifyConfigService } from '../dify/dify-config.service';
-import { DifyConsoleService } from '../dify/dify-console.service';
 import { BillingService } from '../billing/billing.service';
 import { PermissionChecker } from '../auth/auth.module';
 import { DirectLlmService } from './direct-llm.service';
+import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
 
 /**
  * 工作流服务
@@ -41,10 +42,11 @@ export class WorkflowsService {
     private readonly converter: DifyConverterService,
     private readonly difyClient: DifyClientService,
     private readonly difyConfig: DifyConfigService,
-    private readonly difyConsole: DifyConsoleService,
     private readonly billing: BillingService,
     private readonly permissionChecker: PermissionChecker,
     private readonly directLlm: DirectLlmService,
+    @Optional()
+    private readonly executionGuard?: WorkflowExecutionGuardService,
   ) {}
 
   /**
@@ -54,9 +56,20 @@ export class WorkflowsService {
   async *runWorkflow(
     flowgram: FlowGramJSON,
     user: User,
+    inputOverrides: Record<string, string | number | boolean> = {},
+    workflowId?: string,
+    executionContext: {
+      source?: string;
+      triggerId?: string;
+      idempotencyKey?: string;
+      workflowVersion?: number;
+    } = {},
   ): AsyncGenerator<DifySSEEvent> {
+    const executableFlowgram = this.applyInputOverrides(flowgram, inputOverrides);
+    this.converter.validateFlowGram(executableFlowgram);
+
     // ── 1. 权限校验 ──
-    const nodeTypes = flowgram.nodes.map((n) => n.type);
+    const nodeTypes = executableFlowgram.nodes.map((n) => n.type);
     const permission = this.permissionChecker.checkNodePermissions(
       user.vipLevel,
       nodeTypes,
@@ -68,8 +81,22 @@ export class WorkflowsService {
     }
 
     // ── 2. 预估费用 ──
-    const estimatedCost = this.converter.estimateCost(flowgram);
-    const useDify = this.difyClient.isConfigured();
+    const estimatedCost = this.converter.estimateCost(executableFlowgram);
+    const difyTarget = workflowId && executionContext.workflowVersion
+      ? { workflowId, workflowVersion: executionContext.workflowVersion }
+      : {};
+    const useDify = await this.difyClient.isConfigured(difyTarget);
+
+    if (!useDify) {
+      const unsupportedNodes = nodeTypes.filter(
+        (type) => !['start', 'end', 'llm', 'condition', 'multi-condition'].includes(type),
+      );
+      if (unsupportedNodes.length > 0) {
+        throw new BadRequestException(
+          `Dify 未配置时仅支持 start/llm/end 节点，当前包含: ${[...new Set(unsupportedNodes)].join(', ')}`,
+        );
+      }
+    }
 
     this.logger.log(
       `工作流执行: userId=${user.id}, nodes=${nodeTypes.join(',')}, estCost=${estimatedCost}, engine=${useDify ? 'dify' : 'direct-llm'}`,
@@ -77,14 +104,31 @@ export class WorkflowsService {
 
     // ── 3. 创建运行记录 ──
     const runId = uuidv4();
-    const run = this.runRepo.create({
-      id: runId,
-      userId: user.id,
-      status: 'running',
-      flowgramJson: flowgram,
-      estimatedCost,
-    });
-    await this.runRepo.save(run);
+    if (this.executionGuard) {
+      await this.executionGuard.reserve({
+        id: runId,
+        userId: user.id,
+        workflowId,
+        flowgramJson: executableFlowgram,
+        estimatedCost,
+        source: executionContext.source,
+        triggerId: executionContext.triggerId,
+        idempotencyKey: executionContext.idempotencyKey,
+      });
+    } else {
+      const run = this.runRepo.create({
+        id: runId,
+        userId: user.id,
+        workflowId: workflowId || null,
+        triggerId: executionContext.triggerId || null,
+        source: executionContext.source || 'manual',
+        idempotencyKey: executionContext.idempotencyKey || null,
+        status: 'running',
+        flowgramJson: executableFlowgram,
+        estimatedCost,
+      });
+      await this.runRepo.save(run);
+    }
 
     // ── 4. 扣费预检:冻结预估费用 ──
     let frozenAmount = 0;
@@ -107,23 +151,15 @@ export class WorkflowsService {
     let executionError: Error | null = null;
 
     if (useDify) {
-      // ═══ Dify 执行路径 ═══
-      // (可选)通过 Console API 导入/更新 Dify DSL
-      if (this.difyConsole.isEnabled()) {
-        const importResult = await this.difyConsole.importWorkflow(flowgram);
-        if (importResult.success) {
-          this.logger.log(`DSL 已更新到 Dify: ${importResult.message}`);
-        } else {
-          this.logger.warn(`DSL 导入跳过或失败: ${importResult.message}`);
-        }
-      }
-
-      const difyInputs = this.converter.extractInputs(flowgram);
-
       try {
+        // A published release was imported into its own Dify app at publish
+        // time. Execution is read-only and never serializes other workflows.
+        const difyInputs = this.converter.extractInputs(executableFlowgram);
+
         const stream = this.difyClient.runWorkflowStream(
           difyInputs,
           user.username,
+          difyTarget,
         );
         for await (const event of stream) {
           allEvents.push(event);
@@ -171,7 +207,7 @@ export class WorkflowsService {
 
       // 执行直接 LLM 调用
       try {
-        const stream = this.directLlm.runDirect(flowgram, user.username);
+        const stream = this.directLlm.runDirect(executableFlowgram, user.username);
         for await (const event of stream) {
           allEvents.push(event);
           yield event;
@@ -212,7 +248,7 @@ export class WorkflowsService {
       );
     } else {
       // 执行成功:计算实际费用并结算
-      const modelName = this.extractModelName(flowgram);
+      const modelName = this.extractModelName(executableFlowgram);
       const actualCost = this.billing.calculateCost(
         result.totalTokens,
         modelName,
@@ -264,7 +300,7 @@ export class WorkflowsService {
     const errorEvent = events.find((e) => e.event === 'error');
     const started = events.find((e) => e.event === 'workflow_started');
 
-    if (errorEvent && !workflowFinished) {
+    if (errorEvent) {
       return {
         workflowRunId: started?.workflow_run_id || '',
         taskId: started?.task_id || '',
@@ -277,11 +313,24 @@ export class WorkflowsService {
       };
     }
 
-    const data = workflowFinished?.data || {};
+    if (!workflowFinished) {
+      return {
+        workflowRunId: started?.workflow_run_id || '',
+        taskId: started?.task_id || '',
+        status: 'failed',
+        totalTokens: 0,
+        totalSteps: 0,
+        elapsedTime: 0,
+        outputs: {},
+        error: '执行流意外结束，未收到 workflow_finished 事件',
+      };
+    }
+
+    const data = workflowFinished.data || {};
     return {
       workflowRunId: workflowFinished?.workflow_run_id || '',
       taskId: workflowFinished?.task_id || '',
-      status: data.status || 'succeeded',
+      status: data.status || 'failed',
       totalTokens: data.total_tokens || 0,
       totalSteps: data.total_steps || 0,
       elapsedTime: data.elapsed_time || 0,
@@ -294,6 +343,51 @@ export class WorkflowsService {
   private extractModelName(flowgram: FlowGramJSON): string {
     const llmNode = flowgram.nodes.find((n) => n.type === 'llm');
     const modelName = llmNode?.data?.inputsValues?.modelName?.content;
-    return modelName ? String(modelName) : 'deepseek-v4-pro';
+    return modelName ? String(modelName) : 'deepseek-chat';
+  }
+
+  /**
+   * 将本次调用传入的 inputs 写入 Start 节点副本，不修改保存的草稿或发布快照。
+   */
+  private applyInputOverrides(
+    flowgram: FlowGramJSON,
+    inputs: Record<string, string | number | boolean>,
+  ): FlowGramJSON {
+    if (Object.keys(inputs).length === 0) return flowgram;
+
+    const startIndex = flowgram.nodes.findIndex((node) => node.type === 'start');
+    if (startIndex < 0) {
+      throw new BadRequestException('工作流缺少 Start 节点，无法接收运行参数');
+    }
+
+    const copied = JSON.parse(JSON.stringify(flowgram)) as FlowGramJSON;
+    const startNode = copied.nodes[startIndex];
+    const properties = (startNode.data.outputs?.properties || {}) as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(inputs)) {
+      if (!(key in properties)) {
+        throw new BadRequestException(`未知的工作流输入参数: ${key}`);
+      }
+      if (!['string', 'number', 'boolean'].includes(typeof value)) {
+        throw new BadRequestException(`输入参数 ${key} 仅支持字符串、数字或布尔值`);
+      }
+      const expectedType = (properties[key] as any)?.type;
+      if (
+        expectedType &&
+        ['string', 'number', 'boolean'].includes(expectedType) &&
+        typeof value !== expectedType
+      ) {
+        throw new BadRequestException(
+          `输入参数 ${key} 必须是 ${expectedType} 类型`,
+        );
+      }
+    }
+
+    startNode.data.inputsValues = { ...(startNode.data.inputsValues || {}) };
+    for (const [key, value] of Object.entries(inputs)) {
+      startNode.data.inputsValues[key] = { type: 'constant', content: value };
+    }
+
+    return copied;
   }
 }

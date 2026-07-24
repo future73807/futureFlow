@@ -57,7 +57,7 @@ export class DifyConfigService implements OnModuleInit {
     switch (v.status) {
       case 'configured':
         this.logger.log(
-          `✅ Dify 已配置: base=${v.apiBase}, key=${v.maskedKey}`,
+          `Dify Service API is configured: base=${v.apiBase}`,
         );
         this.logger.log(
           `   工作流将走 Dify 执行路径(Service API SSE 流式)`,
@@ -173,6 +173,10 @@ export class DifyConfigService implements OnModuleInit {
    */
   isConfigured(): boolean {
     return this.validation.status === 'configured';
+  }
+
+  isValidApiKey(apiKey: string): boolean {
+    return Boolean(apiKey) && DifyConfigService.API_KEY_PATTERN.test(apiKey);
   }
 
   /**

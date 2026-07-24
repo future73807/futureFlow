@@ -17,12 +17,116 @@ export class DirectLlmService {
   private readonly logger = new Logger(DirectLlmService.name);
   private readonly defaultApiKey: string;
   private readonly defaultApiHost: string;
+  private readonly defaultModel: string;
+  private readonly requestTimeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.defaultApiKey = this.config.get<string>('LLM_API_KEY', '').trim();
     this.defaultApiHost = this.config
       .get<string>('LLM_API_HOST', 'https://api.deepseek.com')
       .trim();
+    this.defaultModel = this.config
+      .get<string>('LLM_DEFAULT_MODEL', 'deepseek-chat')
+      .trim();
+    this.requestTimeoutMs = Number.parseInt(
+      this.config.get<string>('LLM_REQUEST_TIMEOUT_MS', '120000'),
+      10,
+    ) || 120000;
+  }
+
+  private isNodeReachable(
+    node: FlowNodeJSON,
+    flowgram: FlowGramJSON,
+    executedNodes: Set<string>,
+    selectedBranches: Map<string, string>,
+  ) {
+    if (node.type === 'start') return true;
+    const incoming = flowgram.edges.filter((edge) => edge.targetNodeID === node.id);
+    if (incoming.length === 0) return false;
+    return incoming.some((edge) => {
+      if (!executedNodes.has(edge.sourceNodeID)) return false;
+      const selected = selectedBranches.get(edge.sourceNodeID);
+      return !selected || selected === edge.sourcePortID;
+    });
+  }
+
+  private evaluateConditionNode(
+    node: FlowNodeJSON,
+    outputs: Map<string, Record<string, unknown>>,
+  ) {
+    const cases = Array.isArray(node.data.branch) && node.data.branch.length > 0
+      ? node.data.branch.map((branch, index) => ({
+          key: branch.key || `branch.${index}`,
+          logic: branch.logic === 'or' ? 'or' : 'and',
+          conditions: branch.conditions || [],
+        }))
+      : (node.data.conditions || []).map((condition) => ({
+          key: condition.key,
+          logic: 'and' as const,
+          conditions: [condition],
+        }));
+
+    for (const entry of cases) {
+      const results = entry.conditions.map((condition) =>
+        this.evaluateConditionAtom(condition.value, outputs),
+      );
+      const matched = entry.logic === 'or' ? results.some(Boolean) : results.every(Boolean);
+      if (matched) return entry.key;
+    }
+    return 'else';
+  }
+
+  private evaluateConditionAtom(
+    value: any,
+    outputs: Map<string, Record<string, unknown>>,
+  ) {
+    const left = this.resolveReference(value?.left, outputs);
+    const operator = this.normalizeComparisonOperator(value?.operator);
+    if (operator === 'empty') return left === '' || left === null || left === undefined;
+    if (operator === 'not empty') return !(left === '' || left === null || left === undefined);
+    if (!value?.right || value.right.type !== 'constant') {
+      throw new Error('条件右值当前仅支持常量');
+    }
+    const right = value.right.content;
+    switch (operator) {
+      case 'is': return left === right || String(left) === String(right);
+      case 'is not': return !(left === right || String(left) === String(right));
+      case 'contains': return String(left ?? '').includes(String(right));
+      case 'not contains': return !String(left ?? '').includes(String(right));
+      case '>': return Number(left) > Number(right);
+      case '<': return Number(left) < Number(right);
+      case '≥': return Number(left) >= Number(right);
+      case '≤': return Number(left) <= Number(right);
+      default: throw new Error(`不支持的条件比较符: ${operator}`);
+    }
+  }
+
+  private resolveReference(value: any, outputs: Map<string, Record<string, unknown>>): unknown {
+    if (!value || value.type !== 'ref' || !value.content) {
+      throw new Error('条件左值必须引用工作流变量');
+    }
+    const path = Array.isArray(value.content)
+      ? value.content.map(String)
+      : String(value.content).split('.');
+    let result: unknown = outputs.get(path.shift() || '');
+    for (const segment of path) {
+      if (!result || typeof result !== 'object' || !(segment in result)) return undefined;
+      result = (result as Record<string, unknown>)[segment];
+    }
+    return result;
+  }
+
+  private normalizeComparisonOperator(value: unknown): string {
+    const operator = String(value || '').trim().toLowerCase();
+    const aliases: Record<string, string> = {
+      '=': 'is', '==': 'is', '===': 'is', equal: 'is', equals: 'is', is: 'is',
+      '!=': 'is not', '!==': 'is not', '≠': 'is not', 'is not': 'is not',
+      contains: 'contains', 'not contains': 'not contains',
+      '>': '>', '<': '<', '>=': '≥', '≥': '≥', '<=': '≤', '≤': '≤',
+      empty: 'empty', 'is empty': 'empty', 'not empty': 'not empty', 'is not empty': 'not empty',
+    };
+    if (!aliases[operator]) throw new Error(`不支持的条件比较符: ${String(value)}`);
+    return aliases[operator];
   }
 
   /**
@@ -49,8 +153,14 @@ export class DirectLlmService {
     // 2. 按拓扑顺序执行节点
     const orderedNodes = this.topologicalSort(flowgram);
     let lastOutput = '';
+    const nodeOutputs = new Map<string, Record<string, unknown>>();
+    const executedNodes = new Set<string>();
+    const selectedBranches = new Map<string, string>();
 
     for (const node of orderedNodes) {
+      if (!this.isNodeReachable(node, flowgram, executedNodes, selectedBranches)) {
+        continue;
+      }
       if (node.type === 'start') {
         // start 节点：yield node_started + node_finished
         const nodeId = node.id;
@@ -65,6 +175,7 @@ export class DirectLlmService {
         };
 
         const startInputs = this.extractStartInputs(node);
+        nodeOutputs.set(nodeId, startInputs);
         yield {
           event: 'node_finished',
           task_id: runId,
@@ -78,6 +189,7 @@ export class DirectLlmService {
           },
         };
         totalSteps++;
+        executedNodes.add(nodeId);
       } else if (node.type === 'llm') {
         const nodeId = node.id;
         const nodeTitle = node.data.title || 'LLM';
@@ -95,7 +207,7 @@ export class DirectLlmService {
 
         // 调用 LLM API
         try {
-          const llmConfig = this.extractLlmConfig(node, flowgram, lastOutput);
+          const llmConfig = this.extractLlmConfig(node, nodeOutputs, lastOutput);
           this.logger.log(
             `直接调用 LLM: model=${llmConfig.model}, host=${llmConfig.apiHost}`,
           );
@@ -103,6 +215,10 @@ export class DirectLlmService {
           const result = await this.callLlmApi(llmConfig);
           lastOutput = result.text;
           totalTokens += result.tokens;
+          nodeOutputs.set(nodeId, {
+            text: result.text,
+            result: result.text,
+          });
 
           // text_chunk（流式输出模拟，一次性返回完整文本）
           yield {
@@ -124,6 +240,7 @@ export class DirectLlmService {
               execution_metadata: { total_tokens: result.tokens },
             },
           };
+          executedNodes.add(nodeId);
         } catch (err) {
           this.logger.error(`LLM 调用失败: ${err.message}`);
           yield {
@@ -142,6 +259,30 @@ export class DirectLlmService {
           throw err;
         }
         totalSteps++;
+      } else if (node.type === 'condition' || node.type === 'multi-condition') {
+        const nodeId = node.id;
+        const selectedBranch = this.evaluateConditionNode(node, nodeOutputs);
+        selectedBranches.set(nodeId, selectedBranch);
+        nodeOutputs.set(nodeId, { selectedBranch });
+        yield {
+          event: 'node_started',
+          task_id: runId,
+          data: { node_id: nodeId, title: node.data.title || '条件分支', node_type: 'if-else' },
+        };
+        yield {
+          event: 'node_finished',
+          task_id: runId,
+          data: {
+            node_id: nodeId,
+            title: node.data.title || '条件分支',
+            node_type: 'if-else',
+            status: 'succeeded',
+            outputs: { selectedBranch },
+            execution_metadata: { total_tokens: 0 },
+          },
+        };
+        totalSteps++;
+        executedNodes.add(nodeId);
       } else if (node.type === 'end') {
         const nodeId = node.id;
         yield {
@@ -167,9 +308,11 @@ export class DirectLlmService {
           },
         };
         totalSteps++;
+        executedNodes.add(nodeId);
       } else if (node.type === 'http' || node.type === 'code') {
-        // http/code 节点暂不直接执行，跳过
+        // 防御性兜底：WorkflowsService 会在冻结余额前拒绝这些节点。
         const nodeId = node.id;
+        const errorMessage = `直接 LLM 模式不支持 ${node.type} 节点，请配置 Dify 执行引擎`;
         yield {
           event: 'node_started',
           task_id: runId,
@@ -186,12 +329,13 @@ export class DirectLlmService {
             node_id: nodeId,
             title: node.data.title || node.type,
             node_type: node.type,
-            status: 'succeeded',
-            outputs: { result: '(skipped in direct mode)' },
+            status: 'failed',
+            outputs: {},
+            error: errorMessage,
             execution_metadata: { total_tokens: 0 },
           },
         };
-        totalSteps++;
+        throw new Error(errorMessage);
       }
     }
 
@@ -286,7 +430,7 @@ export class DirectLlmService {
    */
   private extractLlmConfig(
     node: FlowNodeJSON,
-    flowgram: FlowGramJSON,
+    nodeOutputs: Map<string, Record<string, unknown>>,
     lastOutput: string,
   ): {
     model: string;
@@ -303,53 +447,51 @@ export class DirectLlmService {
     };
 
     let userPrompt = String(get('prompt', ''));
-    // 替换变量引用 {{start_0.query}} → 用实际输入值
-    userPrompt = this.resolveVariableRefs(userPrompt, flowgram);
+    // 将 {{nodeId.variable}} 替换为已执行上游节点的实际输出。
+    userPrompt = this.resolveVariableRefs(userPrompt, nodeOutputs);
     // 如果 prompt 为空但上游有输出，使用上游输出
     if (!userPrompt && lastOutput) userPrompt = lastOutput;
 
     return {
-      model: String(get('modelName', 'deepseek-v4-pro')),
+      model: String(get('modelName', this.defaultModel)),
       // API Key 和 Host 从环境变量读取，用户无需在画布上配置
       apiKey: this.defaultApiKey,
       apiHost: this.defaultApiHost,
       temperature: parseFloat(String(get('temperature', 0.7))),
-      systemPrompt: String(get('systemPrompt', '')),
+      systemPrompt: this.resolveVariableRefs(
+        String(get('systemPrompt', '')),
+        nodeOutputs,
+      ),
       userPrompt,
     };
   }
 
   /**
-   * 解析变量引用 {{nodeId.variable}} → 实际值
+   * 解析变量引用 {{nodeId.variable}} → 已执行节点的实际输出。
+   * 支持 {{nodeId.variable.subfield}} 形式的对象字段访问。
    */
   private resolveVariableRefs(
     text: string,
-    flowgram: FlowGramJSON,
+    nodeOutputs: Map<string, Record<string, unknown>>,
   ): string {
     if (!text) return text;
     return text.replace(
       /\{\{([^}]+)\}\}/g,
       (match, inner: string) => {
-        const parts = inner.trim().split('.');
-        if (parts.length >= 2) {
-          const nodeId = parts[0];
-          const varName = parts[1];
-          const node = flowgram.nodes.find((n) => n.id === nodeId);
+        const [nodeId, ...path] = inner.trim().split('.');
+        if (!nodeId || path.length === 0) return match;
 
-          if (node?.type === 'start') {
-            // 从 start 节点获取输入值
-            const properties = (node.data.outputs?.properties || {}) as Record<
-              string,
-              any
-            >;
-            const inputsValues = node.data.inputsValues || {};
-            const val = inputsValues[varName];
-            if (val && val.content !== undefined) return String(val.content);
-            if (properties[varName]?.default !== undefined)
-              return String(properties[varName].default);
+        let value: unknown = nodeOutputs.get(nodeId);
+        for (const segment of path) {
+          if (!value || typeof value !== 'object' || !(segment in value)) {
+            return match;
           }
+          value = (value as Record<string, unknown>)[segment];
         }
-        return match; // 未找到，保留原样
+
+        if (value === undefined) return match;
+        if (typeof value === 'string') return value;
+        return JSON.stringify(value);
       },
     );
   }
@@ -387,6 +529,7 @@ export class DirectLlmService {
         temperature: config.temperature,
         stream: false,
       }),
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
 
     if (!response.ok) {

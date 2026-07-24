@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsIn } from 'class-validator';
 
 export class CreateWorkflowDto {
   @IsString()
@@ -17,6 +17,7 @@ export class CreateWorkflowDto {
 export class UpdateWorkflowDto {
   @IsOptional()
   @IsString()
+  @MinLength(1)
   @MaxLength(128)
   name?: string;
 
@@ -30,5 +31,6 @@ export class UpdateWorkflowDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['active', 'archived'])
   status?: string;
 }

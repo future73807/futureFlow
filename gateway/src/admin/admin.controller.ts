@@ -11,6 +11,13 @@ import {
 } from '@nestjs/common';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
+import { DifyIntegrationService } from '../dify/dify-integration.service';
+
+function parsePage(value: string, fallback: number, max: number): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
 
 /**
  * 管理员后台接口
@@ -19,7 +26,10 @@ import { AdminService } from './admin.service';
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly difyIntegration: DifyIntegrationService,
+  ) {}
 
   // ============ 仪表盘 ============
 
@@ -28,11 +38,52 @@ export class AdminController {
     return this.adminService.getStats();
   }
 
+  // ============ Dify 受控集成 ============
+
+  @Get('dify/status')
+  async getDifyStatus() {
+    return this.difyIntegration.getStatus();
+  }
+
+  /**
+   * Stores a privileged Dify Console authorization once. Each future workflow
+   * publication then creates its own Dify app and encrypted app-* key.
+   */
+  @Post('dify/bootstrap')
+  async bootstrapDify(
+    @Body()
+    body: {
+      consoleToken?: string;
+      consoleRefreshToken?: string;
+      email?: string;
+      password?: string;
+      consoleBase?: string;
+      appId?: string;
+    },
+  ) {
+    return this.difyIntegration.bootstrap(body || {});
+  }
+
+  @Post('dify/rotate-key')
+  async rotateDifyKey(
+    @Body()
+    body: {
+      consoleToken?: string;
+      consoleRefreshToken?: string;
+      consoleBase?: string;
+      appId?: string;
+      workflowId?: string;
+      workflowVersion?: number;
+    },
+  ) {
+    return this.difyIntegration.rotateServiceApiKey(body || {});
+  }
+
   // ============ 用户管理 ============
 
   @Get('users')
   async listUsers(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listUsers(parseInt(page, 10), parseInt(pageSize, 10));
+    return this.adminService.listUsers(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
   }
 
   @Patch('users/:id/balance')
@@ -62,7 +113,7 @@ export class AdminController {
 
   @Get('api-keys')
   async listApiKeys(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listApiKeys(parseInt(page, 10), parseInt(pageSize, 10));
+    return this.adminService.listApiKeys(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
   }
 
   @Delete('api-keys/:id')
@@ -74,14 +125,14 @@ export class AdminController {
 
   @Get('workflows')
   async listWorkflows(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listWorkflows(parseInt(page, 10), parseInt(pageSize, 10));
+    return this.adminService.listWorkflows(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
   }
 
   // ============ 运行记录 ============
 
   @Get('runs')
   async listRuns(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listRuns(parseInt(page, 10), parseInt(pageSize, 10));
+    return this.adminService.listRuns(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
   }
 
   // ============ 余额流水 ============
@@ -93,8 +144,8 @@ export class AdminController {
     @Query('userId') userId?: string,
   ) {
     return this.adminService.listBalanceLogs(
-      parseInt(page, 10),
-      parseInt(pageSize, 10),
+      parsePage(page, 1, 100000),
+      parsePage(pageSize, 50, 100),
       userId,
     );
   }

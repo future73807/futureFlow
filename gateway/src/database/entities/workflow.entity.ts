@@ -42,6 +42,16 @@ export class Workflow {
   @Column({ type: 'int', default: 1 })
   version: number;
 
+  /** 已发布版本的不可变快照，草稿继续编辑不会影响线上调用。 */
+  @Column({ type: 'jsonb', nullable: true })
+  publishedFlowgramJson: Record<string, any> | null;
+
+  @Column({ type: 'int', nullable: true })
+  publishedVersion: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  publishedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

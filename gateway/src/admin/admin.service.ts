@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import { ApiKey } from '../database/entities/api-key.entity';
 import { Workflow } from '../database/entities/workflow.entity';
@@ -20,6 +20,7 @@ export class AdminService {
     private readonly runRepo: Repository<WorkflowRun>,
     @InjectRepository(BalanceLog)
     private readonly balanceLogRepo: Repository<BalanceLog>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** 仪表盘统计 */
@@ -84,12 +85,18 @@ export class AdminService {
 
   /** 调整用户余额 */
   async adjustBalance(userId: string, delta: number, remark: string) {
+    if (!Number.isFinite(delta) || delta === 0) {
+      throw new BadRequestException('余额变动金额必须是非零数字');
+    }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('用户不存在');
 
     const newBalance = parseFloat(user.balance.toString()) + delta;
     if (newBalance < 0) {
-      throw new Error('调整后余额不能为负');
+      throw new BadRequestException('调整后余额不能为负');
+    }
+    if (newBalance < parseFloat(user.frozenBalance.toString())) {
+      throw new BadRequestException('调整后余额不能低于冻结余额');
     }
 
     user.balance = newBalance;
@@ -98,7 +105,7 @@ export class AdminService {
     // 记录流水
     const log = this.balanceLogRepo.create({
       userId,
-      type: 'recharge',
+      type: delta > 0 ? 'recharge' : 'deduct',
       amount: delta,
       balanceAfter: newBalance,
       remark: remark || '管理员调整',
@@ -110,6 +117,9 @@ export class AdminService {
 
   /** 修改用户 VIP 等级 */
   async updateVipLevel(userId: string, vipLevel: string) {
+    if (!['free', 'pro', 'enterprise'].includes(vipLevel)) {
+      throw new BadRequestException('无效的 VIP 等级');
+    }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('用户不存在');
     user.vipLevel = vipLevel;
@@ -119,6 +129,9 @@ export class AdminService {
 
   /** 修改用户状态（封禁/解封） */
   async updateUserStatus(userId: string, status: string) {
+    if (!['active', 'banned', 'suspended'].includes(status)) {
+      throw new BadRequestException('无效的用户状态');
+    }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('用户不存在');
     user.status = status;
@@ -131,9 +144,16 @@ export class AdminService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('用户不存在');
     if (user.role === 'admin') {
-      throw new Error('不能删除管理员账号');
+      throw new BadRequestException('不能删除管理员账号');
     }
-    await this.userRepo.remove(user);
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(BalanceLog, { userId });
+      await manager.delete(WorkflowRun, { userId });
+      await manager.delete(Workflow, { userId });
+      await manager.delete(ApiKey, { userId });
+      await manager.delete(User, { id: userId });
+    });
     return { success: true };
   }
 

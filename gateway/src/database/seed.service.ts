@@ -2,7 +2,6 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
 
 /**
@@ -38,7 +37,6 @@ export class SeedService implements OnModuleInit {
       username: 'demo',
       email: 'demo@futureflow.ai',
       passwordHash,
-      apiKey: 'demo-api-key-001',
       vipLevel: 'pro',
       role: 'admin',
       balance: 100,

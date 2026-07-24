@@ -63,7 +63,7 @@ export class DifyConverterService {
 
     // 转换所有节点
     const difyNodes: DifyNode[] = flowgram.nodes.map((node) =>
-      this.convertNode(node, startNode),
+      this.convertNode(node, startNode, flowgram),
     );
 
     // 转换所有边
@@ -129,12 +129,52 @@ export class DifyConverterService {
   }
 
   /** 校验 FlowGram JSON 基本结构 */
-  private validateFlowGram(json: FlowGramJSON) {
+  validateFlowGram(json: FlowGramJSON) {
     if (!json || !Array.isArray(json.nodes) || !Array.isArray(json.edges)) {
       throw new BadRequestException('FlowGram JSON 必须包含 nodes 和 edges 数组');
     }
     if (json.nodes.length === 0) {
       throw new BadRequestException('工作流至少需要一个节点');
+    }
+
+    const nodeIds = new Set<string>();
+    for (const node of json.nodes) {
+      if (!node || typeof node.id !== 'string' || !node.id.trim()) {
+        throw new BadRequestException('每个节点都必须包含有效的 id');
+      }
+      if (nodeIds.has(node.id)) {
+        throw new BadRequestException(`节点 id 重复: ${node.id}`);
+      }
+      nodeIds.add(node.id);
+      if (typeof node.type !== 'string' || !node.type || !node.data) {
+        throw new BadRequestException(`节点 ${node.id} 缺少 type 或 data`);
+      }
+      if (node.type === 'loop') {
+        throw new BadRequestException('当前版本不支持循环子画布；请改用条件分支，或等待 Iteration 节点上线');
+      }
+      if (node.type === 'condition' || node.type === 'multi-condition') {
+        this.validateConditionNode(node);
+      }
+    }
+
+    for (const edge of json.edges) {
+      if (!edge || !nodeIds.has(edge.sourceNodeID) || !nodeIds.has(edge.targetNodeID)) {
+        throw new BadRequestException('工作流包含指向不存在节点的连线');
+      }
+      const source = json.nodes.find((node) => node.id === edge.sourceNodeID);
+      if (source && (source.type === 'condition' || source.type === 'multi-condition')) {
+        const ports = new Set([
+          ...this.getConditionCases(source).map((entry) => entry.key),
+          'else',
+        ]);
+        if (!edge.sourcePortID || !ports.has(edge.sourcePortID)) {
+          throw new BadRequestException(`条件节点 ${source.id} 的连线必须使用有效分支端口`);
+        }
+      }
+    }
+
+    if (!json.nodes.some((node) => node.type === 'start')) {
+      throw new BadRequestException('工作流缺少 Start 节点');
     }
     const executableNodes = json.nodes.filter(
       (n) => ['llm', 'http', 'code'].includes(n.type),
@@ -147,7 +187,11 @@ export class DifyConverterService {
   }
 
   /** 转换单个节点 */
-  private convertNode(node: FlowNodeJSON, startNode: FlowNodeJSON): DifyNode {
+  private convertNode(
+    node: FlowNodeJSON,
+    startNode: FlowNodeJSON,
+    flowgram: FlowGramJSON,
+  ): DifyNode {
     const position = node.meta?.position || { x: 0, y: 0 };
     const base = {
       id: node.id,
@@ -166,11 +210,18 @@ export class DifyConverterService {
       case 'llm':
         return { ...base, height: 98, data: this.convertLLMNode(node) };
       case 'end':
-        return { ...base, height: 90, data: this.convertEndNode(node) };
+        return {
+          ...base,
+          height: 90,
+          data: this.convertEndNode(node, flowgram),
+        };
       case 'http':
         return { ...base, height: 120, data: this.convertHttpNode(node) };
       case 'code':
         return { ...base, height: 120, data: this.convertCodeNode(node) };
+      case 'condition':
+      case 'multi-condition':
+        return { ...base, height: 180, data: this.convertConditionNode(node) };
       default:
         throw new BadRequestException(
           `暂不支持的节点类型: ${node.type}(当前支持 start/llm/end/http/code)`,
@@ -260,7 +311,47 @@ export class DifyConverterService {
   }
 
   /** 转换 End 节点 */
-  private convertEndNode(node: FlowNodeJSON): any {
+  private convertEndNode(node: FlowNodeJSON, flowgram: FlowGramJSON): any {
+    {
+      const incoming = flowgram.edges.filter(
+        (edge) => edge.targetNodeID === node.id,
+      );
+      if (incoming.length !== 1) {
+        throw new BadRequestException(
+          incoming.length === 0
+            ? `End 节点 ${node.id} 必须连接一个上游执行节点`
+            : `End 节点 ${node.id} 不能合并多个分支输出；请为每个分支分别连接 End 节点`,
+        );
+      }
+
+      const sourceNode = flowgram.nodes.find(
+        (candidate) => candidate.id === incoming[0].sourceNodeID,
+      );
+      if (!sourceNode || !['llm', 'http', 'code'].includes(sourceNode.type)) {
+        throw new BadRequestException(
+          `End 节点 ${node.id} 仅能连接 LLM、HTTP 或代码节点`,
+        );
+      }
+
+      const outputs =
+        (node.data.outputs?.properties as Record<string, any>) || {};
+      const outputNames = Object.keys(outputs);
+      if (outputNames.length === 0) outputNames.push('result');
+
+      return {
+        type: 'end',
+        title: node.data.title || '结束',
+        desc: '',
+        selected: false,
+        outputs: outputNames.map((variable) => ({
+          variable,
+          value_selector: [
+            sourceNode.id,
+            this.resolveEndOutputKey(sourceNode, variable, outputNames.length),
+          ],
+        })),
+      };
+    }
     // FlowGram 的 end 节点 outputs 中定义了输出
     // 需要找到上游 LLM 节点的输出作为 value_selector
     const outputs =
@@ -289,6 +380,32 @@ export class DifyConverterService {
     };
   }
 
+  /**
+   * Dify End outputs must point at a concrete upstream variable. FlowGram's
+   * End node only declares output names, so infer the selector only where it
+   * is unambiguous. This avoids exporting a DSL that validates but returns an
+   * arbitrary branch's result at runtime.
+   */
+  private resolveEndOutputKey(
+    sourceNode: FlowNodeJSON,
+    endOutputName: string,
+    outputCount: number,
+  ): string {
+    if (sourceNode.type === 'llm') return 'text';
+    if (sourceNode.type === 'http') return 'body';
+
+    const codeOutputs = Object.keys(
+      (sourceNode.data.outputs?.properties as Record<string, any>) || {},
+    );
+    if (codeOutputs.includes(endOutputName)) return endOutputName;
+    if (codeOutputs.length === 1) return codeOutputs[0];
+    if (codeOutputs.length === 0 && outputCount === 1) return 'result';
+
+    throw new BadRequestException(
+      `End 节点输出 ${endOutputName} 无法对应代码节点 ${sourceNode.id} 的变量；请使用相同的输出名`,
+    );
+  }
+
   /** 转换 HTTP 请求节点 */
   private convertHttpNode(node: FlowNodeJSON): any {
     const inputsValues = node.data.inputsValues || {};
@@ -307,12 +424,22 @@ export class DifyConverterService {
       selected: false,
       method,
       url: this.convertVariableRefs(url),
+      authorization: { type: 'no-auth' },
       headers: this.convertVariableRefs(headers),
       params: '',
-      body: this.convertVariableRefs(body),
-      body_type: body ? 'raw' : 'none',
-      timeout: 30,
-      variables: [],
+      body: body
+        ? {
+            type: 'raw-text',
+            data: [
+              {
+                key: '',
+                type: 'text',
+                value: this.convertVariableRefs(body),
+              },
+            ],
+          }
+        : { type: 'none', data: [] },
+      timeout: { connect: 30, read: 30, write: 30 },
     };
   }
 
@@ -328,14 +455,14 @@ export class DifyConverterService {
     // 从 outputs.properties 提取输出变量定义
     const outputsProps =
       (node.data.outputs?.properties as Record<string, any>) || {};
-    const outputs = Object.keys(outputsProps).map((key) => ({
-      variable: key,
-      type: outputsProps[key]?.type || 'string',
-    }));
-
-    if (outputs.length === 0) {
-      outputs.push({ variable: 'result', type: 'string' });
-    }
+    const outputNames = Object.keys(outputsProps);
+    if (outputNames.length === 0) outputNames.push('result');
+    const outputs = Object.fromEntries(
+      outputNames.map((key) => [
+        key,
+        { type: this.toDifyCodeOutputType(outputsProps[key]?.type) },
+      ]),
+    );
 
     return {
       type: 'code',
@@ -350,6 +477,141 @@ export class DifyConverterService {
     };
   }
 
+  private toDifyCodeOutputType(type: unknown): string {
+    switch (String(type || 'string').toLowerCase()) {
+      case 'number':
+        return 'number';
+      case 'object':
+        return 'object';
+      case 'array[string]':
+      case 'string[]':
+        return 'array[string]';
+      case 'array[number]':
+      case 'number[]':
+        return 'array[number]';
+      case 'array[object]':
+      case 'object[]':
+        return 'array[object]';
+      default:
+        // Dify 0.15 has no boolean Code-node output type. Strings preserve
+        // the value safely and keep the generated DSL importable.
+        return 'string';
+    }
+  }
+
+  /** Translate FlowGram condition ports to Dify if-else case handles. */
+  private convertConditionNode(node: FlowNodeJSON): any {
+    return {
+      type: 'if-else',
+      title: node.data.title || '条件分支',
+      desc: '',
+      selected: false,
+      cases: this.getConditionCases(node).map((entry) => ({
+        case_id: entry.key,
+        logical_operator: entry.logic,
+        conditions: entry.conditions.map((condition) => this.convertConditionAtom(condition.value)),
+      })),
+    };
+  }
+
+  private validateConditionNode(node: FlowNodeJSON) {
+    const cases = this.getConditionCases(node);
+    if (cases.length === 0) {
+      throw new BadRequestException(`条件节点 ${node.id} 至少需要一个分支`);
+    }
+    for (const entry of cases) {
+      if (!entry.key || entry.conditions.length === 0) {
+        throw new BadRequestException(`条件节点 ${node.id} 包含无效分支`);
+      }
+      for (const condition of entry.conditions) {
+        this.convertConditionAtom(condition.value);
+      }
+    }
+  }
+
+  private getConditionCases(node: FlowNodeJSON): Array<{
+    key: string;
+    logic: 'and' | 'or';
+    conditions: NonNullable<FlowNodeJSON['data']['conditions']>;
+  }> {
+    // Older multi-condition canvases were serialized as type=condition with
+    // data.branch. Keep those saved drafts executable during the UI fix.
+    if (Array.isArray(node.data.branch) && node.data.branch.length > 0) {
+      return node.data.branch.map((branch, index) => ({
+        key: branch.key || `branch.${index}`,
+        logic: branch.logic === 'or' ? 'or' : 'and',
+        conditions: branch.conditions || [],
+      }));
+    }
+    return (node.data.conditions || []).map((condition) => ({
+      key: condition.key,
+      logic: 'and',
+      conditions: [condition],
+    }));
+  }
+
+  private convertConditionAtom(value: any) {
+    const left = value?.left;
+    const right = value?.right;
+    const selector = this.refSelector(left);
+    const comparisonOperator = this.normalizeComparisonOperator(value?.operator);
+    const result: Record<string, any> = {
+      variable_selector: selector,
+      comparison_operator: comparisonOperator,
+    };
+    if (!['empty', 'not empty'].includes(comparisonOperator)) {
+      if (!right || right.type !== 'constant') {
+        throw new BadRequestException('条件右值当前仅支持常量');
+      }
+      result.value = right.content;
+    }
+    return result;
+  }
+
+  private refSelector(value: any): string[] {
+    if (!value || value.type !== 'ref' || !value.content) {
+      throw new BadRequestException('条件左值必须引用已定义的工作流变量');
+    }
+    const selector = Array.isArray(value.content)
+      ? value.content.map(String)
+      : String(value.content).split('.');
+    if (selector.length < 2 || selector.some((item) => !item)) {
+      throw new BadRequestException('条件变量引用格式无效');
+    }
+    return selector;
+  }
+
+  private normalizeComparisonOperator(value: unknown): string {
+    const normalized = String(value || '').trim().toLowerCase();
+    const aliases: Record<string, string> = {
+      '=': 'is',
+      '==': 'is',
+      '===': 'is',
+      equal: 'is',
+      equals: 'is',
+      '!=': 'is not',
+      '!==': 'is not',
+      '≠': 'is not',
+      'is not': 'is not',
+      contains: 'contains',
+      'not contains': 'not contains',
+      '>': '>',
+      '<': '<',
+      '>=': '≥',
+      '≥': '≥',
+      '<=': '≤',
+      '≤': '≤',
+      empty: 'empty',
+      'is empty': 'empty',
+      'not empty': 'not empty',
+      'is not empty': 'not empty',
+    };
+    if (normalized === 'is') return 'is';
+    const operator = aliases[normalized];
+    if (!operator) throw new BadRequestException(`不支持的条件比较符: ${String(value)}`);
+    return operator;
+  }
+
   /** 转换边 */
   private convertEdge(
     edge: FlowGramJSON['edges'][0],
@@ -361,7 +623,12 @@ export class DifyConverterService {
     return {
       id: `${edge.sourceNodeID}-source-${edge.targetNodeID}-target`,
       source: edge.sourceNodeID,
-      sourceHandle: 'source',
+      sourceHandle:
+        sourceNode?.type === 'condition' || sourceNode?.type === 'multi-condition'
+          ? edge.sourcePortID === 'else'
+            ? 'false'
+            : edge.sourcePortID || 'false'
+          : 'source',
       target: edge.targetNodeID,
       targetHandle: 'target',
       type: 'custom',

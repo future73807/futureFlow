@@ -1,127 +1,127 @@
-import { Injectable, Logger, Optional, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
+import {
+  DifyConsoleAuthorization,
+  DifyIntegrationService,
+  DifyWorkflowBindingInput,
+} from './dify-integration.service';
+
+export interface DifySyncResult {
+  appId: string | null;
+  status: 'synced' | 'not_configured' | 'failed';
+  message: string;
+}
 
 /**
- * Dify Console API 服务
- * 负责通过 Console API 导入/更新工作流 DSL
- *
- * 注意:Console API 需要用户登录态(Console Bearer Token),
- * 与 Service API(app- 前缀密钥)不同。
+ * Publishes an immutable FutureFlow release into its own Dify application.
+ * It deliberately has no runtime import method: executing a release must not
+ * mutate a shared Dify target or serialize unrelated workflows.
  */
 @Injectable()
 export class DifyConsoleService implements OnModuleInit {
   private readonly logger = new Logger(DifyConsoleService.name);
   private readonly consoleBase: string;
   private readonly consoleToken: string;
-  private readonly appId: string;
-  private readonly enabled: boolean;
 
   constructor(
-    private config: ConfigService,
-    private converter: DifyConverterService,
+    private readonly config: ConfigService,
+    private readonly converter: DifyConverterService,
+    private readonly integration: DifyIntegrationService,
   ) {
     this.consoleBase = this.config.get<string>(
       'DIFY_CONSOLE_BASE',
-      'http://localhost/console/api',
+      'http://localhost:5001/console/api',
     );
     this.consoleToken = this.config.get<string>('DIFY_CONSOLE_TOKEN', '');
-    this.appId = this.config.get<string>('DIFY_APP_ID', '');
-    // 仅当 console token 和 app id 都配置了才启用
-    this.enabled = !!(this.consoleToken && this.appId);
   }
 
-  onModuleInit() {
-    if (this.enabled) {
-      this.logger.log(
-        `Dify Console API 已启用: ${this.consoleBase}, appId=${this.appId}`,
-      );
+  async onModuleInit() {
+    if (await this.isEnabled()) {
+      this.logger.log('Dify managed workflow provisioning is enabled');
     } else {
-      this.logger.warn(
-        'Dify Console API 未配置(缺少 DIFY_CONSOLE_TOKEN 或 DIFY_APP_ID),将跳过 DSL 自动导入。请确保 Dify 中已存在对应工作流应用。',
-      );
+      this.logger.warn('Dify managed workflow provisioning is disabled until an administrator authorizes the Console');
     }
   }
 
-  /**
-   * 将 FlowGram JSON 转换为 Dify DSL 并导入到 Dify
-   * 如果配置了 appId,则更新现有应用;否则创建新应用
-   *
-   * @returns { appId, success } 导入结果
-   */
-  async importWorkflow(flowgram: FlowGramJSON): Promise<{
-    appId: string;
-    success: boolean;
-    message: string;
-  }> {
-    if (!this.enabled) {
+  async syncPublishedWorkflow(
+    input: DifyWorkflowBindingInput & { flowgram: FlowGramJSON },
+  ): Promise<DifySyncResult> {
+    let authorization = await this.resolveAuthorization();
+    if (!authorization) {
       return {
-        appId: this.appId,
-        success: false,
-        message: 'Console API 未配置,跳过 DSL 导入。使用预配置的工作流应用。',
+        appId: null,
+        status: 'not_configured',
+        message: 'Dify Console is not authorized; the release remains available through the configured direct LLM engine.',
       };
     }
-
-    const dslYaml = this.converter.toDifyDSLYaml(flowgram);
 
     try {
-      const url = `${this.consoleBase}/apps/imports`;
-      const body: any = {
-        mode: 'yaml-content',
-        yaml_content: dslYaml,
-      };
-
-      // 如果有 appId,则更新现有应用
-      if (this.appId) {
-        body.app_id = this.appId;
+      let binding = await this.integration.ensureWorkflowIntegration(input, authorization);
+      let response = await this.importDsl(authorization, binding.appId!, input.flowgram);
+      if (response.status === 401 || response.status === 403) {
+        const refreshed = await this.integration.refreshConsoleAuthorization();
+        if (refreshed) {
+          authorization = refreshed;
+          // Binding creation can have failed because the old token expired.
+          binding = await this.integration.ensureWorkflowIntegration(input, authorization);
+          response = await this.importDsl(authorization, binding.appId!, input.flowgram);
+        }
       }
-
-      this.logger.log(
-        `导入 Dify DSL: ${url}, mode=yaml-content, appId=${this.appId || '(新建)'}`,
-      );
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.consoleToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      const result = await response.json();
-
+      const result = (await response.json().catch(() => ({}))) as {
+        app_id?: string;
+        status?: string;
+        error?: string;
+      };
       if (response.status === 200 || response.status === 202) {
-        const importedAppId = result.app_id || this.appId;
-        this.logger.log(
-          `DSL 导入成功: appId=${importedAppId}, status=${result.status}`,
-        );
+        await this.integration.activateWorkflowIntegration(input.workflowId, input.workflowVersion);
         return {
-          appId: importedAppId,
-          success: true,
-          message: `DSL 导入成功 (${result.status})`,
-        };
-      } else {
-        this.logger.error(`DSL 导入失败: ${JSON.stringify(result)}`);
-        return {
-          appId: this.appId,
-          success: false,
-          message: `DSL 导入失败: ${result.error || response.statusText}`,
+          appId: binding.appId,
+          status: 'synced',
+          message: `Dify application ${binding.appId} accepted release v${input.workflowVersion} (${result.status || response.status}).`,
         };
       }
-    } catch (error) {
-      this.logger.error(`DSL 导入异常: ${error.message}`);
+      if (response.status === 401 || response.status === 403) {
+        await this.integration.markConsoleAuthorizationExpired();
+      }
       return {
-        appId: this.appId,
-        success: false,
-        message: `DSL 导入异常: ${error.message}`,
+        appId: binding.appId,
+        status: 'failed',
+        message: `Dify DSL import failed (${response.status}): ${result.error || response.statusText}`,
       };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.error(`Dify publish synchronization failed: ${message}`);
+      return { appId: null, status: 'failed', message: `Dify publish synchronization failed: ${message}` };
     }
   }
 
-  /** 检查 Console API 是否启用 */
-  isEnabled(): boolean {
-    return this.enabled;
+  async isEnabled(): Promise<boolean> {
+    return Boolean(await this.resolveAuthorization());
+  }
+
+  private resolveAuthorization(): Promise<DifyConsoleAuthorization | null> {
+    return this.integration.resolveConsoleAuthorization(this.consoleToken, this.consoleBase);
+  }
+
+  private importDsl(
+    authorization: DifyConsoleAuthorization,
+    appId: string,
+    flowgram: FlowGramJSON,
+  ): Promise<Response> {
+    return fetch(`${authorization.consoleBase}/apps/imports`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authorization.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mode: 'yaml-content',
+        yaml_content: this.converter.toDifyDSLYaml(flowgram),
+        app_id: appId,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
   }
 }

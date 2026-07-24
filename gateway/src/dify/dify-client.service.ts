@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { DifyConfigService } from './dify-config.service';
+import { DifyIntegrationService } from './dify-integration.service';
 
 /**
  * Dify SSE 事件类型
@@ -29,6 +30,11 @@ export interface WorkflowExecutionResult {
   error?: string;
 }
 
+export interface DifyExecutionTarget {
+  workflowId?: string;
+  workflowVersion?: number;
+}
+
 /**
  * Dify 客户端服务
  * 负责调用 Dify 的 Service API,执行工作流并处理 SSE 流式响应
@@ -41,14 +47,18 @@ export interface WorkflowExecutionResult {
 export class DifyClientService {
   private readonly logger = new Logger(DifyClientService.name);
 
-  constructor(private readonly difyConfig: DifyConfigService) {}
+  constructor(
+    private readonly difyConfig: DifyConfigService,
+    private readonly integration: DifyIntegrationService,
+  ) {}
 
   /**
    * 检查 Dify 是否已配置有效的 API Key
    * 委托给 DifyConfigService 进行格式校验
    */
-  isConfigured(): boolean {
-    return this.difyConfig.isConfigured();
+  async isConfigured(target: DifyExecutionTarget = {}): Promise<boolean> {
+    const apiKey = await this.resolveApiKey(target);
+    return this.difyConfig.isValidApiKey(apiKey);
   }
 
   /**
@@ -64,7 +74,7 @@ export class DifyClientService {
    * 用于健康检查
    */
   async ping(): Promise<{ reachable: boolean; latency?: number; error?: string }> {
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return {
         reachable: false,
         error: 'Dify API Key 未配置',
@@ -72,7 +82,7 @@ export class DifyClientService {
     }
 
     const apiBase = this.difyConfig.getApiBase();
-    const apiKey = this.difyConfig.getApiKey();
+    const apiKey = await this.resolveApiKey();
     const start = Date.now();
 
     try {
@@ -125,9 +135,10 @@ export class DifyClientService {
   async *runWorkflowStream(
     inputs: Record<string, any>,
     user: string,
+    target: DifyExecutionTarget = {},
   ): AsyncGenerator<DifySSEEvent> {
     // 二次校验配置
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured(target))) {
       throw new InternalServerErrorException({
         code: 'dify_not_configured',
         message: this.getNotConfiguredMessage(),
@@ -135,10 +146,12 @@ export class DifyClientService {
     }
 
     const apiBase = this.difyConfig.getApiBase();
-    const apiKey = this.difyConfig.getApiKey();
+    const apiKey = await this.resolveApiKey(target);
     const url = `${apiBase}/workflows/run`;
 
-    this.logger.log(`调用 Dify 工作流: ${url}, user=${user}`);
+    this.logger.log(
+      `调用 Dify 工作流: ${url}, user=${user}, target=${target.workflowId ? `${target.workflowId}@v${target.workflowVersion}` : 'legacy'}`,
+    );
 
     let response: Response;
     try {
@@ -218,29 +231,35 @@ export class DifyClientService {
         buffer += decoder.decode(value, { stream: true });
 
         // 按双换行分割 SSE 消息
-        const messages = buffer.split('\n\n');
+        const messages = buffer.split(/\r?\n\r?\n/);
         buffer = messages.pop() || '';
 
         for (const message of messages) {
-          const line = message.trim();
-          if (!line) continue;
-
-          if (line.startsWith('data:')) {
-            const jsonStr = line.slice(5).trim();
-            if (!jsonStr) continue;
-            try {
-              const event: DifySSEEvent = JSON.parse(jsonStr);
-              yield event;
-            } catch {
-              this.logger.warn(`SSE JSON 解析失败: ${jsonStr.slice(0, 100)}`);
-            }
+          const jsonStr = message
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n')
+            .trim();
+          if (!jsonStr) continue;
+          try {
+            const event: DifySSEEvent = JSON.parse(jsonStr);
+            yield event;
+          } catch {
+            this.logger.warn(`SSE JSON 解析失败: ${jsonStr.slice(0, 100)}`);
           }
         }
       }
 
       // 处理 buffer 中剩余的数据
-      if (buffer.trim().startsWith('data:')) {
-        const jsonStr = buffer.trim().slice(5).trim();
+      if (buffer.trim()) {
+        const jsonStr = buffer
+          .trim()
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+          .join('\n')
+          .trim();
         if (jsonStr) {
           try {
             yield JSON.parse(jsonStr);
@@ -304,5 +323,18 @@ export class DifyClientService {
       }
     }
     return totalTokens;
+  }
+
+  private async resolveApiKey(target: DifyExecutionTarget = {}): Promise<string> {
+    if (target.workflowId && target.workflowVersion) {
+      // Never fall back to a global app for a published workflow. Doing so
+      // could execute a different workflow after an unrelated import.
+      return this.integration.resolveWorkflowOrLegacyApiKey(
+        target.workflowId,
+        target.workflowVersion,
+        this.difyConfig.getApiKey(),
+      );
+    }
+    return this.integration.resolveServiceApiKey(this.difyConfig.getApiKey());
   }
 }

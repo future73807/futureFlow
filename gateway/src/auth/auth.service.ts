@@ -8,7 +8,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 import { User } from '../database/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -37,13 +36,11 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const apiKey = `ff-${uuidv4()}`;
 
     const user = this.userRepo.create({
       username: dto.username,
       email: dto.email,
       passwordHash,
-      apiKey,
       vipLevel: 'free',
       balance: 10,
       frozenBalance: 0,

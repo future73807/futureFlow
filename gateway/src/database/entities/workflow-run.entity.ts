@@ -14,6 +14,12 @@ import { User } from './user.entity';
  * 跟踪每次工作流执行的状态、token 用量和费用
  */
 @Entity('workflow_runs')
+@Index('IDX_workflow_runs_user_status', ['userId', 'status'])
+@Index('IDX_workflow_runs_user_created_at', ['userId', 'createdAt'])
+@Index('IDX_workflow_runs_user_idempotency_key', ['userId', 'idempotencyKey'], {
+  unique: true,
+  where: '"idempotencyKey" IS NOT NULL',
+})
 export class WorkflowRun {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,6 +27,23 @@ export class WorkflowRun {
   @Column()
   @Index()
   userId: string;
+
+  /** 由已发布工作流 API 发起时关联工作流；画布临时试运行可为空。 */
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  workflowId: string | null;
+
+  /** api / webhook / schedule / manual-canvas */
+  @Column({ type: 'varchar', default: 'manual' })
+  source: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  triggerId: string | null;
+
+  /** A retried public request can never create a second billable run. */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  idempotencyKey: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })

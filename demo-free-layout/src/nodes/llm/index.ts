@@ -32,7 +32,7 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
         inputsValues: {
           modelName: {
             type: 'constant',
-            content: 'deepseek-v4-pro',
+            content: 'deepseek-chat',
           },
           temperature: {
             type: 'constant',

@@ -7,3 +7,5 @@ declare module '*.svg'
 declare module '*.png'
 declare module '*.jpg'
 declare module '*.module.less'
+
+declare const __GATEWAY_URL__: string;

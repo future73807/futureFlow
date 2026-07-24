@@ -9,26 +9,39 @@ import { ConverterModule } from './converter/converter.module';
 import { DifyModule } from './dify/dify.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { AdminModule } from './admin/admin.module';
+import { validateEnvironment } from './config/environment.validation';
+import { HealthModule } from './health/health.module';
+import { WorkflowTemplateModule } from './templates/workflow-template.module';
+import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
 
 @Module({
   imports: [
     // 环境变量配置
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../.env'],
+      envFilePath: [
+        '.futureflow.runtime.env',
+        '.env',
+        '../.futureflow.runtime.env',
+        '../.env',
+      ],
+      validate: validateEnvironment,
     }),
     // TypeORM 配置
-    TypeOrmModule.forRoot({
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
       type: 'postgres',
-      host: process.env.POSTGRES_HOST || 'localhost',
-      port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-      username: process.env.POSTGRES_USER || 'futureflow',
-      password: process.env.POSTGRES_PASSWORD || 'futureflow123',
-      database: process.env.POSTGRES_DB || 'futureflow',
+      host: config.get<string>('POSTGRES_HOST', 'localhost'),
+      port: Number.parseInt(config.get<string>('POSTGRES_PORT', '5432'), 10),
+      username: config.get<string>('POSTGRES_USER', 'futureflow'),
+      password: config.get<string>('POSTGRES_PASSWORD', 'futureflow123'),
+      database: config.get<string>('POSTGRES_DB', 'futureflow'),
       autoLoadEntities: true,
       // 开发环境自动同步表结构,生产环境关闭
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: config.get<string>('NODE_ENV') !== 'production',
       logging: false,
+      }),
     }),
     // JWT 配置（全局可用）
     JwtModule.registerAsync({
@@ -49,6 +62,9 @@ import { AdminModule } from './admin/admin.module';
     DifyModule,
     WorkflowsModule,
     AdminModule,
+    HealthModule,
+    WorkflowTemplateModule,
+    WorkflowTriggerModule,
   ],
 })
 export class AppModule {}

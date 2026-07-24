@@ -4,11 +4,12 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Request, Response, NextFunction } from 'express';
 import { User } from '../database/entities/user.entity';
+import { ApiKeyService } from './api-key.service';
 
 /**
  * 鉴权中间件（双模式）
  * 1. 优先尝试 JWT Token 验证
- * 2. JWT 失败则尝试 API Key 验证（向后兼容）
+ * 2. JWT 失败则尝试哈希存储的平台 API Key
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
@@ -16,6 +17,7 @@ export class AuthMiddleware implements NestMiddleware {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly apiKeyService: ApiKeyService,
   ) {}
 
   async use(req: Request & { user?: User }, res: Response, next: NextFunction) {
@@ -43,20 +45,13 @@ export class AuthMiddleware implements NestMiddleware {
       // JWT 验证失败，继续尝试 API Key
     }
 
-    // 2. 尝试 API Key 验证（向后兼容）
-    const user = await this.userRepository.findOne({
-      where: { apiKey: token },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('无效的 Token 或 API Key');
+    // 2. 尝试用户在个人中心创建的平台 API Key
+    const apiKeyUser = await this.apiKeyService.authenticate(token);
+    if (apiKeyUser) {
+      req.user = apiKeyUser;
+      return next();
     }
 
-    if (user.status !== 'active') {
-      throw new UnauthorizedException('账号已被封禁或暂停');
-    }
-
-    req.user = user;
-    next();
+    throw new UnauthorizedException('无效的 Token 或 API Key');
   }
 }

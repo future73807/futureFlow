@@ -6,16 +6,22 @@
   "scripts": {
     "install:all": "pnpm install",
     "db:up": "docker compose up -d postgres",
+    "compose:up": "docker compose up -d",
+    "infra:up": "node scripts/start-full-stack.cjs --infrastructure-only",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
     "gateway": "pnpm --filter futureflow-gateway start:dev",
     "frontend": "pnpm --filter @flowgram.ai/demo-free-layout start",
     "dev": "pnpm run gateway & pnpm run frontend",
     "dev:concurrent": "concurrently -n GATEWAY,FRONTEND -c blue,green \"pnpm:gateway\" \"pnpm:frontend\"",
-    "start": "pnpm run db:up && pnpm run dev:concurrent",
+    "start": "node scripts/start-full-stack.cjs",
+    "env:init": "node -e \"const fs=require('fs'),crypto=require('crypto');if(!fs.existsSync('.env')){let env=fs.readFileSync('.env.example','utf8');env=env.replace('DIFY_KEY_ENCRYPTION_SECRET=replace-with-a-random-secret-at-least-32-characters','DIFY_KEY_ENCRYPTION_SECRET='+crypto.randomBytes(32).toString('hex'));fs.writeFileSync('.env',env,{mode:0o600});console.log('.env created with a local Dify credential-encryption secret')}else{console.log('.env already exists')}\"",
+    "quickstart": "pnpm run env:init && pnpm install --prod=false && pnpm run start",
     "build:gateway": "pnpm --filter futureflow-gateway build",
     "build:frontend": "pnpm --filter @flowgram.ai/demo-free-layout build:prod",
-    "ts-check": "pnpm -r exec tsc --noEmit"
+    "ts-check": "pnpm -r exec tsc --noEmit",
+    "test:platform": "pnpm --filter futureflow-gateway test:smoke && pnpm --filter futureflow-gateway test:integration",
+    "verify": "pnpm run ts-check && pnpm run test:platform && pnpm run build:gateway && pnpm run build:frontend"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

@@ -4,8 +4,8 @@
 
 /** 输入值:支持常量和模板(可含变量插值) */
 export interface FlowInputValue {
-  type: 'constant' | 'template';
-  content: string | number | boolean;
+  type: 'constant' | 'template' | 'ref';
+  content: string | number | boolean | string[];
 }
 
 /** FlowGram 节点 data */
@@ -21,6 +21,26 @@ export interface FlowNodeData {
     type: string;
     properties?: Record<string, { type: string }>;
   };
+  conditions?: Array<{
+    key: string;
+    value: {
+      left?: FlowInputValue;
+      operator?: string;
+      right?: FlowInputValue;
+    };
+  }>;
+  branch?: Array<{
+    key?: string;
+    logic?: 'and' | 'or';
+    conditions: Array<{
+      key: string;
+      value: {
+        left?: FlowInputValue;
+        operator?: string;
+        right?: FlowInputValue;
+      };
+    }>;
+  }>;
 }
 
 /** FlowGram 节点 */
