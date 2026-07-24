@@ -17,13 +17,11 @@ import {
   Modal,
   Form,
   Popconfirm,
-  InputNumber,
   Empty,
   Select,
 } from '@douyinfe/semi-ui';
 import {
   IconDelete,
-  IconPlus,
   IconUser,
   IconKey,
   IconBranch,
@@ -117,8 +115,7 @@ export const AdminPage = () => {
 
   useEffect(() => {
     loadTab(tab, 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [loadTab, tab]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
@@ -444,9 +441,12 @@ const UsersView = ({
         footer={null}
       >
         <Form onSubmit={handleAdjustBalance} initValues={{ delta: 0, remark: '' }}>
-          <Form.Field label="变动金额（正数充值，负数扣除）" field="delta">
-            <InputNumber defaultValue={0} step={1} style={{ width: '100%' }} />
-          </Form.Field>
+          <Form.InputNumber
+            field="delta"
+            label="变动金额（正数充值，负数扣除）"
+            step={1}
+            style={{ width: '100%' }}
+          />
           <Form.Input
             field="remark"
             label="备注"

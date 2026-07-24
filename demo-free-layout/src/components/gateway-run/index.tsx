@@ -11,10 +11,7 @@ import {
 import { Button, SideSheet, Tag, Typography, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconPlay, IconClose } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
-import { getToken } from '../../utils/auth';
-
-// 网关地址(开发环境)
-const GATEWAY_URL = 'http://localhost:3001';
+import { apiFetch } from '../../utils/api';
 
 interface NodeStatus {
   nodeId: string;
@@ -53,12 +50,6 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
 
   const handleRun = useCallback(async () => {
     // 0. 检查登录态
-    const token = getToken();
-    if (!token) {
-      Toast.warning('请先登录后再执行工作流');
-      return;
-    }
-
     // 1. 获取画布 JSON
     const flowgramJson = ctx.document.toJSON();
 
@@ -71,28 +62,15 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
     abortRef.current = controller;
 
     try {
-      const response = await fetch(`${GATEWAY_URL}/workflows/run`, {
+      const response = await apiFetch('/workflows/run', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ flowgram: flowgramJson }),
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        setResult((prev) => ({
-          ...prev,
-          status: 'failed',
-          error: `网关错误 ${response.status}: ${errText}`,
-        }));
-        return;
-      }
-
       // 4. 解析 SSE 流
-      const reader = response.body!.getReader();
+      if (!response.body) throw new Error('网关未返回可读取的执行结果');
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let textBuffer = '';
@@ -202,7 +180,7 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
         setResult((prev) => ({
           ...prev,
           status: 'failed',
-          error: `请求失败: ${err.message}`,
+          error: err.message || '请求失败',
         }));
       }
     }

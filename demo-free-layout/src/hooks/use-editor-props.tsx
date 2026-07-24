@@ -5,7 +5,6 @@
 
 import { useMemo } from 'react';
 
-import { debounce } from 'lodash-es';
 import { createMinimapPlugin } from '@flowgram.ai/minimap-plugin';
 import { createFreeStackPlugin } from '@flowgram.ai/free-stack-plugin';
 import { createFreeSnapPlugin } from '@flowgram.ai/free-snap-plugin';
@@ -13,7 +12,6 @@ import { createFreeNodePanelPlugin } from '@flowgram.ai/free-node-panel-plugin';
 import { createFreeLinesPlugin } from '@flowgram.ai/free-lines-plugin';
 import {
   FlowNodeBaseType,
-  FreeLayoutPluginContext,
   FreeLayoutProps,
   WorkflowNodeEntity,
 } from '@flowgram.ai/free-layout-editor';
@@ -25,7 +23,6 @@ import { canContainNode, onDragLineEnd } from '../utils';
 import { FlowNodeRegistry, FlowDocumentJSON } from '../typings';
 import { shortcuts } from '../shortcuts';
 import { CustomService, ValidateService } from '../services';
-import { GetGlobalVariableSchema } from '../plugins/variable-panel-plugin';
 import { WorkflowRuntimeService } from '../plugins/runtime-plugin/runtime-service';
 import {
   createRuntimePlugin,
@@ -225,17 +222,6 @@ export function useEditorProps(
          */
         enableChangeNode: true,
       },
-      /**
-       * Content change
-       */
-      onContentChange: debounce((ctx: FreeLayoutPluginContext, event) => {
-        if (ctx.document.disposed) return;
-
-        console.log('Auto Save: ', event, {
-          ...ctx.document.toJSON(),
-          globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
-        });
-      }, 1000),
       /**
        * Running line
        */

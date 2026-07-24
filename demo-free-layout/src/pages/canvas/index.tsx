@@ -22,9 +22,12 @@ import '@flowgram.ai/free-layout-editor/index.css';
 import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
 import { useEditorProps } from '../../hooks';
-import { getToken, removeToken } from '../../utils/auth';
+import { GetGlobalVariableSchema } from '../../plugins/variable-panel-plugin';
+import { ApiError, apiJson } from '../../utils/api';
 
-const GATEWAY_URL = 'http://localhost:3001';
+const AUTOSAVE_DELAY = 1500;
+
+type SaveStatus = 'saved' | 'unsaved' | 'saving' | 'error';
 
 export const CanvasPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -33,29 +36,37 @@ export const CanvasPage = () => {
   const [workflowName, setWorkflowName] = useState('');
   const [flowgramData, setFlowgramData] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [changeRevision, setChangeRevision] = useState(0);
   const editorRef = useRef<FreeLayoutPluginContext | null>(null);
+  const revisionRef = useRef(0);
+  const savedRevisionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const saveQueuedRef = useRef(false);
+  const unmountedRef = useRef(false);
+  const saveRunnerRef = useRef<(showToast?: boolean) => Promise<void>>(async () => undefined);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     const loadWorkflow = async () => {
-      const token = getToken();
-      if (!token || !id) {
+      if (!id) {
         navigate('/', { replace: true });
         return;
       }
       try {
-        const res = await fetch(`${GATEWAY_URL}/workflows/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          Toast.error('加载工作流失败');
-          navigate('/', { replace: true });
-          return;
-        }
-        const wf = await res.json();
+        const wf = await apiJson<{ name: string; flowgramJson?: any }>(`/workflows/${id}`);
         setWorkflowName(wf.name);
         setFlowgramData(wf.flowgramJson || { nodes: [], edges: [] });
-      } catch {
-        Toast.error('加载失败');
+      } catch (error: any) {
+        if (error instanceof ApiError && error.status === 401) return;
+        Toast.error(error.message || '加载工作流失败');
         navigate('/', { replace: true });
       } finally {
         setLoading(false);
@@ -64,47 +75,139 @@ export const CanvasPage = () => {
     loadWorkflow();
   }, [id, navigate]);
 
-  const handleSave = useCallback(async () => {
+  const markDirty = useCallback(() => {
+    revisionRef.current += 1;
+    setChangeRevision(revisionRef.current);
+    setSaveStatus('unsaved');
+  }, []);
+
+  const handleEditorReady = useCallback((ctx: FreeLayoutPluginContext) => {
+    editorRef.current = ctx;
+  }, []);
+
+  const saveWorkflow = useCallback(async (showToast = false) => {
     if (!id || !editorRef.current) {
-      Toast.warning('编辑器尚未就绪');
+      if (showToast) Toast.warning('编辑器尚未就绪');
       return;
     }
+
+    const trimmedName = workflowName.trim();
+    if (!trimmedName) {
+      setSaveStatus('error');
+      if (showToast) Toast.warning('工作流名称不能为空');
+      return;
+    }
+
+    if (saveInFlightRef.current) {
+      saveQueuedRef.current = true;
+      return;
+    }
+
+    if (showToast && revisionRef.current === savedRevisionRef.current) {
+      Toast.info('当前内容已保存');
+      return;
+    }
+
+    const revisionToSave = revisionRef.current;
+    saveInFlightRef.current = true;
     setSaving(true);
+    setSaveStatus('saving');
+
     try {
-      const flowgramJson = editorRef.current.document.toJSON();
-      const token = getToken();
-      if (!token) {
-        Toast.warning('登录已过期，请重新登录');
-        navigate('/login', { replace: true });
-        return;
-      }
-      const res = await fetch(`${GATEWAY_URL}/workflows/${id}`, {
+      const ctx = editorRef.current;
+      const flowgramJson = {
+        ...ctx.document.toJSON(),
+        globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
+      };
+      await apiJson(`/workflows/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
-          name: workflowName,
+          name: trimmedName,
           flowgram: JSON.stringify(flowgramJson),
         }),
       });
-      if (res.ok) {
-        Toast.success('已保存');
-      } else if (res.status === 401) {
-        Toast.error('登录已过期，请重新登录');
-        removeToken();
-        navigate('/login', { replace: true });
+
+      savedRevisionRef.current = revisionToSave;
+      setLastSavedAt(new Date());
+      if (revisionRef.current === revisionToSave) {
+        setSaveStatus('saved');
       } else {
-        const err = await res.json().catch(() => ({}));
-        Toast.error(err.message || `保存失败 (${res.status})`);
+        setSaveStatus('unsaved');
+        saveQueuedRef.current = true;
       }
+      if (showToast) Toast.success('已保存');
     } catch (e: any) {
-      Toast.error(`保存失败: ${e?.message || '网络错误'}`);
+      setSaveStatus('error');
+      if (e instanceof ApiError && e.status === 401) {
+        saveQueuedRef.current = false;
+        return;
+      }
+      if (showToast) Toast.error(`保存失败: ${e?.message || '网络错误'}`);
     } finally {
       setSaving(false);
+      saveInFlightRef.current = false;
+
+      const shouldSaveAgain = saveQueuedRef.current;
+      saveQueuedRef.current = false;
+      if (shouldSaveAgain && !unmountedRef.current) {
+        window.setTimeout(() => void saveRunnerRef.current(false), 0);
+      }
     }
   }, [id, workflowName, navigate]);
+
+  saveRunnerRef.current = saveWorkflow;
+
+  useEffect(() => {
+    if (changeRevision === savedRevisionRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      void saveWorkflow(false);
+    }, AUTOSAVE_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [changeRevision, saveWorkflow]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void saveWorkflow(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveWorkflow]);
+
+  const handleBack = useCallback(() => {
+    if (
+      (revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current) &&
+      !window.confirm('当前更改尚未保存完成，确定要离开吗？')
+    ) {
+      return;
+    }
+    navigate('/');
+  }, [navigate]);
+
+  const saveStatusText = (() => {
+    if (saveStatus === 'saving') return '正在自动保存…';
+    if (saveStatus === 'unsaved') return '有未保存更改';
+    if (saveStatus === 'error') return '自动保存失败，请手动重试';
+    if (!lastSavedAt) return '已保存';
+    return `已保存 ${lastSavedAt.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  })();
 
   if (loading) {
     return (
@@ -120,24 +223,30 @@ export const CanvasPage = () => {
         <LeftGroup>
           <Button
             icon={<IconArrowLeft />}
-            onClick={() => navigate('/')}
+            onClick={handleBack}
             theme="borderless"
           />
           <Input
             value={workflowName}
-            onChange={setWorkflowName}
+            onChange={(value) => {
+              setWorkflowName(value);
+              markDirty();
+            }}
             style={{ width: 240 }}
           />
         </LeftGroup>
-        <Button
-          theme="solid"
-          type="primary"
-          icon={<IconSave />}
-          loading={saving}
-          onClick={handleSave}
-        >
-          保存
-        </Button>
+        <SaveActions>
+          <SaveStatusText $status={saveStatus}>{saveStatusText}</SaveStatusText>
+          <Button
+            theme="solid"
+            type="primary"
+            icon={<IconSave />}
+            loading={saving}
+            onClick={() => void saveWorkflow(true)}
+          >
+            保存
+          </Button>
+        </SaveActions>
       </CanvasTopBar>
 
       <EditorWrapper>
@@ -145,9 +254,8 @@ export const CanvasPage = () => {
           <CanvasEditor
             key={id}
             initialData={flowgramData}
-            onReady={(ctx) => {
-              editorRef.current = ctx;
-            }}
+            onReady={handleEditorReady}
+            onContentChange={markDirty}
           />
         </SemiLocaleProvider>
       </EditorWrapper>
@@ -163,15 +271,17 @@ export const CanvasPage = () => {
 const CanvasEditor = ({
   initialData,
   onReady,
+  onContentChange,
 }: {
   initialData: any;
   onReady: (ctx: FreeLayoutPluginContext) => void;
+  onContentChange: () => void;
 }) => {
   const editorProps = useEditorProps(initialData, nodeRegistries);
 
   return (
     <FreeLayoutEditorProvider {...editorProps}>
-      <CanvasInner onReady={onReady} />
+      <CanvasInner onReady={onReady} onContentChange={onContentChange} />
     </FreeLayoutEditorProvider>
   );
 };
@@ -179,13 +289,21 @@ const CanvasEditor = ({
 /**
  * 在 Provider 内部调用 useClientContext，确保能拿到 ctx
  */
-const CanvasInner = ({ onReady }: { onReady: (ctx: FreeLayoutPluginContext) => void }) => {
+const CanvasInner = ({
+  onReady,
+  onContentChange,
+}: {
+  onReady: (ctx: FreeLayoutPluginContext) => void;
+  onContentChange: () => void;
+}) => {
   const ctx = useClientContext();
   useEffect(() => {
-    if (ctx) {
-      onReady(ctx);
-    }
-  }, [ctx, onReady]);
+    if (!ctx) return;
+
+    onReady(ctx);
+    const disposable = ctx.document.onContentChange(() => onContentChange());
+    return () => disposable.dispose();
+  }, [ctx, onReady, onContentChange]);
 
   return (
     <div className="demo-container">
@@ -218,6 +336,23 @@ const LeftGroup = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+`;
+
+const SaveActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const SaveStatusText = styled.span<{ $status: SaveStatus }>`
+  min-width: 150px;
+  color: ${(props) => {
+    if (props.$status === 'error') return '#e5484d';
+    if (props.$status === 'unsaved') return '#d97706';
+    return '#8c8c8c';
+  }};
+  font-size: 12px;
+  text-align: right;
 `;
 
 const EditorWrapper = styled.div`

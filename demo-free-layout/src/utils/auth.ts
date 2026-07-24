@@ -4,7 +4,8 @@
  * 支持 localStorage → sessionStorage → cookie → 内存变量 降级
  */
 
-const GATEWAY_URL = 'http://localhost:3001';
+import { GATEWAY_URL } from './config';
+
 const TOKEN_KEY = 'futureflow_token';
 const USER_KEY = 'futureflow_user';
 
@@ -161,10 +162,11 @@ export async function fetchProfile(): Promise<any> {
   const res = await fetch(`${GATEWAY_URL}/auth/profile`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) {
+  if (res.status === 401) {
     removeToken();
     return null;
   }
+  if (!res.ok) throw new Error(`加载用户信息失败 (${res.status})`);
   const user = await res.json();
   setUser(user);
   return user;
@@ -176,6 +178,10 @@ export async function fetchVipInfo(): Promise<any> {
   const res = await fetch(`${GATEWAY_URL}/auth/vip-info`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
+  if (res.status === 401) {
+    removeToken();
+    return null;
+  }
+  if (!res.ok) throw new Error(`加载会员信息失败 (${res.status})`);
   return res.json();
 }

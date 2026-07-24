@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   Typography,
@@ -15,12 +16,12 @@ import {
   Toast,
   Spin,
   Popconfirm,
+  Empty,
 } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete, IconCopy } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
-import { getToken, fetchProfile } from '../../utils/auth';
-
-const GATEWAY_URL = 'http://localhost:3001';
+import { fetchProfile } from '../../utils/auth';
+import { apiJson } from '../../utils/api';
 
 interface ApiKey {
   id: string;
@@ -31,58 +32,55 @@ interface ApiKey {
 }
 
 export const ProfilePage = () => {
+  const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
 
   const fetchApiKeys = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
     try {
-      const res = await fetch(`${GATEWAY_URL}/user/api-keys`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setApiKeys(await res.json());
-      }
-    } catch {
-      Toast.error('加载 API Key 失败');
+      setApiKeys(await apiJson<ApiKey[]>('/user/api-keys'));
+    } catch (error: any) {
+      Toast.error(error.message || '加载 API Key 失败');
     }
   }, []);
 
   useEffect(() => {
-    fetchProfile().then((u) => {
-      setUser(u);
-      setLoading(false);
-    });
-    fetchApiKeys();
-  }, [fetchApiKeys]);
+    const loadProfile = async () => {
+      setLoadError(null);
+      try {
+        const currentUser = await fetchProfile();
+        if (!currentUser) {
+          navigate('/login', { replace: true });
+          return;
+        }
+        setUser(currentUser);
+        await fetchApiKeys();
+      } catch (error: any) {
+        setLoadError(error.message || '加载个人信息失败，请确认网关服务已启动');
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadProfile();
+  }, [fetchApiKeys, navigate]);
 
   const handleCreateKey = useCallback(
     async (values: any) => {
-      const token = getToken();
       try {
-        const res = await fetch(`${GATEWAY_URL}/user/api-keys`, {
+        const data = await apiJson<{ plaintext: string }>('/user/api-keys', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({ name: values.name || 'default' }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          setNewKey(data.plaintext);
-          setCreateVisible(false);
-          fetchApiKeys();
-          fetchProfile().then(setUser);
-        } else {
-          Toast.error('创建失败');
-        }
-      } catch {
-        Toast.error('创建失败');
+        setNewKey(data.plaintext);
+        setCreateVisible(false);
+        await fetchApiKeys();
+        setUser(await fetchProfile());
+      } catch (error: any) {
+        Toast.error(error.message || '创建失败');
       }
     },
     [fetchApiKeys],
@@ -90,30 +88,43 @@ export const ProfilePage = () => {
 
   const handleRevoke = useCallback(
     async (id: string) => {
-      const token = getToken();
       try {
-        await fetch(`${GATEWAY_URL}/user/api-keys/${id}`, {
+        await apiJson<{ success: boolean }>(`/user/api-keys/${id}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
         Toast.success('已撤销');
-        fetchApiKeys();
-      } catch {
-        Toast.error('撤销失败');
+        await fetchApiKeys();
+      } catch (error: any) {
+        Toast.error(error.message || '撤销失败');
       }
     },
     [fetchApiKeys],
   );
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    Toast.success('已复制到剪贴板');
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      Toast.success('已复制到剪贴板');
+    } catch {
+      Toast.error('复制失败，请手动复制');
+    }
   };
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <Center>
         <Spin size="large" />
+      </Center>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Center>
+        <ErrorState>
+          <Empty title="加载失败" description={loadError || '无法加载个人信息'} />
+          <Button onClick={() => window.location.reload()}>重新加载</Button>
+        </ErrorState>
       </Center>
     );
   }
@@ -388,6 +399,13 @@ const Center = styled.div`
   justify-content: center;
   align-items: center;
   height: 300px;
+`;
+
+const ErrorState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 `;
 
 const KeyDisplay = styled.div`

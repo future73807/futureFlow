@@ -18,9 +18,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete, IconCopy, IconEdit } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
-import { getToken } from '../../utils/auth';
-
-const GATEWAY_URL = 'http://localhost:3001';
+import { apiJson } from '../../utils/api';
 
 interface Workflow {
   id: string;
@@ -36,22 +34,17 @@ export const WorkflowListPage = () => {
   const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const fetchWorkflows = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`${GATEWAY_URL}/workflows`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setWorkflows(await res.json());
-      }
-    } catch {
-      Toast.error('加载工作流列表失败');
+      setWorkflows(await apiJson<Workflow[]>('/workflows'));
+    } catch (error: any) {
+      setLoadError(error.message || '加载工作流列表失败');
     } finally {
       setLoading(false);
     }
@@ -65,7 +58,6 @@ export const WorkflowListPage = () => {
     async (values: any) => {
       setCreating(true);
       try {
-        const token = getToken();
         const blankFlowgram = {
           nodes: [
             {
@@ -127,12 +119,8 @@ export const WorkflowListPage = () => {
           ],
         };
 
-        const res = await fetch(`${GATEWAY_URL}/workflows`, {
+        const wf = await apiJson<Workflow>('/workflows', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             name: values.name,
             description: values.description || '',
@@ -140,15 +128,9 @@ export const WorkflowListPage = () => {
           }),
         });
 
-        if (res.ok) {
-          const wf = await res.json();
-          Toast.success('创建成功');
-          setCreateVisible(false);
-          navigate(`/canvas/${wf.id}`);
-        } else {
-          const err = await res.json();
-          Toast.error(err.message || '创建失败');
-        }
+        Toast.success('创建成功');
+        setCreateVisible(false);
+        navigate(`/canvas/${wf.id}`);
       } catch (err: any) {
         Toast.error(err.message || '创建失败');
       } finally {
@@ -160,16 +142,14 @@ export const WorkflowListPage = () => {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      const token = getToken();
       try {
-        await fetch(`${GATEWAY_URL}/workflows/${id}`, {
+        await apiJson<{ success: boolean }>(`/workflows/${id}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
         Toast.success('已删除');
-        fetchWorkflows();
-      } catch {
-        Toast.error('删除失败');
+        await fetchWorkflows();
+      } catch (error: any) {
+        Toast.error(error.message || '删除失败');
       }
     },
     [fetchWorkflows],
@@ -177,16 +157,14 @@ export const WorkflowListPage = () => {
 
   const handleDuplicate = useCallback(
     async (id: string) => {
-      const token = getToken();
       try {
-        await fetch(`${GATEWAY_URL}/workflows/${id}/duplicate`, {
+        await apiJson<Workflow>(`/workflows/${id}/duplicate`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
         });
         Toast.success('已复制');
-        fetchWorkflows();
-      } catch {
-        Toast.error('复制失败');
+        await fetchWorkflows();
+      } catch (error: any) {
+        Toast.error(error.message || '复制失败');
       }
     },
     [fetchWorkflows],
@@ -218,6 +196,13 @@ export const WorkflowListPage = () => {
         <LoadingCenter>
           <Spin size="large" />
         </LoadingCenter>
+      ) : loadError ? (
+        <EmptyState>
+          <ErrorState>
+            <Empty title="加载失败" description={loadError} />
+            <Button onClick={() => void fetchWorkflows()}>重新加载</Button>
+          </ErrorState>
+        </EmptyState>
       ) : workflows.length === 0 ? (
         <EmptyState>
           <Empty
@@ -351,6 +336,13 @@ const EmptyState = styled.div`
   justify-content: center;
   align-items: center;
   height: 300px;
+`;
+
+const ErrorState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 `;
 
 const WorkflowGrid = styled.div`

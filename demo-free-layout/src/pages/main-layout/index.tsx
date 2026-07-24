@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Avatar, Typography, Button } from '@douyinfe/semi-ui';
+import { Avatar, Typography, Button, Toast } from '@douyinfe/semi-ui';
 import {
   IconApps,
   IconUser,
@@ -36,14 +36,16 @@ export const MainLayout = () => {
       navigate('/login', { replace: true });
       return;
     }
-    fetchProfile().then((u) => {
-      if (u) {
-        setUser(u);
-        setTick((t) => t + 1);
-      } else {
-        navigate('/login', { replace: true });
-      }
-    });
+    fetchProfile()
+      .then((u) => {
+        if (u) {
+          setUser(u);
+          setTick((t) => t + 1);
+        } else {
+          navigate('/login', { replace: true });
+        }
+      })
+      .catch(() => Toast.error('加载用户信息失败，请确认网关服务已启动'));
   }, [navigate]);
 
   const handleLogout = useCallback(() => {

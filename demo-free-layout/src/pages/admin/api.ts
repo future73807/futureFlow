@@ -3,28 +3,10 @@
  * 封装所有管理员接口调用
  */
 
-import { getToken } from '../../utils/auth';
-
-const GATEWAY_URL = 'http://localhost:3001';
+import { apiJson } from '../../utils/api';
 
 async function adminFetch(path: string, options: RequestInit = {}) {
-  const token = getToken();
-  if (!token) throw new Error('未登录');
-
-  const res = await fetch(`${GATEWAY_URL}/admin${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || `请求失败 (${res.status})`);
-  }
-  return data;
+  return apiJson(`/admin${path}`, options);
 }
 
 // ============ 仪表盘 ============

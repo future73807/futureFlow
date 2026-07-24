@@ -3,9 +3,11 @@
  * 路由：/login → 登录页 | / → 主布局(工作流列表) | /canvas/:id → 画布编辑器
  */
 
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Toast } from '@douyinfe/semi-ui';
 
 import { LoginRegisterPage } from './pages/login';
 import { MainLayout } from './pages/main-layout';
@@ -14,6 +16,7 @@ import { ProfilePage } from './pages/profile';
 import { AdminPage } from './pages/admin';
 import { CanvasPage } from './pages/canvas';
 import { isLoggedIn, getUser } from './utils/auth';
+import { AUTH_EXPIRED_EVENT } from './utils/api';
 
 /**
  * React 18/19 polyfill for form-materials
@@ -36,10 +39,29 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AuthExpiredWatcher() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      if (location.pathname !== '/login') {
+        Toast.warning('登录已过期，请重新登录');
+      }
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [location.pathname, navigate]);
+
+  return null;
+}
+
 const app = createRoot(document.getElementById('root')!);
 
 app.render(
   <BrowserRouter>
+    <AuthExpiredWatcher />
     <Routes>
       <Route path="/login" element={<LoginRegisterPage />} />
       <Route
