@@ -803,12 +803,16 @@ const Center = styled.div`
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+
+  @media (max-width: 880px) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 520px) { grid-template-columns: 1fr; }
 `;
 
 const StatCard = styled.div`
   background: #fff;
+  min-height: 104px;
   border-radius: var(--ff-radius);
   padding: 20px;
   border: 1px solid var(--ff-border);

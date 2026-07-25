@@ -201,16 +201,15 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
 
   return (
     <>
-      <Button
+      <GatewayRunAction
         theme="solid"
         type="primary"
         icon={<IconPlay />}
         disabled={disabled || result.status === 'running'}
         onClick={handleRun}
-        style={{ marginLeft: 4, borderRadius: 8, height: 34 }}
       >
         通过网关执行
-      </Button>
+      </GatewayRunAction>
 
       <SideSheet
         title="网关执行结果"
@@ -304,6 +303,13 @@ const ResultPanel = styled.div`
   display: flex;
   flex-direction: column;
   gap: 16px;
+`;
+
+const GatewayRunAction = styled(Button)`
+  height: 34px;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
 `;
 
 const StatusBar = styled.div`

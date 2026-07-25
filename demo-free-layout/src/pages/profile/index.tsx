@@ -137,7 +137,7 @@ export const ProfilePage = () => {
 
       <ProfileSurface>
         <Identity>
-          <ProfileAvatar size="extra-large">{user.username?.[0]?.toUpperCase() || 'U'}</ProfileAvatar>
+          <ProfileAvatar size="small">{user.username?.[0]?.toUpperCase() || 'U'}</ProfileAvatar>
           <div>
             <IdentityName>{user.username}</IdentityName>
             <IdentityMeta>{user.email || '未设置邮箱'}</IdentityMeta>
@@ -220,10 +220,10 @@ const PageHeader = styled.header`
 const PageTitle = styled.h1`margin:0; color:var(--ff-text); font-size:24px; line-height:32px; letter-spacing:-.45px;`;
 const PageDescription = styled.p`margin:6px 0 0; color:var(--ff-muted); font-size:14px;`;
 const ProfileSurface = styled.section`
-  display:flex; align-items:center; justify-content:space-between; gap:28px; min-height:112px; padding:24px; background:var(--ff-surface); border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); box-shadow:var(--ff-shadow-sm);
+  display:flex; align-items:center; justify-content:space-between; gap:28px; min-height:96px; padding:20px 24px; background:var(--ff-surface); border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); box-shadow:var(--ff-shadow-sm);
   @media (max-width: 640px) { align-items:flex-start; flex-direction:column; gap:18px; padding:20px; }
 `;
-const Identity = styled.div`display:flex; align-items:center; gap:15px; min-width:0;`;
+const Identity = styled.div`display:flex; align-items:center; gap:12px; min-width:0;`;
 const ProfileAvatar = styled(Avatar)`.semi-avatar { background:#e8edff; color:#4054bf; font-weight:700; }`;
 const IdentityName = styled.div`color:var(--ff-text); font-size:18px; font-weight:650; line-height:26px;`;
 const IdentityMeta = styled.div`margin-top:2px; color:var(--ff-muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`;

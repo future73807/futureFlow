@@ -38,7 +38,7 @@ export const ToolSection = styled.div`
   box-shadow: 0 6px 20px rgba(16, 24, 40, 0.10);
   column-gap: 3px;
   min-height: 44px;
-  padding: 4px 8px;
+  padding: 4px 12px 4px 8px;
   pointer-events: auto;
 
   @media (max-width: 720px) {

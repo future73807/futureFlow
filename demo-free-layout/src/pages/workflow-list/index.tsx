@@ -9,6 +9,7 @@ import {
   Button,
   Typography,
   Empty,
+  Dropdown,
   Modal,
   Form,
   Toast,
@@ -16,7 +17,7 @@ import {
   Tag,
   Popconfirm,
 } from '@douyinfe/semi-ui';
-import { IconPlus, IconDelete, IconCopy, IconEdit } from '@douyinfe/semi-icons';
+import { IconPlus, IconDelete, IconEdit, IconMore } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 import { apiJson } from '../../utils/api';
 import { GATEWAY_URL } from '../../utils/config';
@@ -598,71 +599,28 @@ export const WorkflowListPage = () => {
               </CardTop>
               <CardTitle>{wf.name}</CardTitle>
               <CardDesc>{wf.description || '暂无描述'}</CardDesc>
-              <CardMeta>
-                更新于 {new Date(wf.updatedAt).toLocaleDateString('zh-CN')}
-              </CardMeta>
-              <CardActions>
-                <ActionButton
+               <CardMeta>
+                 更新于 {new Date(wf.updatedAt).toLocaleDateString('zh-CN')}
+               </CardMeta>
+               <CardActions>
+                <PrimaryCardAction
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/canvas/${wf.id}`);
                   }}
                 >
-                  <IconEdit /> 编辑
-                </ActionButton>
-                <ActionButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleOpenRuns(wf);
-                  }}
-                >
-                  运行记录
-                </ActionButton>
-                <ActionButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleOpenVersions(wf);
-                  }}
-                >
-                  版本历史
-                </ActionButton>
+                  <IconEdit /> 打开画布
+                </PrimaryCardAction>
                 {wf.publishedVersion ? (
-                  <>
-                    <ActionButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleOpenTriggers(wf);
-                      }}
-                    >
-                      触发器
-                    </ActionButton>
-                    <ActionButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setApiWorkflow(wf);
-                      }}
-                    >
-                      API 调用
-                    </ActionButton>
-                    <ActionButton
-                      disabled={difyProvisioning}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void syncPublishedDify(wf.id);
-                      }}
-                    >
-                      同步 Dify
-                    </ActionButton>
-                    <ActionButton
-                      disabled={publishingId === wf.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleUnpublish(wf.id);
-                      }}
-                    >
-                      取消发布
-                    </ActionButton>
-                  </>
+                  <ActionButton
+                    disabled={publishingId === wf.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleUnpublish(wf.id);
+                    }}
+                  >
+                    取消发布
+                  </ActionButton>
                 ) : (
                   <ActionButton
                     disabled={publishingId === wf.id}
@@ -674,14 +632,22 @@ export const WorkflowListPage = () => {
                     发布
                   </ActionButton>
                 )}
-                <ActionButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDuplicate(wf.id);
-                  }}
+                <Dropdown
+                  trigger="click"
+                  position="bottomRight"
+                  render={
+                    <Dropdown.Menu>
+                      <Dropdown.Item onClick={(event) => { event.stopPropagation(); void handleOpenRuns(wf); }}>运行记录</Dropdown.Item>
+                      <Dropdown.Item onClick={(event) => { event.stopPropagation(); void handleOpenVersions(wf); }}>版本历史</Dropdown.Item>
+                      {wf.publishedVersion && <Dropdown.Item onClick={(event) => { event.stopPropagation(); void handleOpenTriggers(wf); }}>触发器</Dropdown.Item>}
+                      {wf.publishedVersion && <Dropdown.Item onClick={(event) => { event.stopPropagation(); setApiWorkflow(wf); }}>API 调用</Dropdown.Item>}
+                      {wf.publishedVersion && <Dropdown.Item disabled={difyProvisioning} onClick={(event) => { event.stopPropagation(); void syncPublishedDify(wf.id); }}>同步 Dify</Dropdown.Item>}
+                      <Dropdown.Item onClick={(event) => { event.stopPropagation(); handleDuplicate(wf.id); }}>创建副本</Dropdown.Item>
+                    </Dropdown.Menu>
+                  }
                 >
-                  <IconCopy /> 复制
-                </ActionButton>
+                  <MoreCardAction onClick={(e) => e.stopPropagation()}><IconMore /> 更多</MoreCardAction>
+                </Dropdown>
                 <Popconfirm
                   title="确认删除此工作流？"
                   okText="删除"
@@ -691,12 +657,11 @@ export const WorkflowListPage = () => {
                     handleDelete(wf.id);
                   }}
                 >
-                  <ActionButton
-                    $danger
+                  <DeleteCardAction
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <IconDelete /> 删除
-                  </ActionButton>
+                    <IconDelete />
+                  </DeleteCardAction>
                 </Popconfirm>
               </CardActions>
             </WorkflowCard>
@@ -751,21 +716,30 @@ export const WorkflowListPage = () => {
         ) : templates.length === 0 ? (
           <Empty description="暂时没有可用模板" />
         ) : (
-          <TemplateGrid>
-            {templates.map((template) => (
-              <TemplateCard key={template.id}>
-                <Typography.Title heading={6} style={{ margin: '0 0 6px' }}>{template.name}</Typography.Title>
-                <Typography.Text type="tertiary" style={{ minHeight: 40, display: 'block' }}>{template.description}</Typography.Text>
-                <TemplateTags>
-                  {template.tags.map((tag) => <Tag key={tag} size="small">{tag}</Tag>)}
-                  {template.requiresDify && <Tag size="small" color="orange">需要 Dify</Tag>}
-                </TemplateTags>
-                <Button block theme="solid" type="primary" loading={creating} onClick={() => void handleCreateFromTemplate(template)}>
-                  使用模板
-                </Button>
-              </TemplateCard>
-            ))}
-          </TemplateGrid>
+          <>
+            <TemplateIntro>
+              <div><strong>从成熟结构开始</strong><span>选择模板后会创建一份独立草稿，不会改动原模板。</span></div>
+              <TemplateCount>{templates.length} 个模板</TemplateCount>
+            </TemplateIntro>
+            <TemplateGrid>
+              {templates.map((template) => (
+                <TemplateCard key={template.id}>
+                  <TemplateCardHeader>
+                    <TemplateMark>{template.tags[0]?.slice(0, 1) || 'AI'}</TemplateMark>
+                    <TemplateTier>{template.requiresDify ? 'Dify 引擎' : '平台模板'}</TemplateTier>
+                  </TemplateCardHeader>
+                  <Typography.Title heading={6} style={{ margin: 0 }}>{template.name}</Typography.Title>
+                  <TemplateDescription>{template.description}</TemplateDescription>
+                  <TemplateTags>
+                    {template.tags.map((tag) => <Tag key={tag} size="small">{tag}</Tag>)}
+                  </TemplateTags>
+                  <Button block theme="solid" type="primary" loading={creating} onClick={() => void handleCreateFromTemplate(template)}>
+                    使用此模板
+                  </Button>
+                </TemplateCard>
+              ))}
+            </TemplateGrid>
+          </>
         )}
       </Modal>
 
@@ -1048,8 +1022,8 @@ const ErrorState = styled.div`
 
 const WorkflowGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 18px;
 
   @media (max-width: 420px) { grid-template-columns: 1fr; }
 `;
@@ -1057,13 +1031,14 @@ const WorkflowGrid = styled.div`
 const WorkflowCard = styled.div`
   background: #fff;
   border-radius: var(--ff-radius-lg);
-  padding: 22px;
+  min-height: 248px;
+  padding: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid var(--ff-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 
   &:hover {
     border-color: #b9c3f5;
@@ -1101,24 +1076,25 @@ const CardTitle = styled.div`
 const CardDesc = styled.div`
   font-size: 13px;
   color: var(--ff-muted);
-  min-height: 38px;
+  min-height: 40px;
   line-height: 19px;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 `;
 
 const CardMeta = styled.div`
   font-size: 12px;
   color: var(--ff-subtle);
-  margin-bottom: 10px;
+  margin-top: auto;
 `;
 
 const CardActions = styled.div`
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding-top: 14px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid #eef1f5;
 `;
 
@@ -1126,8 +1102,9 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 32px;
   padding: 6px 10px;
-  border: 1px solid transparent;
+  border: 1px solid #e5e9f1;
   border-radius: 7px;
   background: #f8fafc;
   color: ${(props) => (props.$danger ? '#d92d20' : '#475467')};
@@ -1147,6 +1124,27 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
   }
 `;
 
+const PrimaryCardAction = styled(ActionButton)`
+  border-color: var(--ff-accent);
+  background: var(--ff-accent);
+  color: #fff;
+  font-weight: 600;
+
+  &:hover { background: var(--ff-accent-hover); border-color: var(--ff-accent-hover); color: #fff; }
+`;
+
+const MoreCardAction = styled(ActionButton)`
+  margin-left: auto;
+`;
+
+const DeleteCardAction = styled(ActionButton)`
+  min-width: 32px;
+  padding: 6px;
+  color: #d92d20;
+
+  .semi-icon { margin: 0; }
+`;
+
 const CodeBlock = styled.pre`
   margin: 0;
   padding: 14px;
@@ -1162,23 +1160,81 @@ const CodeBlock = styled.pre`
 
 const TemplateGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 
-  @media (max-width: 720px) { grid-template-columns: 1fr; }
+  @media (max-width: 820px) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 600px) { grid-template-columns: 1fr; }
 `;
 
 const TemplateCard = styled.article`
-  min-height: 194px;
-  padding: 20px;
+  min-height: 232px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--ff-border);
   border-radius: 12px;
   background: #fff;
 
   .semi-button { margin-top: auto; }
+`;
+
+const TemplateIntro = styled.div`
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin:0 0 18px;
+  padding:14px 16px;
+  border:1px solid #e2e6f5;
+  border-radius:10px;
+  background:#f7f8ff;
+
+  div { display:grid; gap:3px; }
+  strong { color:var(--ff-text); font-size:14px; }
+  span { color:var(--ff-muted); font-size:12px; line-height:18px; }
+`;
+
+const TemplateCount = styled.span`
+  flex:0 0 auto;
+  color:#4054bf;
+  font-size:12px;
+  font-weight:600;
+`;
+
+const TemplateCardHeader = styled.div`
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+`;
+
+const TemplateMark = styled.div`
+  display:grid;
+  width:34px;
+  height:34px;
+  place-items:center;
+  border-radius:9px;
+  background:#eef1ff;
+  color:#4054bf;
+  font-size:14px;
+  font-weight:700;
+`;
+
+const TemplateTier = styled.span`
+  color:var(--ff-muted);
+  font-size:11px;
+`;
+
+const TemplateDescription = styled.div`
+  min-height:40px;
+  color:var(--ff-muted);
+  font-size:13px;
+  line-height:20px;
+  display:-webkit-box;
+  overflow:hidden;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
 `;
 
 const TemplateTags = styled.div`
