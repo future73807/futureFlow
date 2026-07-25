@@ -8,16 +8,23 @@ import { DifyConverterService } from '../src/converter/dify-converter.service';
 import { FlowGramJSON } from '../src/converter/types';
 
 /**
- * Deterministic graph and conversion regression suite. The fixed seed makes
+ * Deterministic graph and conversion regression suite. A reported seed makes
  * every failing generated workflow reproducible in CI and on a workstation.
  */
-const SEED = 0x5eedc0de;
+const DEFAULT_SEED = 0x5eedc0de;
+const rawSeed = process.env.FUTUREFLOW_FUZZ_SEED?.trim();
+const parsedSeed = rawSeed ? Number(rawSeed) : DEFAULT_SEED;
+if (!Number.isInteger(parsedSeed) || parsedSeed < 0 || parsedSeed > 0xffff_ffff) {
+  throw new Error('FUTUREFLOW_FUZZ_SEED 必须是 0 到 0xffffffff 之间的整数（可使用 0x 前缀）');
+}
+const SEED = parsedSeed >>> 0;
 const requestedCaseCount = Number.parseInt(process.env.FUTUREFLOW_FUZZ_CASES || '10000', 10);
 const CASES_PER_CLASS = Number.isSafeInteger(requestedCaseCount) && requestedCaseCount > 0
   ? Math.min(requestedCaseCount, 100_000)
   : 10_000;
 const VALID_CASES = CASES_PER_CLASS;
 const INVALID_CASES = CASES_PER_CLASS;
+const INVALID_VARIANT_COUNT = 17;
 
 class Random {
   private state = SEED;
@@ -95,8 +102,49 @@ function endNode(id: string, output = 'result') {
   };
 }
 
+function conditionFlow(index: number): FlowGramJSON {
+  const start = startNode(`start_${index}`, index);
+  const conditionId = `condition_${index}`;
+  const conditionKey = `approved_${index}`;
+  const accepted = llmNode(`accepted_${index}`, index, `accepted {{${start.id}.query}}`);
+  const rejected = llmNode(`rejected_${index}`, index, `rejected {{${start.id}.query}}`);
+  const acceptedEnd = endNode(`accepted_end_${index}`);
+  const rejectedEnd = endNode(`rejected_end_${index}`);
+  return {
+    nodes: [
+      start,
+      {
+        id: conditionId,
+        type: 'condition',
+        data: {
+          title: 'Condition',
+          conditions: [{
+            key: conditionKey,
+            value: {
+              left: { type: 'ref', content: [start.id, 'approved'] },
+              operator: 'is',
+              right: value(index % 2 === 0),
+            },
+          }],
+        },
+      },
+      accepted,
+      rejected,
+      acceptedEnd,
+      rejectedEnd,
+    ] as any,
+    edges: [
+      { sourceNodeID: start.id, targetNodeID: conditionId },
+      { sourceNodeID: conditionId, targetNodeID: accepted.id, sourcePortID: conditionKey },
+      { sourceNodeID: conditionId, targetNodeID: rejected.id, sourcePortID: 'else' },
+      { sourceNodeID: accepted.id, targetNodeID: acceptedEnd.id },
+      { sourceNodeID: rejected.id, targetNodeID: rejectedEnd.id },
+    ],
+  };
+}
+
 function validFlow(index: number): FlowGramJSON {
-  const kind = index % 3;
+  const kind = index % 4;
   const start = startNode(`start_${index}`, index);
   if (kind === 0) {
     const llm = llmNode(
@@ -115,130 +163,128 @@ function validFlow(index: number): FlowGramJSON {
   }
 
   if (kind === 1) {
-    const conditionId = `condition_${index}`;
-    const conditionKey = `approved_${index}`;
-    const accepted = llmNode(`accepted_${index}`, index, `accepted {{${start.id}.query}}`);
-    const rejected = llmNode(`rejected_${index}`, index, `rejected {{${start.id}.query}}`);
-    const acceptedEnd = endNode(`accepted_end_${index}`);
-    const rejectedEnd = endNode(`rejected_end_${index}`);
+    return conditionFlow(index);
+  }
+
+  if (kind === 2) {
+    const httpId = `http_${index}`;
+    const codeId = `code_${index}`;
+    const end = endNode(`end_${index}`, 'score');
     return {
       nodes: [
         start,
         {
-          id: conditionId,
-          type: 'condition',
+          id: httpId,
+          type: 'http',
           data: {
-            title: 'Condition',
-            conditions: [{
-              key: conditionKey,
-              value: {
-                left: { type: 'ref', content: [start.id, 'approved'] },
-                operator: 'is',
-                right: value(index % 2 === 0),
-              },
-            }],
+            title: 'HTTP',
+            inputsValues: {
+              method: value(random.pick(['get', 'post', 'patch'])),
+              url: value(`https://example.test/${index}?q={{${start.id}.query}}`),
+              headers: value('{"x-test":"futureflow"}'),
+              body: value(`{"score":"{{${start.id}.score}}"}`),
+            },
           },
         },
-        accepted,
-        rejected,
-        acceptedEnd,
-        rejectedEnd,
+        {
+          id: codeId,
+          type: 'code',
+          data: {
+            title: 'Code',
+            inputsValues: { codeLanguage: value(index % 2 ? 'python3' : 'javascript') },
+            outputs: { type: 'object', properties: { score: { type: 'number' } } },
+          },
+        },
+        end,
       ] as any,
       edges: [
-        { sourceNodeID: start.id, targetNodeID: conditionId },
-        { sourceNodeID: conditionId, targetNodeID: accepted.id, sourcePortID: conditionKey },
-        { sourceNodeID: conditionId, targetNodeID: rejected.id, sourcePortID: 'else' },
-        { sourceNodeID: accepted.id, targetNodeID: acceptedEnd.id },
-        { sourceNodeID: rejected.id, targetNodeID: rejectedEnd.id },
+        { sourceNodeID: start.id, targetNodeID: httpId },
+        { sourceNodeID: httpId, targetNodeID: codeId },
+        { sourceNodeID: codeId, targetNodeID: end.id },
       ],
     };
   }
 
-  const httpId = `http_${index}`;
-  const codeId = `code_${index}`;
-  const end = endNode(`end_${index}`, 'score');
-  return {
-    nodes: [
-      start,
-      {
-        id: httpId,
-        type: 'http',
-        data: {
-          title: 'HTTP',
-          inputsValues: {
-            method: value(random.pick(['get', 'post', 'patch'])),
-            url: value(`https://example.test/${index}?q={{${start.id}.query}}`),
-            headers: value('{"x-test":"futureflow"}'),
-            body: value(`{"score":"{{${start.id}.score}}"}`),
-          },
-        },
-      },
-      {
-        id: codeId,
-        type: 'code',
-        data: {
-          title: 'Code',
-          inputsValues: { codeLanguage: value(index % 2 ? 'python3' : 'javascript') },
-          outputs: { type: 'object', properties: { score: { type: 'number' } } },
-        },
-      },
-      end,
-    ] as any,
-    edges: [
-      { sourceNodeID: start.id, targetNodeID: httpId },
-      { sourceNodeID: httpId, targetNodeID: codeId },
-      { sourceNodeID: codeId, targetNodeID: end.id },
-    ],
-  };
+  const nodes: any[] = [start];
+  const edges: any[] = [];
+  let previousId = start.id;
+  const llmCount = 2 + random.int(5);
+  for (let step = 0; step < llmCount; step += 1) {
+    const node = llmNode(`chain_${index}_${step}`, index + step, `step ${step} {{${start.id}.query}}`);
+    nodes.push(node);
+    edges.push({ sourceNodeID: previousId, targetNodeID: node.id });
+    previousId = node.id;
+  }
+  const end = endNode(`chain_end_${index}`);
+  nodes.push(end);
+  edges.push({ sourceNodeID: previousId, targetNodeID: end.id });
+  return { nodes, edges };
 }
 
-function invalidFlow(index: number): FlowGramJSON {
-  const flow = validFlow(index) as any;
-  switch (index % 12) {
+function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
+  let flow = validFlow(index) as any;
+  switch (index % INVALID_VARIANT_COUNT) {
     case 0:
       flow.nodes = [];
-      break;
+      return { flow, expected: /至少需要一个节点/ };
     case 1:
       flow.nodes[1].id = flow.nodes[0].id;
-      break;
+      return { flow, expected: /节点 id 重复/ };
     case 2:
       flow.nodes[0].type = 'llm';
-      break;
+      return { flow, expected: /必须且只能包含一个 Start 节点/ };
     case 3:
       flow.nodes = 'not-an-array';
-      break;
+      return { flow, expected: /nodes 和 edges 数组/ };
     case 4:
       flow.edges[0].targetNodeID = 'missing-node';
-      break;
+      return { flow, expected: /指向不存在节点/ };
     case 5:
-      if (flow.nodes.some((node: any) => node.type === 'condition')) {
-        flow.edges[1].sourcePortID = 'missing-port';
-      } else {
-        flow.nodes[1].type = 'loop';
-      }
-      break;
+      flow = conditionFlow(index) as any;
+      flow.edges[1].sourcePortID = 'missing-port';
+      return { flow, expected: /有效分支端口/ };
     case 6:
       flow.nodes.push({ id: `orphan_${index}`, type: 'llm', data: { title: 'Orphan' } });
-      break;
+      return { flow, expected: /未连接到 Start 节点/ };
     case 7:
-      flow.edges.push({ sourceNodeID: flow.nodes[flow.nodes.length - 1].id, targetNodeID: flow.nodes[0].id });
-      break;
+      flow.edges.push({ sourceNodeID: flow.nodes[flow.nodes.length - 1].id, targetNodeID: flow.nodes[1].id });
+      return { flow, expected: /循环连线/ };
     case 8:
       flow.edges.push({ ...flow.edges[0] });
-      break;
+      return { flow, expected: /重复连线/ };
     case 9:
       flow.nodes[0].data = null;
-      break;
+      return { flow, expected: /缺少 type 或 data/ };
     case 10:
       flow.nodes.push({ id: `second_start_${index}`, type: 'start', data: { title: 'Second start' } });
       flow.edges.push({ sourceNodeID: flow.nodes[0].id, targetNodeID: `second_start_${index}` });
-      break;
+      return { flow, expected: /必须且只能包含一个 Start 节点/ };
     case 11:
       flow.nodes = [startNode(`start_${index}`, index), endNode(`end_${index}`)];
       flow.edges = [{ sourceNodeID: `start_${index}`, targetNodeID: `end_${index}` }];
-      break;
+      return { flow, expected: /至少需要一个可执行节点/ };
+    case 12:
+      flow.edges = 'not-an-array';
+      return { flow, expected: /nodes 和 edges 数组/ };
+    case 13:
+      flow.edges.push({ sourceNodeID: flow.nodes[flow.nodes.length - 1].id, targetNodeID: flow.nodes[0].id });
+      return { flow, expected: /Start 节点不能包含入口连线/ };
+    case 14:
+      {
+        const executable = flow.nodes.find((node: any) => ['llm', 'http', 'code'].includes(node.type));
+        if (!executable) throw new Error('valid flow must contain an executable node');
+        flow.edges.push({ sourceNodeID: executable.id, targetNodeID: executable.id });
+      }
+      return { flow, expected: /自环连线/ };
+    case 15:
+      flow.nodes[1].type = 'loop';
+      return { flow, expected: /不支持循环子画布/ };
+    case 16:
+      flow.nodes[0].data = [];
+      return { flow, expected: /缺少 type 或 data/ };
+    default:
+      throw new Error('unexpected invalid test variant');
   }
-  return flow;
 }
 
 function assertDslIntegrity(flow: FlowGramJSON, caseId: number) {
@@ -255,9 +301,11 @@ function assertDslIntegrity(flow: FlowGramJSON, caseId: number) {
   assert.equal(typeof inputs.score, 'number', `case ${caseId}: numeric input defaults must survive conversion`);
   assert.equal(Number.isFinite(converter.estimateCost(flow)), true, `case ${caseId}: estimated cost must be finite`);
   assert.doesNotThrow(() => JSON.stringify(dsl), `case ${caseId}: generated DSL must be serializable`);
+  const yaml = converter.toDifyDSLYaml(flow);
+  assert.match(yaml, /^workflow:/m, `case ${caseId}: generated Dify YAML must contain a workflow`);
 }
 
-function assertRejected(flow: FlowGramJSON, caseId: number) {
+function assertRejected(flow: FlowGramJSON, expected: RegExp, caseId: number) {
   let error: unknown;
   try {
     converter.toDifyDSL(flow);
@@ -265,17 +313,26 @@ function assertRejected(flow: FlowGramJSON, caseId: number) {
     error = caught;
   }
   assert.ok(error instanceof BadRequestException, `case ${caseId}: invalid graph must receive a 400-level rejection`);
+  assert.match(error.message, expected, `case ${caseId}: invalid graph must fail for its intended reason`);
 }
 
 function main() {
   for (let index = 0; index < VALID_CASES; index += 1) {
     assertDslIntegrity(validFlow(index), index);
   }
+  const invalidVariants = new Set<number>();
   for (let index = 0; index < INVALID_CASES; index += 1) {
-    assertRejected(invalidFlow(index), index);
+    const { flow, expected } = invalidFlow(index);
+    invalidVariants.add(index % INVALID_VARIANT_COUNT);
+    assertRejected(flow, expected, index);
   }
+  assert.equal(
+    invalidVariants.size,
+    Math.min(INVALID_CASES, INVALID_VARIANT_COUNT),
+    'every requested invalid variant must be exercised',
+  );
   process.stdout.write(
-    `platform fuzz passed: seed=0x${SEED.toString(16)}, valid=${VALID_CASES}, invalid=${INVALID_CASES}, total=${VALID_CASES + INVALID_CASES}\n`,
+    `platform fuzz passed: seed=0x${SEED.toString(16)}, valid=${VALID_CASES}, invalid=${INVALID_CASES}, variants=${invalidVariants.size}, total=${VALID_CASES + INVALID_CASES}\n`,
   );
 }
 

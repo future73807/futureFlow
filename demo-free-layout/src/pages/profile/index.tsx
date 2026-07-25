@@ -211,26 +211,42 @@ export const ProfilePage = () => {
 
 const PageContainer = styled.div`
   height: 100%; overflow-y: auto; box-sizing: border-box; padding: 34px 38px 48px;
+  @media (max-width: 720px) { height: auto; overflow: visible; padding: 20px 16px 32px; }
 `;
-const PageHeader = styled.header`display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:24px;`;
+const PageHeader = styled.header`
+  display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:24px;
+  @media (max-width: 520px) { flex-direction:column; gap:12px; margin-bottom:18px; }
+`;
 const PageTitle = styled.h1`margin:0; color:var(--ff-text); font-size:24px; line-height:32px; letter-spacing:-.45px;`;
 const PageDescription = styled.p`margin:6px 0 0; color:var(--ff-muted); font-size:14px;`;
-const ProfileSurface = styled.section`display:flex; align-items:center; justify-content:space-between; gap:28px; min-height:112px; padding:24px; background:var(--ff-surface); border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); box-shadow:var(--ff-shadow-sm);`;
+const ProfileSurface = styled.section`
+  display:flex; align-items:center; justify-content:space-between; gap:28px; min-height:112px; padding:24px; background:var(--ff-surface); border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); box-shadow:var(--ff-shadow-sm);
+  @media (max-width: 640px) { align-items:flex-start; flex-direction:column; gap:18px; padding:20px; }
+`;
 const Identity = styled.div`display:flex; align-items:center; gap:15px; min-width:0;`;
 const ProfileAvatar = styled(Avatar)`.semi-avatar { background:#e8edff; color:#4054bf; font-weight:700; }`;
 const IdentityName = styled.div`color:var(--ff-text); font-size:18px; font-weight:650; line-height:26px;`;
 const IdentityMeta = styled.div`margin-top:2px; color:var(--ff-muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`;
-const AccountFacts = styled.div`display:grid; grid-template-columns:repeat(3, minmax(100px, 1fr)); gap:24px;`;
+const AccountFacts = styled.div`
+  display:grid; grid-template-columns:repeat(3, minmax(100px, 1fr)); gap:24px;
+  @media (max-width: 640px) { width:100%; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+`;
 const Fact = styled.div`min-width:0;`;
 const FactLabel = styled.div`margin-bottom:6px; color:var(--ff-muted); font-size:12px;`;
 const FactValue = styled.div`color:var(--ff-text); font-size:14px; font-weight:600;`;
-const MetricGrid = styled.div`display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin:18px 0;`;
+const MetricGrid = styled.div`
+  display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin:18px 0;
+  @media (max-width: 640px) { grid-template-columns:1fr; }
+`;
 const MetricCard = styled.div`min-height:112px; padding:20px; box-sizing:border-box; border:1px solid var(--ff-border); border-radius:var(--ff-radius); background:var(--ff-surface);`;
 const MetricLabel = styled.div`color:var(--ff-muted); font-size:13px;`;
 const MetricValue = styled.div`margin:9px 0 5px; color:var(--ff-text); font-size:25px; font-weight:680; letter-spacing:-.5px;`;
 const MetricHint = styled.div`color:var(--ff-subtle); font-size:12px; line-height:18px;`;
 const SectionSurface = styled.section`padding:22px 24px 10px; border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); background:var(--ff-surface); box-shadow:var(--ff-shadow-sm);`;
-const SectionHeader = styled.div`display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:18px;`;
+const SectionHeader = styled.div`
+  display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:18px;
+  @media (max-width: 520px) { flex-direction:column; gap:12px; }
+`;
 const SectionTitle = styled.h2`margin:0; color:var(--ff-text); font-size:16px; line-height:24px;`;
 const SectionDescription = styled.p`margin:4px 0 0; color:var(--ff-muted); font-size:13px;`;
 const KeyPrefix = styled.code`padding:4px 8px; border-radius:5px; background:#f1f4fb; color:#4054bf; font-size:12px;`;

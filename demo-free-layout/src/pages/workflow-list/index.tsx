@@ -999,6 +999,12 @@ const PageContainer = styled.div`
   padding: 34px 38px 48px;
   height: 100%;
   overflow-y: auto;
+
+  @media (max-width: 720px) {
+    height: auto;
+    padding: 20px 16px 32px;
+    overflow: visible;
+  }
 `;
 
 const PageHeader = styled.div`
@@ -1007,6 +1013,11 @@ const PageHeader = styled.div`
   align-items: center;
   gap: 16px;
   margin-bottom: 24px;
+
+  @media (max-width: 520px) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 `;
 
 const HeaderTitle = styled.div`
@@ -1039,6 +1050,8 @@ const WorkflowGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: 16px;
+
+  @media (max-width: 420px) { grid-template-columns: 1fr; }
 `;
 
 const WorkflowCard = styled.div`

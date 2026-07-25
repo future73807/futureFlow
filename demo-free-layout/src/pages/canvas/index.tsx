@@ -335,17 +335,27 @@ const CanvasTopBar = styled.div`
   border-bottom: 1px solid #e5e9f1;
   box-shadow: 0 1px 2px rgba(16, 24, 40, .02);
   flex-shrink: 0;
+
+  @media (max-width: 720px) {
+    min-height: 56px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
 `;
 
 const LeftGroup = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 1;
 `;
 
 const CanvasTitleGroup = styled.div`
   display: grid;
   gap: 1px;
+  min-width: 0;
+  flex: 1;
 `;
 
 const CanvasEyebrow = styled.div`
@@ -353,6 +363,8 @@ const CanvasEyebrow = styled.div`
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .05em;
+
+  @media (max-width: 720px) { display: none; }
 `;
 
 const CanvasName = styled(Input)`
@@ -360,12 +372,18 @@ const CanvasName = styled(Input)`
   .semi-input { color: #182230; font-size: 15px; font-weight: 600; }
   &.semi-input-wrapper { border-color: transparent !important; background: transparent; padding: 0; }
   &.semi-input-wrapper:hover, &.semi-input-wrapper-focus { border-color: #d8deea !important; background: #fff; padding: 0 8px; }
+
+  @media (max-width: 720px) {
+    width: 100%;
+    min-width: 0;
+  }
 `;
 
 const SaveActions = styled.div`
   display: flex;
   align-items: center;
   gap: 14px;
+  flex: 0 0 auto;
 `;
 
 const SaveStatusText = styled.span<{ $status: SaveStatus }>`
@@ -377,6 +395,8 @@ const SaveStatusText = styled.span<{ $status: SaveStatus }>`
   }};
   font-size: 12px;
   text-align: right;
+
+  @media (max-width: 720px) { display: none; }
 `;
 
 const EditorWrapper = styled.div`

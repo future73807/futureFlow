@@ -19,6 +19,14 @@ export const ToolContainer = styled.div`
   gap: 10px;
 
   z-index: 20;
+
+  @media (max-width: 720px) {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    min-width: 0;
+    justify-content: stretch;
+  }
 `;
 
 export const ToolSection = styled.div`
@@ -32,6 +40,19 @@ export const ToolSection = styled.div`
   min-height: 44px;
   padding: 4px 8px;
   pointer-events: auto;
+
+  @media (max-width: 720px) {
+    width: 100%;
+    justify-content: space-between;
+    padding: 4px 6px;
+
+    > :nth-child(-n + 14),
+    > :nth-child(10),
+    > :nth-child(11),
+    > :nth-child(16) {
+      display: none !important;
+    }
+  }
 `;
 
 export const SelectZoom = styled.span`

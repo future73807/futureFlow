@@ -110,6 +110,11 @@ const LayoutWrapper = styled.div`
   min-width: 0;
   overflow: hidden;
   background: var(--ff-page);
+
+  @media (max-width: 720px) {
+    flex-direction: column;
+    overflow: auto;
+  }
 `;
 
 const Sidebar = styled.aside`
@@ -122,6 +127,17 @@ const Sidebar = styled.aside`
   background: var(--ff-sidebar);
   color: #d8dde8;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
+
+  @media (max-width: 720px) {
+    width: 100%;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 10px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
 `;
 
 const Brand = styled.button`
@@ -138,6 +154,12 @@ const Brand = styled.button`
   font-size: 18px;
   letter-spacing: -0.35px;
   text-align: left;
+
+  @media (max-width: 720px) {
+    grid-column: 1;
+    padding: 4px 2px;
+    font-size: 16px;
+  }
 `;
 
 const BrandMark = styled.span`
@@ -151,6 +173,13 @@ const PrimaryAction = styled(Button)`
   border-radius: 9px !important;
   justify-content: center;
   font-weight: 600;
+
+  @media (max-width: 720px) {
+    grid-column: 2;
+    width: auto;
+    min-width: 112px;
+    height: 38px;
+  }
 `;
 
 const QuickActions = styled.div`
@@ -158,6 +187,13 @@ const QuickActions = styled.div`
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 8px 0 18px;
+
+  @media (max-width: 720px) {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, max-content);
+    justify-content: start;
+    padding: 2px 0 4px;
+  }
 `;
 
 const QuickAction = styled(Button)`
@@ -181,11 +217,21 @@ const NavLabel = styled.div`
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+
+  @media (max-width: 720px) { display: none; }
 `;
 
 const NavMenu = styled.nav`
   display: grid;
   gap: 3px;
+
+  @media (max-width: 720px) {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
 `;
 
 const NavItem = styled.button<{ $active: boolean }>`
@@ -209,6 +255,12 @@ const NavItem = styled.button<{ $active: boolean }>`
   span { display: inline-flex; font-size: 17px; }
   &:hover { background: ${(props) => (props.$active ? 'rgba(99, 102, 241, 0.24)' : 'rgba(255, 255, 255, 0.06)')}; color: #fff; }
   &:focus-visible { outline: 2px solid #aeb8f5; outline-offset: 2px; }
+
+  @media (max-width: 720px) {
+    width: auto;
+    min-width: max-content;
+    height: 36px;
+  }
 `;
 
 const SidebarFooter = styled.div`
@@ -217,6 +269,16 @@ const SidebarFooter = styled.div`
   display: grid;
   gap: 5px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+
+  @media (max-width: 720px) {
+    grid-column: 1 / -1;
+    margin-top: 0;
+    padding-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 0;
+  }
 `;
 
 const AccountButton = styled.button`
@@ -234,6 +296,11 @@ const AccountButton = styled.button`
 
   &:hover { background: rgba(255, 255, 255, 0.06); }
   .semi-avatar { background: #475569; color: #fff; }
+
+  @media (max-width: 720px) {
+    width: auto;
+    padding: 5px 2px;
+  }
 `;
 
 const AccountCopy = styled.div`
@@ -252,4 +319,10 @@ const ContentArea = styled.main`
   flex-direction: column;
   overflow: hidden;
   background: var(--ff-page);
+
+  @media (max-width: 720px) {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: visible;
+  }
 `;
