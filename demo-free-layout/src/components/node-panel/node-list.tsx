@@ -20,22 +20,25 @@ import { NodeLabels } from '../../nodes/labels';
 
 const NodeWrap = styled.div`
   width: 100%;
-  height: 32px;
-  border-radius: 5px;
+  min-height: 44px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   cursor: pointer;
-  font-size: 19px;
-  padding: 0 15px;
+  font-size: 16px;
+  padding: 8px 12px;
+  color: #344054;
+  transition: background-color .15s ease, color .15s ease;
   &:hover {
-    background-color: hsl(252deg 62% 55% / 9%);
-    color: hsl(252 62% 54.9%);
+    background-color: #eef1ff;
+    color: #4054bf;
   }
 `;
 
 const NodeLabel = styled.div`
-  font-size: 12px;
-  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: 11px;
 `;
 
 interface NodeProps {
@@ -52,14 +55,16 @@ function Node(props: NodeProps) {
       onClick={props.disabled ? undefined : props.onClick}
       style={props.disabled ? { opacity: 0.3 } : {}}
     >
-      <div style={{ fontSize: 14 }}>{props.icon}</div>
+      <div style={{ width: 24, height: 24, display: 'grid', placeItems: 'center', flex: '0 0 auto' }}>{props.icon}</div>
       <NodeLabel>{props.label}</NodeLabel>
     </NodeWrap>
   );
 }
 
 const NodesWrap = styled.div`
-  max-height: 500px;
+  width: 260px;
+  max-height: min(520px, 65vh);
+  padding: 6px;
   overflow: auto;
   &::-webkit-scrollbar {
     display: none;
@@ -73,7 +78,7 @@ interface NodeListProps {
 }
 
 export const NodeList: FC<NodeListProps> = (props) => {
-  const { onSelect, containerNode, fromPort } = props;
+  const { onSelect, containerNode } = props;
   const context = useClientContext();
   const handleClick = (e: React.MouseEvent, registry: FlowNodeRegistry) => {
     const json = registry.onAdd?.(context);
@@ -83,9 +88,8 @@ export const NodeList: FC<NodeListProps> = (props) => {
       nodeJSON: json,
     });
   };
-  console.log('>>> fromNode', fromPort?.node);
   return (
-    <NodesWrap style={{ width: 80 * 2 + 20 }}>
+    <NodesWrap>
       {nodeRegistries
         .filter((register) => register.meta.nodePanelVisible !== false)
         .filter((register) => {
@@ -106,7 +110,11 @@ export const NodeList: FC<NodeListProps> = (props) => {
             key={registry.type}
             disabled={!(registry.canAdd?.(context) ?? true)}
             icon={
-              <img style={{ width: 10, height: 10, borderRadius: 4 }} src={registry.info?.icon} />
+              <img
+                alt=""
+                style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover', display: 'block' }}
+                src={registry.info?.icon}
+              />
             }
             label={NodeLabels[registry.type as string] || (registry.type as string)}
             onClick={(e) => handleClick(e, registry)}

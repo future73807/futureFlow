@@ -1,35 +1,28 @@
-/**
- * futureFlow 主布局
- * 深色侧边栏: Logo + 导航 + 用户信息卡片 + 退出按钮
- */
-
-import { useState, useCallback, useEffect } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Avatar, Typography, Button, Toast } from '@douyinfe/semi-ui';
+import { useCallback, useEffect, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
   IconApps,
-  IconUser,
   IconExit,
+  IconKey,
+  IconList,
+  IconPlus,
   IconSetting,
+  IconUser,
 } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
-import {
-  isLoggedIn,
-  removeToken,
-  fetchProfile,
-} from '../../utils/auth';
+import { fetchProfile, isLoggedIn, removeToken } from '../../utils/auth';
 
 const NAV_ITEMS = [
-  { key: '/', label: '工作流列表', icon: <IconApps />, adminOnly: false },
+  { key: '/', label: '工作流', icon: <IconApps />, adminOnly: false },
   { key: '/profile', label: '个人中心', icon: <IconUser />, adminOnly: false },
-  { key: '/admin', label: '管理员后台', icon: <IconSetting />, adminOnly: true },
+  { key: '/admin', label: '平台管理', icon: <IconSetting />, adminOnly: true },
 ];
 
 export const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
-  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -37,99 +30,76 @@ export const MainLayout = () => {
       return;
     }
     fetchProfile()
-      .then((u) => {
-        if (u) {
-          setUser(u);
-          setTick((t) => t + 1);
-        } else {
-          navigate('/login', { replace: true });
-        }
+      .then((profile) => {
+        if (profile) setUser(profile);
+        else navigate('/login', { replace: true });
       })
-      .catch(() => Toast.error('加载用户信息失败，请确认网关服务已启动'));
-  }, [navigate]);
+      .catch(() => Toast.error('无法读取账户信息，请确认网关服务已启动'));
+  }, [navigate, location.pathname]);
 
   const handleLogout = useCallback(() => {
     removeToken();
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  const currentPath = location.pathname === '/' ? '/' : location.pathname;
+  const openWorkflowAction = (action: 'create' | 'templates') => {
+    navigate(`/?action=${action}`);
+  };
 
   return (
     <LayoutWrapper>
       <Sidebar>
-        {/* Logo 区域 */}
-        <SidebarHeader>
-          <LogoMark>
-            <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
-              <rect width="48" height="48" rx="10" fill="#4834d4" />
-              <path
-                d="M14 18 L24 14 L34 18 L34 30 L24 34 L14 30 Z"
-                stroke="white"
-                strokeWidth="2.5"
-                fill="none"
-                strokeLinejoin="round"
-              />
+        <Brand onClick={() => navigate('/')}>
+          <BrandMark aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="12" fill="currentColor" />
+              <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
               <circle cx="24" cy="24" r="3" fill="white" />
             </svg>
-          </LogoMark>
-          <Typography.Title heading={5} style={{ color: '#fff', margin: 0 }}>
-            futureFlow
-          </Typography.Title>
-        </SidebarHeader>
+          </BrandMark>
+          <strong>futureFlow</strong>
+        </Brand>
 
-        {/* 导航菜单 */}
+        <PrimaryAction type="primary" theme="solid" icon={<IconPlus />} onClick={() => openWorkflowAction('create')}>
+          创建画布
+        </PrimaryAction>
+        <QuickActions aria-label="快捷操作">
+          <QuickAction type="tertiary" theme="borderless" icon={<IconList />} onClick={() => openWorkflowAction('templates')}>
+            模板库
+          </QuickAction>
+          <QuickAction type="tertiary" theme="borderless" icon={<IconKey />} onClick={() => navigate('/profile?action=create-key')}>
+            创建 Key
+          </QuickAction>
+        </QuickActions>
+
+        <NavLabel>工作区</NavLabel>
         <NavMenu>
           {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
             <NavItem
               key={item.key}
-              $active={currentPath === item.key}
+              $active={item.key === '/' ? location.pathname === '/' : location.pathname.startsWith(item.key)}
               onClick={() => navigate(item.key)}
             >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
+              <span>{item.icon}</span>
+              {item.label}
             </NavItem>
           ))}
         </NavMenu>
 
-        {/* 底部用户信息 + 退出 */}
         <SidebarFooter>
-          <UserCard>
-            <Avatar
-              size="medium"
-              style={{ background: 'linear-gradient(135deg, #4834d4, #6c5ce7)', flexShrink: 0 }}
-            >
-              {user?.username?.[0]?.toUpperCase() || 'U'}
-            </Avatar>
-            <UserInfo>
-              <Typography.Text strong style={{ color: '#fff', fontSize: 14 }}>
-                {user?.username || '...'}
-              </Typography.Text>
-              <Typography.Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-                {user?.vipLevel?.toUpperCase() || 'FREE'} · ¥{user?.balance?.toFixed(2) || '0.00'}
-              </Typography.Text>
-            </UserInfo>
-          </UserCard>
-          <Button
-            block
-            size="default"
-            theme="borderless"
-            icon={<IconExit />}
-            onClick={handleLogout}
-            style={{
-              color: 'rgba(255,255,255,0.5)',
-              justifyContent: 'flex-start',
-              padding: '8px 12px',
-            }}
-          >
+          <AccountButton onClick={() => navigate('/profile')}>
+            <Avatar size="small">{user?.username?.[0]?.toUpperCase() || 'U'}</Avatar>
+            <AccountCopy>
+              <Typography.Text strong>{user?.username || '加载中'}</Typography.Text>
+              <Typography.Text type="tertiary">{user?.vipLevel?.toUpperCase() || 'FREE'} · ¥{Number(user?.balance || 0).toFixed(2)}</Typography.Text>
+            </AccountCopy>
+          </AccountButton>
+          <QuickAction type="tertiary" theme="borderless" icon={<IconExit />} onClick={handleLogout}>
             退出登录
-          </Button>
+          </QuickAction>
         </SidebarFooter>
       </Sidebar>
-
-      <ContentArea>
-        <Outlet />
-      </ContentArea>
+      <ContentArea><Outlet /></ContentArea>
     </LayoutWrapper>
   );
 };
@@ -137,107 +107,149 @@ export const MainLayout = () => {
 const LayoutWrapper = styled.div`
   display: flex;
   height: 100vh;
+  min-width: 0;
   overflow: hidden;
+  background: var(--ff-page);
 `;
 
-const Sidebar = styled.div`
-  width: 240px;
-  background: #1a1d29;
+const Sidebar = styled.aside`
+  width: 248px;
+  padding: 18px 12px 14px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  background: var(--ff-sidebar);
+  color: #d8dde8;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 `;
 
-const SidebarHeader = styled.div`
-  padding: 20px 20px;
+const Brand = styled.button`
+  appearance: none;
+  border: 0;
+  width: 100%;
+  padding: 6px 8px 22px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 10px;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  letter-spacing: -0.35px;
+  text-align: left;
 `;
 
-const LogoMark = styled.div`
-  display: flex;
-  align-items: center;
+const BrandMark = styled.span`
+  color: var(--ff-accent);
+  line-height: 0;
+`;
+
+const PrimaryAction = styled(Button)`
+  width: 100%;
+  height: 42px;
+  border-radius: 9px !important;
+  justify-content: center;
+  font-weight: 600;
+`;
+
+const QuickActions = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 8px 0 18px;
+`;
+
+const QuickAction = styled(Button)`
+  width: 100%;
+  min-height: 34px;
+  justify-content: flex-start !important;
+  border-radius: 8px !important;
+  color: #aeb8c9 !important;
+  font-size: 13px;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: #fff !important;
+  }
+`;
+
+const NavLabel = styled.div`
+  padding: 0 10px 7px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 `;
 
 const NavMenu = styled.nav`
-  flex: 1;
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  gap: 3px;
 `;
 
-const NavItem = styled.div<{ $active: boolean }>`
+const NavItem = styled.button<{ $active: boolean }>`
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 16px;
+  gap: 11px;
+  border: 0;
   border-radius: 8px;
+  color: ${(props) => (props.$active ? '#fff' : '#aeb8c9')};
+  background: ${(props) => (props.$active ? 'rgba(99, 102, 241, 0.20)' : 'transparent')};
+  box-shadow: ${(props) => (props.$active ? 'inset 2px 0 0 var(--ff-accent)' : 'none')};
   cursor: pointer;
-  transition: all 0.15s ease;
-  color: ${(props) => (props.$active ? '#fff' : 'rgba(255,255,255,0.55)')};
-  background: ${(props) => (props.$active ? 'rgba(72, 52, 212, 0.2)' : 'transparent')};
   font-size: 14px;
-  font-weight: ${(props) => (props.$active ? 600 : 400)};
+  font-weight: ${(props) => (props.$active ? 600 : 500)};
+  text-align: left;
+  outline: none;
 
-  .nav-icon {
-    display: flex;
-    align-items: center;
-    font-size: 18px;
-  }
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
-  }
-
-  ${(props) =>
-    props.$active &&
-    `
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      width: 3px;
-      height: 20px;
-      background: #4834d4;
-      border-radius: 0 3px 3px 0;
-    }
-  `}
+  span { display: inline-flex; font-size: 17px; }
+  &:hover { background: ${(props) => (props.$active ? 'rgba(99, 102, 241, 0.24)' : 'rgba(255, 255, 255, 0.06)')}; color: #fff; }
+  &:focus-visible { outline: 2px solid #aeb8f5; outline-offset: 2px; }
 `;
 
 const SidebarFooter = styled.div`
-  padding: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 `;
 
-const UserCard = styled.div`
+const AccountButton = styled.button`
+  width: 100%;
+  padding: 9px 8px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
+  gap: 9px;
+  border: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: rgba(255, 255, 255, 0.06); }
+  .semi-avatar { background: #475569; color: #fff; }
 `;
 
-const UserInfo = styled.div`
-  display: flex;
-  flex-direction: column;
+const AccountCopy = styled.div`
+  min-width: 0;
+  display: grid;
   gap: 2px;
-  overflow: hidden;
+  .semi-typography { color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .semi-typography-secondary { color: #8e9aad; font-size: 12px; }
 `;
 
-const ContentArea = styled.div`
+const ContentArea = styled.main`
+  min-width: 0;
+  min-height: 0;
   flex: 1;
-  overflow: hidden;
-  background: #f5f6f8;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  overflow: hidden;
+  background: var(--ff-page);
 `;

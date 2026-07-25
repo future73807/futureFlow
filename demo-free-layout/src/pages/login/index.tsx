@@ -184,15 +184,17 @@ const PageWrapper = styled.div`
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: #f0f2f5;
+  padding: 24px;
+  background: #f7f8fb;
 `;
 
 const LoginCard = styled.div`
-  width: 400px;
-  padding: 36px 32px;
+  width: min(100%, 420px);
+  padding: 36px;
   background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e8e8e8;
+  border-radius: 14px;
+  border: 1px solid #e5e9f1;
+  box-shadow: 0 16px 36px rgba(16, 24, 40, .08);
 `;
 
 const LogoRow = styled.div`
@@ -211,7 +213,7 @@ const SwitchRow = styled.div`
 `;
 
 const SwitchButton = styled.span`
-  color: #4834d4;
+  color: #4054bf;
   font-size: 13px;
   cursor: pointer;
 
@@ -223,8 +225,8 @@ const SwitchButton = styled.span`
 const DemoBox = styled.div`
   margin-top: 16px;
   padding: 8px 12px;
-  background: #fafafa;
-  border-radius: 4px;
+  background: #f7f9fd;
+  border-radius: 8px;
   text-align: center;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e5e9f1;
 `;

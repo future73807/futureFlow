@@ -258,6 +258,19 @@ futureFlow 采用三层 API Key 架构，各层职责分离、互不耦合：
 
 用户在个人中心创建和管理平台 API Key，用于通过 API 调用工作流：
 
+个人中心同时支持修改当前登录用户的用户名和邮箱；该操作只更新当前用户自身的信息，并会校验用户名与邮箱的唯一性：
+
+```http
+PATCH /auth/profile
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "username": "new-name",
+  "email": "new-name@example.com"
+}
+```
+
 ```bash
 # 创建 API Key（需 JWT 登录）
 curl -X POST http://localhost:3001/user/api-keys \

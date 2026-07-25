@@ -789,7 +789,7 @@ const TabIcon = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
 );
 
 const PageContainer = styled.div`
-  padding: 32px;
+  padding: 34px 38px 48px;
   height: 100%;
   overflow-y: auto;
 `;
@@ -803,27 +803,28 @@ const Center = styled.div`
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
 `;
 
 const StatCard = styled.div`
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--ff-radius);
   padding: 20px;
-  border: 1px solid #eee;
+  border: 1px solid var(--ff-border);
+  box-shadow: var(--ff-shadow-sm);
 `;
 
 const StatLabel = styled.div`
   font-size: 13px;
-  color: #999;
+  color: var(--ff-muted);
   margin-bottom: 8px;
 `;
 
 const StatValue = styled.div<{ $accent?: boolean }>`
   font-size: 28px;
   font-weight: 700;
-  color: ${(p) => (p.$accent ? '#4834d4' : '#1a1d29')};
+  color: ${(p) => (p.$accent ? '#4054bf' : 'var(--ff-text)')};
 `;
 
 const ActionGroup = styled.div`
@@ -854,7 +855,7 @@ const Bar = styled.div`
 const BarFill = styled.div`
   width: 28px;
   min-height: 4px;
-  background: linear-gradient(180deg, #6c5ce7 0%, #4834d4 100%);
+  background: #7d8aec;
   border-radius: 4px 4px 0 0;
   transition: height 0.3s;
 `;

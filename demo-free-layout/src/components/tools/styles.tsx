@@ -9,14 +9,14 @@ import { IconMinimap } from '../../assets/icon-minimap';
 
 export const ToolContainer = styled.div`
   position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
   display: flex;
   justify-content: center;
   min-width: 360px;
   pointer-events: none;
-  gap: 8px;
+  gap: 10px;
 
   z-index: 20;
 `;
@@ -25,12 +25,12 @@ export const ToolSection = styled.div`
   display: flex;
   align-items: center;
   background-color: #fff;
-  border: 1px solid rgba(68, 83, 130, 0.25);
-  border-radius: 10px;
-  box-shadow: rgba(0, 0, 0, 0.04) 0px 2px 6px 0px, rgba(0, 0, 0, 0.02) 0px 4px 12px 0px;
-  column-gap: 2px;
-  height: 40px;
-  padding: 0 4px;
+  border: 1px solid #dfe5ef;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.10);
+  column-gap: 3px;
+  min-height: 44px;
+  padding: 4px 8px;
   pointer-events: auto;
 `;
 

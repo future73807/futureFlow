@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
 import iconLLM from '../../assets/icon-llm.jpg';
+import { formMeta } from './form-meta';
 
 let index = 0;
 export const LLMNodeRegistry: FlowNodeRegistry = {
@@ -23,6 +24,7 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
       height: 390,
     },
   },
+  formMeta,
   onAdd() {
     return {
       id: `llm_${nanoid(5)}`,

@@ -207,7 +207,7 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
         icon={<IconPlay />}
         disabled={disabled || result.status === 'running'}
         onClick={handleRun}
-        style={{ marginLeft: 8 }}
+        style={{ marginLeft: 4, borderRadius: 8, height: 34 }}
       >
         通过网关执行
       </Button>

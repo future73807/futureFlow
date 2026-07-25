@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { Component } from 'react';
 import { Field } from '@flowgram.ai/free-layout-editor';
 import { DynamicValueInput, PromptEditorWithVariables } from '@flowgram.ai/form-materials';
 
@@ -10,6 +11,49 @@ import { FormItem } from '../form-item';
 import { Feedback } from '../feedback';
 import { JsonSchema } from '../../typings';
 import { useNodeRenderContext } from '../../hooks';
+
+interface PromptEditorBoundaryProps {
+  value: any;
+  onChange: (value: any) => void;
+  readonly: boolean;
+  hasError: boolean;
+  schema: JsonSchema;
+}
+
+/**
+ * The rich prompt editor is loaded lazily by the upstream material package.
+ * If a transient chunk request fails, preserve the workflow canvas and fall
+ * back to the standard dynamic input instead of letting React unmount it.
+ */
+class PromptEditorBoundary extends Component<PromptEditorBoundaryProps, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <DynamicValueInput
+          value={this.props.value}
+          onChange={this.props.onChange}
+          readonly={this.props.readonly}
+          hasError={this.props.hasError}
+          schema={this.props.schema}
+        />
+      );
+    }
+    return (
+      <PromptEditorWithVariables
+        value={this.props.value}
+        onChange={this.props.onChange}
+        readonly={this.props.readonly}
+        hasError={this.props.hasError}
+      />
+    );
+  }
+}
 
 export function FormInputs() {
   const { readonly } = useNodeRenderContext();
@@ -39,11 +83,12 @@ export function FormInputs() {
                   required={required.includes(key)}
                 >
                   {formComponent === 'prompt-editor' && (
-                    <PromptEditorWithVariables
+                    <PromptEditorBoundary
                       value={field.value}
                       onChange={field.onChange}
                       readonly={readonly}
                       hasError={Object.keys(fieldState?.errors || {}).length > 0}
+                      schema={property}
                     />
                   )}
                   {!formComponent && (

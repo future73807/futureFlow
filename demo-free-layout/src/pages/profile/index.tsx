@@ -1,416 +1,241 @@
-/**
- * 个人中心页
- * 信息卡片 + 余额展示 + API Key 管理
- */
-
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Card,
-  Typography,
+  Avatar,
   Button,
-  Table,
-  Tag,
-  Modal,
-  Form,
-  Toast,
-  Spin,
-  Popconfirm,
   Empty,
+  Form,
+  Modal,
+  Popconfirm,
+  Spin,
+  Table,
+  Toast,
+  Typography,
 } from '@douyinfe/semi-ui';
-import { IconPlus, IconDelete, IconCopy } from '@douyinfe/semi-icons';
+import { IconCopy, IconDelete, IconEdit, IconKey, IconPlus } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
-import { fetchProfile } from '../../utils/auth';
+import { fetchProfile, setUser } from '../../utils/auth';
 import { apiJson } from '../../utils/api';
 
 interface ApiKey {
   id: string;
   name: string;
   keyPrefix: string;
-  lastUsedAt: string;
+  lastUsedAt: string | null;
   createdAt: string;
 }
 
 export const ProfilePage = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [user, setCurrentUser] = useState<any>(null);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
 
   const fetchApiKeys = useCallback(async () => {
+    setApiKeys(await apiJson<ApiKey[]>('/user/api-keys'));
+  }, []);
+
+  const loadPage = useCallback(async () => {
+    setLoadError(null);
     try {
-      setApiKeys(await apiJson<ApiKey[]>('/user/api-keys'));
+      const profile = await fetchProfile();
+      if (!profile) {
+        navigate('/login', { replace: true });
+        return;
+      }
+      setCurrentUser(profile);
+      await fetchApiKeys();
     } catch (error: any) {
-      Toast.error(error.message || '加载 API Key 失败');
+      setLoadError(error.message || '加载个人中心失败，请确认网关服务已启动');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchApiKeys, navigate]);
+
+  useEffect(() => { void loadPage(); }, [loadPage]);
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'create-key') return;
+    setCreateVisible(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const handleCreateKey = useCallback(async (values: { name?: string }) => {
+    try {
+      const data = await apiJson<{ plaintext: string }>('/user/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ name: values.name?.trim() || 'default' }),
+      });
+      setNewKey(data.plaintext);
+      setCreateVisible(false);
+      await fetchApiKeys();
+    } catch (error: any) {
+      Toast.error(error.message || '创建 Key 失败');
+    }
+  }, [fetchApiKeys]);
+
+  const handleUpdateProfile = useCallback(async (values: { username?: string; email?: string }) => {
+    setSavingProfile(true);
+    try {
+      const updated = await apiJson('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ username: values.username?.trim(), email: values.email?.trim() }),
+      });
+      setUser(updated);
+      setCurrentUser(updated);
+      setEditVisible(false);
+      Toast.success('个人信息已更新');
+    } catch (error: any) {
+      Toast.error(error.message || '保存个人信息失败');
+    } finally {
+      setSavingProfile(false);
     }
   }, []);
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      setLoadError(null);
-      try {
-        const currentUser = await fetchProfile();
-        if (!currentUser) {
-          navigate('/login', { replace: true });
-          return;
-        }
-        setUser(currentUser);
-        await fetchApiKeys();
-      } catch (error: any) {
-        setLoadError(error.message || '加载个人信息失败，请确认网关服务已启动');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void loadProfile();
-  }, [fetchApiKeys, navigate]);
-
-  const handleCreateKey = useCallback(
-    async (values: any) => {
-      try {
-        const data = await apiJson<{ plaintext: string }>('/user/api-keys', {
-          method: 'POST',
-          body: JSON.stringify({ name: values.name || 'default' }),
-        });
-        setNewKey(data.plaintext);
-        setCreateVisible(false);
-        await fetchApiKeys();
-        setUser(await fetchProfile());
-      } catch (error: any) {
-        Toast.error(error.message || '创建失败');
-      }
-    },
-    [fetchApiKeys],
-  );
-
-  const handleRevoke = useCallback(
-    async (id: string) => {
-      try {
-        await apiJson<{ success: boolean }>(`/user/api-keys/${id}`, {
-          method: 'DELETE',
-        });
-        Toast.success('已撤销');
-        await fetchApiKeys();
-      } catch (error: any) {
-        Toast.error(error.message || '撤销失败');
-      }
-    },
-    [fetchApiKeys],
-  );
-
-  const copyToClipboard = async (text: string) => {
+  const handleRevoke = useCallback(async (id: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await apiJson(`/user/api-keys/${id}`, { method: 'DELETE' });
+      Toast.success('Key 已撤销');
+      await fetchApiKeys();
+    } catch (error: any) {
+      Toast.error(error.message || '撤销 Key 失败');
+    }
+  }, [fetchApiKeys]);
+
+  const copyToClipboard = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
       Toast.success('已复制到剪贴板');
     } catch {
       Toast.error('复制失败，请手动复制');
     }
   };
 
-  if (loading) {
-    return (
-      <Center>
-        <Spin size="large" />
-      </Center>
-    );
-  }
-
+  if (loading) return <Center><Spin size="large" /></Center>;
   if (!user) {
-    return (
-      <Center>
-        <ErrorState>
-          <Empty title="加载失败" description={loadError || '无法加载个人信息'} />
-          <Button onClick={() => window.location.reload()}>重新加载</Button>
-        </ErrorState>
-      </Center>
-    );
+    return <Center><ErrorState><Empty title="加载失败" description={loadError || '无法读取个人信息'} /><Button onClick={() => void loadPage()}>重新加载</Button></ErrorState></Center>;
   }
 
+  const joinDate = user.createdAt ? new Date(user.createdAt).toLocaleDateString('zh-CN') : '-';
   return (
     <PageContainer>
-      <Typography.Title heading={3} style={{ marginBottom: 8, fontWeight: 600 }}>
-        个人中心
-      </Typography.Title>
-      <Typography.Text type="tertiary" style={{ marginBottom: 28, display: 'block' }}>
-        管理你的账号信息、余额和 API 密钥
-      </Typography.Text>
+      <PageHeader>
+        <div>
+          <PageTitle>个人中心</PageTitle>
+          <PageDescription>管理你的账户信息、访问密钥和用量额度。</PageDescription>
+        </div>
+        <Button icon={<IconEdit />} onClick={() => setEditVisible(true)}>编辑资料</Button>
+      </PageHeader>
 
-      {/* 统计卡片 */}
-      <StatsRow>
-        <StatCard>
-          <StatLabel>VIP 等级</StatLabel>
-          <StatValue>
-            <Tag
-              size="large"
-              color={user.vipLevel === 'enterprise' ? 'purple' : user.vipLevel === 'pro' ? 'blue' : 'grey'}
-              style={{ borderRadius: 6 }}
-            >
-              {user.vipLevel?.toUpperCase()}
-            </Tag>
-          </StatValue>
-        </StatCard>
-        <StatCard>
-          <StatLabel>账户余额</StatLabel>
-          <StatValue $highlight>¥ {user.balance?.toFixed(2)}</StatValue>
-        </StatCard>
-        <StatCard>
-          <StatLabel>冻结余额</StatLabel>
-          <StatValue>¥ {user.frozenBalance?.toFixed(4)}</StatValue>
-        </StatCard>
-        <StatCard>
-          <StatLabel>账号状态</StatLabel>
-          <StatValue>
-            <Tag size="large" color={user.status === 'active' ? 'green' : 'red'} style={{ borderRadius: 6 }}>
-              {user.status === 'active' ? '正常' : '已封禁'}
-            </Tag>
-          </StatValue>
-        </StatCard>
-      </StatsRow>
-
-      {/* 账号信息 */}
-      <SectionCard>
-        <Card style={{ borderRadius: 12, border: '1px solid #eee' }}>
-          <div style={{ padding: 20 }}>
-            <Typography.Title heading={5} style={{ marginBottom: 16 }}>
-              账号信息
-            </Typography.Title>
-            <InfoGrid>
-              <InfoItem>
-                <InfoLabel>用户名</InfoLabel>
-                <InfoValue>{user.username}</InfoValue>
-              </InfoItem>
-              <InfoItem>
-                <InfoLabel>邮箱</InfoLabel>
-                <InfoValue>{user.email || '-'}</InfoValue>
-              </InfoItem>
-              <InfoItem>
-                <InfoLabel>注册时间</InfoLabel>
-                <InfoValue>{new Date(user.createdAt).toLocaleString('zh-CN')}</InfoValue>
-              </InfoItem>
-
-            </InfoGrid>
+      <ProfileSurface>
+        <Identity>
+          <ProfileAvatar size="extra-large">{user.username?.[0]?.toUpperCase() || 'U'}</ProfileAvatar>
+          <div>
+            <IdentityName>{user.username}</IdentityName>
+            <IdentityMeta>{user.email || '未设置邮箱'}</IdentityMeta>
           </div>
-        </Card>
-      </SectionCard>
+        </Identity>
+        <AccountFacts>
+          <Fact><FactLabel>账户状态</FactLabel><FactValue>正常</FactValue></Fact>
+          <Fact><FactLabel>账户级别</FactLabel><FactValue>{user.vipLevel?.toUpperCase() || 'FREE'}</FactValue></Fact>
+          <Fact><FactLabel>注册时间</FactLabel><FactValue>{joinDate}</FactValue></Fact>
+        </AccountFacts>
+      </ProfileSurface>
 
-      {/* API Key 管理 */}
-      <SectionCard>
-        <Card style={{ borderRadius: 12, border: '1px solid #eee' }}>
-          <div style={{ padding: 20 }}>
-            <SectionHeader>
-              <Typography.Title heading={5} style={{ margin: 0 }}>
-                API Key 管理
-              </Typography.Title>
-              <Button
-                theme="solid"
-                type="primary"
-                size="small"
-                icon={<IconPlus />}
-                onClick={() => setCreateVisible(true)}
-                style={{ borderRadius: 6, flexShrink: 0 }}
-              >
-                新建 Key
-              </Button>
-            </SectionHeader>
+      <MetricGrid>
+        <MetricCard><MetricLabel>可用额度</MetricLabel><MetricValue>¥ {Number(user.balance || 0).toFixed(2)}</MetricValue><MetricHint>可用于工作流运行与 API 调用</MetricHint></MetricCard>
+        <MetricCard><MetricLabel>冻结额度</MetricLabel><MetricValue>¥ {Number(user.frozenBalance || 0).toFixed(4)}</MetricValue><MetricHint>运行中的任务会暂时占用额度</MetricHint></MetricCard>
+        <MetricCard><MetricLabel>访问密钥</MetricLabel><MetricValue>{apiKeys.length}</MetricValue><MetricHint>请仅为必要的环境创建 Key</MetricHint></MetricCard>
+      </MetricGrid>
 
-            <Table
-              dataSource={apiKeys}
-              pagination={false}
-              rowKey="id"
-              style={{ marginTop: 12 }}
-              columns={[
-                {
-                  title: '名称',
-                  dataIndex: 'name',
-                  width: 120,
-                  render: (text: string) => (
-                    <Typography.Text strong>{text}</Typography.Text>
-                  ),
-                },
-                {
-                  title: 'Key 前缀',
-                  dataIndex: 'keyPrefix',
-                  render: (text: string) => (
-                    <code style={{ background: '#f0f2ff', padding: '4px 10px', borderRadius: 6, fontSize: 13, color: '#4834d4' }}>
-                      {text}...
-                    </code>
-                  ),
-                },
-                {
-                  title: '最后使用',
-                  dataIndex: 'lastUsedAt',
-                  render: (text: string) =>
-                    text ? new Date(text).toLocaleString('zh-CN') : '从未使用',
-                },
-                {
-                  title: '创建时间',
-                  dataIndex: 'createdAt',
-                  render: (text: string) => new Date(text).toLocaleString('zh-CN'),
-                },
-                {
-                  title: '操作',
-                  render: (_: any, record: ApiKey) => (
-                    <Popconfirm
-                      title="确认撤销此 API Key？"
-                      okText="撤销"
-                      cancelText="取消"
-                      okType="danger"
-                      onConfirm={() => handleRevoke(record.id)}
-                    >
-                      <Button size="small" type="danger" icon={<IconDelete />} style={{ borderRadius: 6 }}>
-                        撤销
-                      </Button>
-                    </Popconfirm>
-                  ),
-                },
-              ]}
-              empty="暂无 API Key，点击右上角「新建 Key」创建"
-            />
-          </div>
-        </Card>
-      </SectionCard>
+      <SectionSurface>
+        <SectionHeader>
+          <div><SectionTitle>API Key</SectionTitle><SectionDescription>创建后仅展示一次明文；撤销会立即使 Key 失效。</SectionDescription></div>
+          <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>创建 Key</Button>
+        </SectionHeader>
+        <Table
+          dataSource={apiKeys}
+          pagination={false}
+          rowKey="id"
+          empty={<Empty description="还没有 API Key" />}
+          columns={[
+            { title: '名称', dataIndex: 'name', width: 180, render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
+            { title: 'Key 前缀', dataIndex: 'keyPrefix', render: (value: string) => <KeyPrefix>{value}…</KeyPrefix> },
+            { title: '最后使用', dataIndex: 'lastUsedAt', render: (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '从未使用' },
+            { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString('zh-CN') },
+            {
+              title: '操作', width: 110,
+              render: (_: unknown, record: ApiKey) => (
+                <Popconfirm title="确认撤销此 API Key？" okText="撤销" cancelText="取消" okType="danger" onConfirm={() => void handleRevoke(record.id)}>
+                  <Button size="small" type="danger" theme="borderless" icon={<IconDelete />}>撤销</Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </SectionSurface>
 
-      {/* 创建 API Key 弹窗 */}
-      <Modal
-        title="新建 API Key"
-        visible={createVisible}
-        onCancel={() => setCreateVisible(false)}
-        footer={null}
-      >
-        <Form onSubmit={handleCreateKey}>
-          <Form.Input field="name" label="名称" placeholder="如：生产环境" />
-          <Button
-            type="primary"
-            theme="solid"
-            htmlType="submit"
-            block
-            size="large"
-            style={{ marginTop: 16, borderRadius: 8, height: 44 }}
-          >
-            创建
-          </Button>
+      <Modal title="编辑个人资料" visible={editVisible} onCancel={() => setEditVisible(false)} footer={null}>
+        <ModalIntro>用户名和邮箱用于平台识别与通知；修改后会立即在当前账户生效。</ModalIntro>
+        <Form onSubmit={handleUpdateProfile} initValues={{ username: user.username, email: user.email }}>
+          <Form.Input field="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]} />
+          <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入有效邮箱' }]} />
+          <ModalActions><Button onClick={() => setEditVisible(false)}>取消</Button><Button type="primary" theme="solid" htmlType="submit" loading={savingProfile}>保存修改</Button></ModalActions>
         </Form>
       </Modal>
 
-      {/* 显示新建 Key 的明文 */}
-      <Modal
-        title="API Key 已创建"
-        visible={!!newKey}
-        onCancel={() => setNewKey(null)}
-        footer={
-          <Button type="primary" theme="solid" onClick={() => setNewKey(null)} style={{ borderRadius: 6 }}>
-            我已保存
-          </Button>
-        }
-      >
-        <Typography.Text type="danger" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-          ⚠️ 请立即复制并保存，此密钥仅显示一次！
-        </Typography.Text>
-        <KeyDisplay>
-          <code style={{ wordBreak: 'break-all', fontSize: 13 }}>{newKey}</code>
-        </KeyDisplay>
-        <Button
-          icon={<IconCopy />}
-          onClick={() => copyToClipboard(newKey!)}
-          style={{ marginTop: 12, borderRadius: 6 }}
-          block
-        >
-          复制到剪贴板
-        </Button>
+      <Modal title="创建 API Key" visible={createVisible} onCancel={() => setCreateVisible(false)} footer={null}>
+        <ModalIntro>为每个用途单独创建 Key，方便后续追踪和撤销。</ModalIntro>
+        <Form onSubmit={handleCreateKey}>
+          <Form.Input field="name" label="名称" placeholder="例如：生产环境" rules={[{ required: true, message: '请输入 Key 名称' }]} />
+          <ModalActions><Button onClick={() => setCreateVisible(false)}>取消</Button><Button type="primary" theme="solid" htmlType="submit" icon={<IconKey />}>创建 Key</Button></ModalActions>
+        </Form>
+      </Modal>
+
+      <Modal title="请立即保存 API Key" visible={!!newKey} onCancel={() => setNewKey(null)} footer={<Button type="primary" theme="solid" onClick={() => setNewKey(null)}>我已保存</Button>}>
+        <ModalIntro>出于安全原因，此 Key 只会展示一次。</ModalIntro>
+        <SecretValue><code>{newKey}</code></SecretValue>
+        <Button block icon={<IconCopy />} onClick={() => void copyToClipboard(newKey!)}>复制到剪贴板</Button>
       </Modal>
     </PageContainer>
   );
 };
 
 const PageContainer = styled.div`
-  padding: 32px;
-  height: 100%;
-  overflow-y: auto;
+  height: 100%; overflow-y: auto; box-sizing: border-box; padding: 34px 38px 48px;
 `;
-
-const StatsRow = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-`;
-
-const StatCard = styled.div`
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #eee;
-`;
-
-const StatLabel = styled.div`
-  font-size: 13px;
-  color: #999;
-  margin-bottom: 8px;
-`;
-
-const StatValue = styled.div<{ $highlight?: boolean }>`
-  font-size: ${(props) => (props.$highlight ? '24px' : '16px')};
-  font-weight: ${(props) => (props.$highlight ? 700 : 500)};
-  color: ${(props) => (props.$highlight ? '#4834d4' : '#1a1d29')};
-`;
-
-const SectionCard = styled.div`
-  margin-bottom: 24px;
-`;
-
-const InfoGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-
-  @media (max-width: 700px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const InfoItem = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const InfoLabel = styled.div`
-  font-size: 12px;
-  color: #999;
-`;
-
-const InfoValue = styled.div`
-  font-size: 14px;
-  color: #1a1d29;
-`;
-
-const SectionHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const Center = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 300px;
-`;
-
-const ErrorState = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-`;
-
-const KeyDisplay = styled.div`
-  padding: 16px;
-  background: #1a1d29;
-  border-radius: 8px;
-  color: #4ade80;
-`;
+const PageHeader = styled.header`display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:24px;`;
+const PageTitle = styled.h1`margin:0; color:var(--ff-text); font-size:24px; line-height:32px; letter-spacing:-.45px;`;
+const PageDescription = styled.p`margin:6px 0 0; color:var(--ff-muted); font-size:14px;`;
+const ProfileSurface = styled.section`display:flex; align-items:center; justify-content:space-between; gap:28px; min-height:112px; padding:24px; background:var(--ff-surface); border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); box-shadow:var(--ff-shadow-sm);`;
+const Identity = styled.div`display:flex; align-items:center; gap:15px; min-width:0;`;
+const ProfileAvatar = styled(Avatar)`.semi-avatar { background:#e8edff; color:#4054bf; font-weight:700; }`;
+const IdentityName = styled.div`color:var(--ff-text); font-size:18px; font-weight:650; line-height:26px;`;
+const IdentityMeta = styled.div`margin-top:2px; color:var(--ff-muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`;
+const AccountFacts = styled.div`display:grid; grid-template-columns:repeat(3, minmax(100px, 1fr)); gap:24px;`;
+const Fact = styled.div`min-width:0;`;
+const FactLabel = styled.div`margin-bottom:6px; color:var(--ff-muted); font-size:12px;`;
+const FactValue = styled.div`color:var(--ff-text); font-size:14px; font-weight:600;`;
+const MetricGrid = styled.div`display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin:18px 0;`;
+const MetricCard = styled.div`min-height:112px; padding:20px; box-sizing:border-box; border:1px solid var(--ff-border); border-radius:var(--ff-radius); background:var(--ff-surface);`;
+const MetricLabel = styled.div`color:var(--ff-muted); font-size:13px;`;
+const MetricValue = styled.div`margin:9px 0 5px; color:var(--ff-text); font-size:25px; font-weight:680; letter-spacing:-.5px;`;
+const MetricHint = styled.div`color:var(--ff-subtle); font-size:12px; line-height:18px;`;
+const SectionSurface = styled.section`padding:22px 24px 10px; border:1px solid var(--ff-border); border-radius:var(--ff-radius-lg); background:var(--ff-surface); box-shadow:var(--ff-shadow-sm);`;
+const SectionHeader = styled.div`display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:18px;`;
+const SectionTitle = styled.h2`margin:0; color:var(--ff-text); font-size:16px; line-height:24px;`;
+const SectionDescription = styled.p`margin:4px 0 0; color:var(--ff-muted); font-size:13px;`;
+const KeyPrefix = styled.code`padding:4px 8px; border-radius:5px; background:#f1f4fb; color:#4054bf; font-size:12px;`;
+const ModalIntro = styled.p`margin:0 0 18px; color:var(--ff-muted); font-size:13px; line-height:20px;`;
+const ModalActions = styled.div`display:flex; justify-content:flex-end; gap:8px; margin-top:24px;`;
+const SecretValue = styled.div`margin:0 0 12px; padding:14px; overflow:auto; border:1px solid #dfe5f4; border-radius:8px; background:#f7f9fd; color:#223c98; font-size:13px;`;
+const Center = styled.div`display:flex; height:100%; align-items:center; justify-content:center;`;
+const ErrorState = styled.div`display:grid; justify-items:center; gap:12px;`;

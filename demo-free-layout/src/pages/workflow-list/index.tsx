@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
   Typography,
@@ -98,6 +98,7 @@ interface DifySyncResult {
 
 export const WorkflowListPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -157,6 +158,16 @@ export const WorkflowListPage = () => {
     setTemplateVisible(true);
     void loadTemplates();
   }, [loadTemplates]);
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'create' && action !== 'templates') return;
+    if (action === 'create') setCreateVisible(true);
+    if (action === 'templates') void openTemplates();
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [openTemplates, searchParams, setSearchParams]);
 
   const openDifySettings = useCallback(async () => {
     setDifyVisible(true);
@@ -531,7 +542,7 @@ export const WorkflowListPage = () => {
           <Button onClick={() => void openDifySettings()} style={{ borderRadius: 8, height: 40 }}>
             Dify 引擎
           </Button>
-          <Button onClick={openTemplates} style={{ borderRadius: 8, height: 40 }}>
+          <Button onClick={openTemplates} style={{ display: 'none' }}>
             模板库
           </Button>
         <Button
@@ -539,7 +550,7 @@ export const WorkflowListPage = () => {
           type="primary"
           icon={<IconPlus />}
           onClick={() => setCreateVisible(true)}
-          style={{ borderRadius: 8, height: 40, flexShrink: 0 }}
+          style={{ display: 'none' }}
         >
           创建画布
         </Button>
@@ -733,28 +744,28 @@ export const WorkflowListPage = () => {
         visible={templateVisible}
         onCancel={() => setTemplateVisible(false)}
         footer={null}
-        style={{ width: 760 }}
+        style={{ width: 960, maxWidth: 'calc(100vw - 40px)' }}
       >
         {templatesLoading ? (
           <LoadingCenter><Spin /></LoadingCenter>
         ) : templates.length === 0 ? (
           <Empty description="暂时没有可用模板" />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+          <TemplateGrid>
             {templates.map((template) => (
-              <div key={template.id} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 10, padding: 14 }}>
+              <TemplateCard key={template.id}>
                 <Typography.Title heading={6} style={{ margin: '0 0 6px' }}>{template.name}</Typography.Title>
                 <Typography.Text type="tertiary" style={{ minHeight: 40, display: 'block' }}>{template.description}</Typography.Text>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '10px 0' }}>
+                <TemplateTags>
                   {template.tags.map((tag) => <Tag key={tag} size="small">{tag}</Tag>)}
                   {template.requiresDify && <Tag size="small" color="orange">需要 Dify</Tag>}
-                </div>
+                </TemplateTags>
                 <Button block theme="solid" type="primary" loading={creating} onClick={() => void handleCreateFromTemplate(template)}>
                   使用模板
                 </Button>
-              </div>
+              </TemplateCard>
             ))}
-          </div>
+          </TemplateGrid>
         )}
       </Modal>
 
@@ -985,7 +996,7 @@ export const WorkflowListPage = () => {
 };
 
 const PageContainer = styled.div`
-  padding: 32px;
+  padding: 34px 38px 48px;
   height: 100%;
   overflow-y: auto;
 `;
@@ -993,9 +1004,9 @@ const PageContainer = styled.div`
 const PageHeader = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 `;
 
 const HeaderTitle = styled.div`
@@ -1026,25 +1037,25 @@ const ErrorState = styled.div`
 
 const WorkflowGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
 `;
 
 const WorkflowCard = styled.div`
   background: #fff;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: var(--ff-radius-lg);
+  padding: 22px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid #eee;
+  border: 1px solid var(--ff-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
 
   &:hover {
-    border-color: #4834d4;
-    box-shadow: 0 8px 24px rgba(72, 52, 212, 0.12);
-    transform: translateY(-2px);
+    border-color: #b9c3f5;
+    box-shadow: 0 10px 24px rgba(16, 24, 40, .08);
+    transform: translateY(-1px);
   }
 `;
 
@@ -1055,10 +1066,10 @@ const CardTop = styled.div`
 `;
 
 const CardIcon = styled.div`
-  width: 44px;
-  height: 44px;
-  background: #f0f0ff;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  background: #eef1ff;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1067,8 +1078,8 @@ const CardIcon = styled.div`
 const CardTitle = styled.div`
   font-size: 16px;
   font-weight: 600;
-  color: #1a1d29;
-  margin-top: 4px;
+  color: var(--ff-text);
+  margin-top: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1076,8 +1087,9 @@ const CardTitle = styled.div`
 
 const CardDesc = styled.div`
   font-size: 13px;
-  color: #999;
-  min-height: 20px;
+  color: var(--ff-muted);
+  min-height: 38px;
+  line-height: 19px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1085,33 +1097,35 @@ const CardDesc = styled.div`
 
 const CardMeta = styled.div`
   font-size: 12px;
-  color: #bbb;
-  margin-bottom: 8px;
+  color: var(--ff-subtle);
+  margin-bottom: 10px;
 `;
 
 const CardActions = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding-top: 12px;
-  border-top: 1px solid #f5f5f5;
+  gap: 7px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f5;
 `;
 
 const ActionButton = styled.button<{ $danger?: boolean }>`
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: ${(props) => (props.$danger ? '#ef4444' : '#666')};
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: ${(props) => (props.$danger ? '#d92d20' : '#475467')};
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 
   &:hover {
-    background: ${(props) => (props.$danger ? '#fef2f2' : '#f5f5f5')};
+    background: ${(props) => (props.$danger ? '#fff1f0' : '#eef1ff')};
+    border-color: ${(props) => (props.$danger ? '#ffd4d1' : '#dce2ff')};
+    color: ${(props) => (props.$danger ? '#b42318' : '#4054bf')};
   }
 
   &:disabled {
@@ -1131,6 +1145,35 @@ const CodeBlock = styled.pre`
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+`;
+
+const TemplateGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+
+  @media (max-width: 720px) { grid-template-columns: 1fr; }
+`;
+
+const TemplateCard = styled.article`
+  min-height: 194px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--ff-border);
+  border-radius: 12px;
+  background: #fff;
+
+  .semi-button { margin-top: auto; }
+`;
+
+const TemplateTags = styled.div`
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 `;
 
 const RunLoading = styled.div`

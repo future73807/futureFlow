@@ -151,6 +151,20 @@ async function main() {
     const adminToken = loginResponse.body.accessToken;
     assert.equal(loginResponse.body.user.role, 'admin');
 
+    const profile = await request(server)
+      .patch('/auth/profile')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ username: 'demo-updated', email: 'demo-updated@example.com' })
+      .expect(200);
+    assert.equal(profile.body.username, 'demo-updated');
+    assert.equal(profile.body.email, 'demo-updated@example.com');
+
+    const renamedLogin = await request(server)
+      .post('/auth/login')
+      .send({ account: 'demo-updated', password: 'demo123456' })
+      .expect(201);
+    assert.equal(renamedLogin.body.user.username, 'demo-updated');
+
     const templates = await request(server)
       .get('/workflow-templates')
       .set('Authorization', `Bearer ${adminToken}`)

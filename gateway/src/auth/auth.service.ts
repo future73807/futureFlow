@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { User } from '../database/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -86,6 +87,28 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const username = dto.username?.trim();
+    const email = dto.email?.trim().toLowerCase();
+    if (username && username !== user.username) {
+      const existing = await this.userRepo.findOne({ where: { username } });
+      if (existing) throw new ConflictException('用户名已存在');
+      user.username = username;
+    }
+    if (email && email !== user.email) {
+      const existing = await this.userRepo.findOne({ where: { email } });
+      if (existing) throw new ConflictException('邮箱已被注册');
+      user.email = email;
+    }
+
+    return this.sanitizeUser(await this.userRepo.save(user));
+  }
+
   async validateJwtPayload(payload: any): Promise<User | null> {
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
     if (!user || user.status !== 'active') {
@@ -120,6 +143,7 @@ export class AuthService {
       frozenBalance: parseFloat(user.frozenBalance.toString()),
       status: user.status,
       createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
   }
 }

@@ -225,15 +225,18 @@ export const CanvasPage = () => {
             icon={<IconArrowLeft />}
             onClick={handleBack}
             theme="borderless"
+            aria-label="返回工作流"
           />
-          <Input
+          <CanvasTitleGroup>
+            <CanvasEyebrow>工作流画布</CanvasEyebrow>
+            <CanvasName
             value={workflowName}
             onChange={(value) => {
               setWorkflowName(value);
               markDirty();
             }}
-            style={{ width: 240 }}
-          />
+            />
+          </CanvasTitleGroup>
         </LeftGroup>
         <SaveActions>
           <SaveStatusText $status={saveStatus}>{saveStatusText}</SaveStatusText>
@@ -326,30 +329,51 @@ const CanvasTopBar = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  min-height: 64px;
+  padding: 10px 20px;
   background: #fff;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid #e5e9f1;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .02);
   flex-shrink: 0;
 `;
 
 const LeftGroup = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+`;
+
+const CanvasTitleGroup = styled.div`
+  display: grid;
+  gap: 1px;
+`;
+
+const CanvasEyebrow = styled.div`
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+`;
+
+const CanvasName = styled(Input)`
+  width: 300px;
+  .semi-input { color: #182230; font-size: 15px; font-weight: 600; }
+  &.semi-input-wrapper { border-color: transparent !important; background: transparent; padding: 0; }
+  &.semi-input-wrapper:hover, &.semi-input-wrapper-focus { border-color: #d8deea !important; background: #fff; padding: 0 8px; }
 `;
 
 const SaveActions = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 `;
 
 const SaveStatusText = styled.span<{ $status: SaveStatus }>`
-  min-width: 150px;
+  min-width: 162px;
   color: ${(props) => {
-    if (props.$status === 'error') return '#e5484d';
-    if (props.$status === 'unsaved') return '#d97706';
-    return '#8c8c8c';
+    if (props.$status === 'error') return '#d92d20';
+    if (props.$status === 'unsaved') return '#b54708';
+    return '#667085';
   }};
   font-size: 12px;
   text-align: right;
