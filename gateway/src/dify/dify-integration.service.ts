@@ -83,6 +83,11 @@ export class DifyIntegrationService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const autoBootstrapEnabled = this.config.get<string>('DIFY_AUTO_BOOTSTRAP', 'false')
+      .trim()
+      .toLowerCase() === 'true';
+    if (!autoBootstrapEnabled) return;
+
     const consoleToken = this.config.get<string>('DIFY_CONSOLE_TOKEN', '').trim();
     if (!consoleToken || !this.isEncryptionReady()) return;
 

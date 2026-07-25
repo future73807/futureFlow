@@ -82,9 +82,12 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
     },
   };
   const config = {
-    get: (key: string, fallback = '') => key === 'DIFY_KEY_ENCRYPTION_SECRET'
-      ? 'test-encryption-secret-that-is-long-enough-12345'
-      : fallback,
+    get: (key: string, fallback = '') => {
+      if (key === 'DIFY_KEY_ENCRYPTION_SECRET') return 'test-encryption-secret-that-is-long-enough-12345';
+      if (key === 'DIFY_CONSOLE_TOKEN') return 'synthetic-console-token';
+      if (key === 'DIFY_AUTO_BOOTSTRAP') return 'false';
+      return fallback;
+    },
   };
   const originalFetch = global.fetch;
   const calls: Array<{ url: string; method: string; authorization: string }> = [];
@@ -117,6 +120,9 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
 
   try {
     const service = new DifyIntegrationService(repository as any, config as any);
+    await service.onModuleInit();
+    assert.equal(calls.length, 0, 'Console authorization must not run automatically unless explicitly enabled');
+
     const preflight = await service.preflight();
     assert.equal(preflight.safe, true);
     assert.equal(preflight.checks.apiHealth.state, 'passed');

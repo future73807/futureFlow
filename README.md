@@ -16,7 +16,7 @@ start.bat
 ```
 
 脚本会自动:
-1. 从 `.env.example` 复制生成 `.env`(首次启动)
+1. 从 `.env.example` 复制生成 `.env`（首次启动）；若已有 `.env` 缺少或使用占位的 Dify 加密密钥，会仅补齐该随机密钥
 2. 安装 pnpm workspace 依赖
 3. 启动全部 Compose 服务（futureFlow PostgreSQL + 完整 Dify）
 4. 等待 PostgreSQL、Dify API 就绪后启动网关(:3001)和 FlowGram 画布(:3000)
@@ -25,7 +25,7 @@ start.bat
 ### 跨平台(pnpm 命令)
 
 ```bash
-# 1. 创建环境变量文件(首次；会生成本机 Dify 凭据加密密钥)
+# 1. 创建或修复环境变量文件（会生成本机 Dify 凭据加密密钥；不会回显密钥）
 pnpm run env:init
 
 # 2. 编辑 .env：配置 LLM，或按下方「受控 Dify 集成」完成一次管理员授权
@@ -412,7 +412,7 @@ curl -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
 - 已发布工作流在每次「发布」时自动同步到专属 Dify 应用；若先发布、后授权，可在工作流卡片点击「同步 Dify」完成补同步。
 - `POST /admin/dify/rotate-key` 可传入 `workflowId` 和 `workflowVersion`，为该专属应用生成新的 Dify Service API Key 并原子更新加密存储。
 - Dify Console 会话过期时，网关先尝试使用加密的刷新令牌续期；续期失败才要求管理员再次授权。
-- 启动时如果 `.env` 已提供 `DIFY_CONSOLE_TOKEN` 和真实的加密密钥，平台会自动完成首次 Console 授权；后续发布无需再手动复制任何 Dify Key。该 Console Token 不会写回 `.env`。
+- 默认启动时不会读取或使用 `DIFY_CONSOLE_TOKEN`。只有受控部署明确设置 `DIFY_AUTO_BOOTSTRAP=true`，且同时提供真实的加密密钥时，平台才会自动完成首次 Console 授权；后续发布无需再手动复制任何 Dify Key。该 Console Token 不会写回 `.env`。
 - `DIFY_API_KEY` 保留为兼容旧部署的后备方案；未配置任何 Dify 凭据时，网关降级为直接 LLM 模式。
 
 #### 真实模型与费用验收（需显式授权）

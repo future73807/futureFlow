@@ -15,7 +15,7 @@
     "dev": "pnpm run gateway & pnpm run frontend",
     "dev:concurrent": "concurrently -n GATEWAY,FRONTEND -c blue,green \"pnpm:gateway\" \"pnpm:frontend\"",
     "start": "node scripts/start-full-stack.cjs",
-    "env:init": "node -e \"const fs=require('fs'),crypto=require('crypto');if(!fs.existsSync('.env')){let env=fs.readFileSync('.env.example','utf8');env=env.replace('DIFY_KEY_ENCRYPTION_SECRET=replace-with-a-random-secret-at-least-32-characters','DIFY_KEY_ENCRYPTION_SECRET='+crypto.randomBytes(32).toString('hex'));fs.writeFileSync('.env',env,{mode:0o600});console.log('.env created with a local Dify credential-encryption secret')}else{console.log('.env already exists')}\"",
+    "env:init": "node scripts/init-env.cjs",
     "quickstart": "pnpm run env:init && pnpm install --prod=false && pnpm run start",
     "build:gateway": "pnpm --filter futureflow-gateway build",
     "build:frontend": "pnpm --filter @flowgram.ai/demo-free-layout build:prod",
