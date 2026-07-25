@@ -46,6 +46,33 @@ export class AdminController {
   }
 
   /**
+   * A no-secret, no-billing Dify readiness check. It does not decrypt stored
+   * credentials, provision a Dify resource, or run a model.
+   */
+  @Get('dify/preflight')
+  async preflightDify() {
+    return this.difyIntegration.preflight();
+  }
+
+  /**
+   * Validates a token or one-time email/password without persisting it. This
+   * only reads the Dify Console app list and never creates an app/key or runs
+   * a workflow/model.
+   */
+  @Post('dify/validate-authorization')
+  async validateDifyAuthorization(
+    @Body()
+    body: {
+      consoleToken?: string;
+      email?: string;
+      password?: string;
+      consoleBase?: string;
+    },
+  ) {
+    return this.difyIntegration.validateAuthorization(body || {});
+  }
+
+  /**
    * Stores a privileged Dify Console authorization once. Each future workflow
    * publication then creates its own Dify app and encrypted app-* key.
    */

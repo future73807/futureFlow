@@ -32,6 +32,41 @@ export interface DifyBootstrapInput {
   appId?: string;
 }
 
+type DifyPreflightState = 'passed' | 'failed' | 'not_configured' | 'not_checked';
+
+interface DifyPreflightCheck {
+  state: DifyPreflightState;
+  message: string;
+  version?: string;
+}
+
+/**
+ * A deliberately non-billing readiness report. It never decrypts a stored
+ * Console credential, creates a Dify resource, or invokes a workflow/model.
+ */
+export interface DifyPreflightResult {
+  checkedAt: string;
+  safe: true;
+  consoleBase: string;
+  checks: {
+    apiHealth: DifyPreflightCheck;
+    consoleEndpoint: DifyPreflightCheck;
+    credentialEncryption: DifyPreflightCheck;
+    storedAuthorization: DifyPreflightCheck;
+    provisioning: DifyPreflightCheck;
+    modelExecution: DifyPreflightCheck;
+  };
+  nextStep: string;
+}
+
+export interface DifyAuthorizationValidationResult {
+  authorized: true;
+  persisted: false;
+  consoleBase: string;
+  checkedAt: string;
+  message: string;
+}
+
 /**
  * Stores one encrypted Dify Console authorization and provisions a dedicated
  * Dify application plus Service API key for every published workflow version.
@@ -162,6 +197,81 @@ export class DifyIntegrationService implements OnModuleInit {
   }
 
   /**
+   * Verifies only local Dify reachability and local encryption readiness.
+   * In particular, this endpoint intentionally does not decrypt or send a
+   * stored Console credential, so it cannot validate a real administrator
+   * account or cause any model/provider charge by accident.
+   */
+  async preflight(): Promise<DifyPreflightResult> {
+    const connection = await this.integrationRepo.findOne({ where: { name: 'default' } });
+    const consoleBase = this.normalizeConsoleBase(
+      connection?.consoleBase
+        || this.config.get<string>('DIFY_CONSOLE_BASE', 'http://localhost:5001/console/api'),
+    );
+    const [apiHealth, consoleEndpoint] = await Promise.all([
+      this.probeApiHealth(consoleBase),
+      this.probeConsoleEndpoint(consoleBase),
+    ]);
+    const encryptionReady = this.isEncryptionReady();
+
+    return {
+      checkedAt: new Date().toISOString(),
+      safe: true,
+      consoleBase,
+      checks: {
+        apiHealth,
+        consoleEndpoint,
+        credentialEncryption: encryptionReady
+          ? { state: 'passed', message: '本地凭据加密已配置。' }
+          : {
+            state: 'failed',
+            message: '保存授权前需设置至少 32 位且非示例值的 DIFY_KEY_ENCRYPTION_SECRET。',
+          },
+        storedAuthorization: connection?.encryptedConsoleToken
+          ? {
+            state: 'not_checked',
+            message: '已存在保存的授权；安全预检不会解密或发送该凭据。',
+          }
+          : {
+            state: 'not_configured',
+            message: '尚未保存 Dify Console 授权。',
+          },
+        provisioning: {
+          state: 'not_checked',
+          message: '未创建 Dify 应用、Service API Key，也未导入 DSL。',
+        },
+        modelExecution: {
+          state: 'not_checked',
+          message: '未执行工作流或模型，不会产生模型供应商费用。',
+        },
+      },
+      nextStep: encryptionReady && apiHealth.state === 'passed' && consoleEndpoint.state === 'passed'
+        ? '可先验证管理员授权（不保存）；确认无误后，再显式保存授权以启用按版本创建资源。'
+        : '请先处理未通过的预检项，再输入或保存任何 Dify 管理员凭据。',
+    };
+  }
+
+  /**
+   * Validates a Console token or one-time email/password without storing any
+   * credential and without creating a Dify application, Service API key, DSL
+   * import, workflow execution, or model-provider charge.
+   */
+  async validateAuthorization(input: DifyBootstrapInput): Promise<DifyAuthorizationValidationResult> {
+    const authorization = await this.authorizeInput(input);
+    if (!authorization) {
+      throw new BadRequestException('请提供 Dify Console Token，或一次性管理员邮箱和密码');
+    }
+    await this.probeConsoleAuthorization(authorization.consoleBase, authorization.token);
+    return {
+      authorized: true,
+      persisted: false,
+      consoleBase: authorization.consoleBase,
+      checkedAt: new Date().toISOString(),
+      message: 'Dify Console 授权已验证；未保存凭据，也未创建任何 Dify 资源。',
+    };
+  }
+
+  /**
    * Performs the one-time admin authorization. Without appId it does not make
    * an execution app: publication creates isolated apps automatically.
    */
@@ -182,8 +292,14 @@ export class DifyIntegrationService implements OnModuleInit {
       refreshToken = login.refreshToken;
     }
     if (!token) {
-      throw new BadRequestException('Provide a Dify Console access token or a one-time Dify email and password');
+      throw new BadRequestException('请提供 Dify Console Token，或一次性管理员邮箱和密码');
     }
+
+    // A token pasted by an administrator must prove it can read the Console
+    // before it becomes an encrypted, persistent control-plane credential.
+    // This read-only request does not create an app/key, import DSL, or run a
+    // model, so it cannot trigger model-provider billing.
+    await this.probeConsoleAuthorization(consoleBase, token);
 
     const existing = await this.integrationRepo.findOne({ where: { name: 'default' } });
     const appId = (input.appId || existing?.appId || '').trim() || null;
@@ -397,7 +513,7 @@ export class DifyIntegrationService implements OnModuleInit {
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
-      throw new ServiceUnavailableException(`Dify Console is unreachable: ${this.safeError(error)}`);
+      throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
     }
     const result = await response.json().catch(() => ({})) as {
       data?: { access_token?: string; refresh_token?: string };
@@ -417,6 +533,65 @@ export class DifyIntegrationService implements OnModuleInit {
     return result.token || result.data?.token || '';
   }
 
+  private async probeApiHealth(consoleBase: string): Promise<DifyPreflightCheck> {
+    const healthUrl = new URL('/health', consoleBase).toString();
+    try {
+      const response = await fetch(healthUrl, { signal: AbortSignal.timeout(5_000) });
+      if (!response.ok) {
+        return { state: 'failed', message: `Dify API 健康检查返回 HTTP ${response.status}。` };
+      }
+      const result = await response.json().catch(() => ({})) as { status?: string; version?: string };
+      return {
+        state: result.status === 'ok' || !result.status ? 'passed' : 'failed',
+        message: result.status === 'ok' ? 'Dify API 健康检查通过。' : 'Dify API 健康检查未返回正常状态。',
+        version: typeof result.version === 'string' ? result.version : undefined,
+      };
+    } catch (error) {
+      return { state: 'failed', message: `Dify API 健康检查失败：${this.safeError(error)}` };
+    }
+  }
+
+  private async probeConsoleEndpoint(consoleBase: string): Promise<DifyPreflightCheck> {
+    try {
+      const response = await fetch(`${consoleBase}/apps`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5_000),
+      });
+      // GET /apps normally returns 401 without a token. A non-error response
+      // proves the expected Console endpoint is reachable without a write.
+      if (response.status >= 500 || response.status === 404) {
+        return { state: 'failed', message: `Dify Console 接口返回 HTTP ${response.status}，请检查 Console 地址或服务状态。` };
+      }
+      return {
+        state: 'passed',
+        message: response.status === 401 || response.status === 403
+          ? 'Dify Console 接口可达，且已正确要求管理员授权。'
+          : `Dify Console 接口可达（HTTP ${response.status}）。`,
+      };
+    } catch (error) {
+      return { state: 'failed', message: `Dify Console 接口不可达：${this.safeError(error)}` };
+    }
+  }
+
+  private async probeConsoleAuthorization(consoleBase: string, token: string): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(`${consoleBase}/apps`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (error) {
+      throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new BadRequestException('Dify Console 授权无效、已过期，或缺少编辑权限');
+      }
+      throw new ServiceUnavailableException(`Dify Console 授权验证失败（HTTP ${response.status}）`);
+    }
+  }
+
   private async consoleFetch(url: string, token: string, body?: Record<string, unknown>) {
     let response: Response;
     try {
@@ -427,7 +602,7 @@ export class DifyIntegrationService implements OnModuleInit {
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
-      throw new ServiceUnavailableException(`Dify Console is unreachable: ${this.safeError(error)}`);
+      throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
     }
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {

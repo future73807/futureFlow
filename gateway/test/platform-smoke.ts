@@ -87,15 +87,26 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
       : fallback,
   };
   const originalFetch = global.fetch;
-  const calls: string[] = [];
-  global.fetch = (async (url: string) => {
-    calls.push(url);
-    if (url.endsWith('/apps')) {
-      const appNumber = calls.filter((item) => item.endsWith('/apps')).length;
+  const calls: Array<{ url: string; method: string; authorization: string }> = [];
+  global.fetch = (async (url: string, init?: RequestInit) => {
+    const method = init?.method || 'GET';
+    calls.push({
+      url,
+      method,
+      authorization: String(new Headers(init?.headers).get('Authorization') || ''),
+    });
+    if (url.endsWith('/health')) {
+      return new Response(JSON.stringify({ status: 'ok', version: '0.15.3' }), { status: 200 });
+    }
+    if (url.endsWith('/apps') && method === 'GET') {
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }
+    if (url.endsWith('/apps') && method === 'POST') {
+      const appNumber = calls.filter((item) => item.url.endsWith('/apps') && item.method === 'POST').length;
       return new Response(JSON.stringify({ id: `workflow-app-${appNumber}` }), { status: 201 });
     }
-    if (url.includes('/api-keys')) {
-      const keyNumber = calls.filter((item) => item.includes('/api-keys')).length;
+    if (url.includes('/api-keys') && method === 'POST') {
+      const keyNumber = calls.filter((item) => item.url.includes('/api-keys') && item.method === 'POST').length;
       return new Response(JSON.stringify({
         id: 'dify-service-key-id',
         token: `app-0123456789abcdefghijklmn${keyNumber}`,
@@ -106,13 +117,57 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
 
   try {
     const service = new DifyIntegrationService(repository as any, config as any);
+    const preflight = await service.preflight();
+    assert.equal(preflight.safe, true);
+    assert.equal(preflight.checks.apiHealth.state, 'passed');
+    assert.equal(preflight.checks.consoleEndpoint.state, 'passed');
+    assert.equal(preflight.checks.provisioning.state, 'not_checked');
+    assert.equal(preflight.checks.modelExecution.state, 'not_checked');
+    assert.equal(
+      calls.some((item) => item.method === 'POST' || item.url.includes('/workflows/run') || item.url.includes('/api-keys')),
+      false,
+      'safe preflight must not create Dify resources or execute a workflow/model',
+    );
+
+    const validation = await service.validateAuthorization({
+      consoleToken: 'synthetic-console-token',
+      consoleBase: 'http://localhost:5001/console/api',
+    });
+    assert.equal(validation.authorized, true);
+    assert.equal(validation.persisted, false);
+    assert.equal(stored.length, 0, 'no-save authorization validation must not persist a credential');
+    assert.equal(
+      calls.some((item) => item.method === 'GET' && item.url.endsWith('/apps') && item.authorization === 'Bearer synthetic-console-token'),
+      true,
+      'authorization validation must use a read-only authenticated Console probe',
+    );
+
     const status = await service.bootstrap({
       consoleToken: 'synthetic-console-token',
       consoleBase: 'http://localhost:5001/console/api',
     });
     assert.equal(status.connectionAuthorized, true);
     assert.equal(status.managedWorkflowAppCount, 0);
-    assert.equal(calls.length, 0, 'admin authorization must not create one shared execution application');
+    assert.equal(
+      calls.filter((item) => item.url.endsWith('/apps') && item.method === 'POST').length,
+      0,
+      'admin authorization must not create one shared execution application',
+    );
+
+    const storedPreflightCallStart = calls.length;
+    const storedPreflight = await service.preflight();
+    const storedPreflightCalls = calls.slice(storedPreflightCallStart);
+    assert.equal(storedPreflight.checks.storedAuthorization.state, 'not_checked');
+    assert.equal(
+      storedPreflightCalls.some((item) => item.authorization),
+      false,
+      'safe preflight must not decrypt or send a stored Console authorization',
+    );
+    assert.equal(
+      storedPreflightCalls.some((item) => item.method === 'POST'),
+      false,
+      'safe preflight with a stored authorization must still remain read-only',
+    );
 
     const first = await service.ensureWorkflowIntegration({
       workflowId: '11111111-1111-4111-8111-111111111111',
@@ -144,7 +199,7 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
       await service.resolveWorkflowServiceApiKey(second.workflowId!, second.workflowVersion!),
       'app-0123456789abcdefghijklmn2',
     );
-    assert.equal(calls.filter((url) => url.endsWith('/apps')).length, 2);
+    assert.equal(calls.filter((item) => item.url.endsWith('/apps') && item.method === 'POST').length, 2);
   } finally {
     global.fetch = originalFetch;
   }

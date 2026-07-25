@@ -3,7 +3,7 @@
  * 现代卡片网格 + 创建画布
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
@@ -91,6 +91,29 @@ interface DifyIntegrationStatus {
   }>;
 }
 
+type DifyPreflightState = 'passed' | 'failed' | 'not_configured' | 'not_checked';
+
+interface DifyPreflightCheck {
+  state: DifyPreflightState;
+  message: string;
+  version?: string;
+}
+
+interface DifyPreflightResult {
+  checkedAt: string;
+  safe: true;
+  consoleBase: string;
+  checks: {
+    apiHealth: DifyPreflightCheck;
+    consoleEndpoint: DifyPreflightCheck;
+    credentialEncryption: DifyPreflightCheck;
+    storedAuthorization: DifyPreflightCheck;
+    provisioning: DifyPreflightCheck;
+    modelExecution: DifyPreflightCheck;
+  };
+  nextStep: string;
+}
+
 interface DifySyncResult {
   appId: string | null;
   status: 'synced' | 'not_configured' | 'failed';
@@ -125,8 +148,11 @@ export const WorkflowListPage = () => {
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
   const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
+  const [difyPreflight, setDifyPreflight] = useState<DifyPreflightResult | null>(null);
   const [difyLoading, setDifyLoading] = useState(false);
+  const [difyPreflighting, setDifyPreflighting] = useState(false);
   const [difyProvisioning, setDifyProvisioning] = useState(false);
+  const difySubmitMode = useRef<'validate' | 'save'>('save');
 
   const fetchWorkflows = useCallback(async () => {
     setLoading(true);
@@ -174,12 +200,56 @@ export const WorkflowListPage = () => {
     setDifyVisible(true);
     setDifyLoading(true);
     try {
-      setDifyStatus(await apiJson<DifyIntegrationStatus>('/admin/dify/status'));
+      const [status, preflight] = await Promise.all([
+        apiJson<DifyIntegrationStatus>('/admin/dify/status'),
+        apiJson<DifyPreflightResult>('/admin/dify/preflight'),
+      ]);
+      setDifyStatus(status);
+      setDifyPreflight(preflight);
     } catch (error: any) {
       setDifyStatus(null);
+      setDifyPreflight(null);
       Toast.error(error.message || '无法读取 Dify 引擎状态；此设置仅管理员可用');
     } finally {
       setDifyLoading(false);
+    }
+  }, []);
+
+  const runDifyPreflight = useCallback(async () => {
+    setDifyPreflighting(true);
+    try {
+      const preflight = await apiJson<DifyPreflightResult>('/admin/dify/preflight');
+      setDifyPreflight(preflight);
+      Toast.success('安全预检已完成：未读取或保存管理员凭据，未创建应用或 Key，也未执行模型。');
+    } catch (error: any) {
+      Toast.error(error.message || 'Dify 安全预检失败');
+    } finally {
+      setDifyPreflighting(false);
+    }
+  }, []);
+
+  const validateDifyAuthorization = useCallback(async (values: {
+    consoleBase?: string;
+    email?: string;
+    password?: string;
+    consoleToken?: string;
+  }) => {
+    setDifyProvisioning(true);
+    try {
+      await apiJson('/admin/dify/validate-authorization', {
+        method: 'POST',
+        body: JSON.stringify({
+          consoleBase: values.consoleBase?.trim() || undefined,
+          email: values.email?.trim() || undefined,
+          password: values.password || undefined,
+          consoleToken: values.consoleToken?.trim() || undefined,
+        }),
+      });
+      Toast.success('管理员授权已验证：未保存凭据，未创建应用或 Key，未执行模型。');
+    } catch (error: any) {
+      Toast.error(error.message || 'Dify 管理员授权验证失败');
+    } finally {
+      setDifyProvisioning(false);
     }
   }, []);
 
@@ -749,6 +819,7 @@ export const WorkflowListPage = () => {
         onCancel={() => setDifyVisible(false)}
         footer={null}
         style={{ width: 640 }}
+        bodyStyle={{ maxHeight: 'calc(100vh - 156px)', overflowY: 'auto', paddingRight: 20 }}
       >
         {difyLoading ? (
           <LoadingCenter><Spin /></LoadingCenter>
@@ -772,7 +843,49 @@ export const WorkflowListPage = () => {
                 )}
               </div>
             )}
-            <Form onSubmit={bootstrapDify}>
+            <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, border: '1px solid #e5e6eb' }}>
+              <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
+                零成本安全预检
+              </Typography.Text>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 10 }}>
+                仅检查 Dify 服务可达性和本地加密配置；不会读取或保存管理员凭据，不会创建应用、Key 或执行模型。
+              </Typography.Text>
+              <Button size="small" loading={difyPreflighting} onClick={() => void runDifyPreflight()}>
+                运行安全预检
+              </Button>
+              {difyPreflight && (
+                <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+                  {[
+                    ['Dify API', difyPreflight.checks.apiHealth],
+                    ['Console 接口', difyPreflight.checks.consoleEndpoint],
+                    ['凭据加密', difyPreflight.checks.credentialEncryption],
+                    ['已保存授权', difyPreflight.checks.storedAuthorization],
+                    ['资源创建', difyPreflight.checks.provisioning],
+                    ['模型执行', difyPreflight.checks.modelExecution],
+                  ].map(([label, check]) => {
+                    const item = check as DifyPreflightCheck;
+                    const color = item.state === 'passed' ? 'green' : item.state === 'failed' ? 'red' : 'grey';
+                    const stateLabel = item.state === 'passed' ? '通过' : item.state === 'failed' ? '需处理' : '未执行';
+                    return (
+                      <div key={label as string} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <Tag size="small" color={color}>{stateLabel}</Tag>
+                        <Typography.Text size="small" style={{ flex: 1 }}>
+                          {label as string}：{item.message}{item.version ? `（${item.version}）` : ''}
+                        </Typography.Text>
+                      </div>
+                    );
+                  })}
+                  <Typography.Text type="tertiary" size="small">
+                    下一步：{difyPreflight.nextStep}
+                  </Typography.Text>
+                </div>
+              )}
+            </div>
+            <Form onSubmit={(values) => {
+              void (difySubmitMode.current === 'validate'
+                ? validateDifyAuthorization(values)
+                : bootstrapDify(values));
+            }}>
               <Form.Input
                 field="consoleBase"
                 label="Dify Console 地址"
@@ -782,16 +895,29 @@ export const WorkflowListPage = () => {
               <Form.Input field="email" label="Dify 管理员邮箱（可选）" placeholder="与密码二选一，或直接使用 Token" />
               <Form.Input field="password" mode="password" label="Dify 管理员密码（可选）" placeholder="仅用于换取令牌，不会保存" />
               <Form.Input field="consoleToken" mode="password" label="Dify Console Token（可选）" placeholder="邮箱密码或 Token 至少填写一种" />
-              <Button
-                type="primary"
-                theme="solid"
-                htmlType="submit"
-                loading={difyProvisioning}
-                block
-                style={{ marginTop: 12, borderRadius: 8 }}
-              >
-                授权 Dify 并启用发布自动建 Key
-              </Button>
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <Button
+                  htmlType="submit"
+                  loading={difyProvisioning}
+                  style={{ flex: 1, borderRadius: 8 }}
+                  onClick={() => { difySubmitMode.current = 'validate'; }}
+                >
+                  验证管理员授权（不保存）
+                </Button>
+                <Button
+                  type="primary"
+                  theme="solid"
+                  htmlType="submit"
+                  loading={difyProvisioning}
+                  style={{ flex: 1, borderRadius: 8 }}
+                  onClick={() => { difySubmitMode.current = 'save'; }}
+                >
+                  保存授权并启用自动建应用 / Key
+                </Button>
+              </div>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 10 }}>
+                保存授权只启用后续发布的资源自动创建；真实模型执行与可能的模型供应商费用，仍需由你显式运行已发布工作流。
+              </Typography.Text>
             </Form>
           </>
         )}

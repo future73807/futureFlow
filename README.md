@@ -370,9 +370,33 @@ LLM_DEFAULT_MODEL=deepseek-chat
 
 futureFlow 不要求把 Dify `app-*` Service API Key 粘贴到 `.env`。管理员完成一次 Dify Console 授权后，平台会在**每个工作流版本发布时**自动创建一个专属 Dify 工作流应用、导入不可变快照，并生成专属 Service API Key。密钥以 AES-256-GCM 加密后存入 futureFlow PostgreSQL；接口、页面和日志均不回显明文。
 
+#### 零成本安全预检与授权分级
+
+在接触管理员凭据或任何模型费用之前，先运行只读安全预检：
+
+```bash
+# 只检查 Dify API/Console 可达性和本地加密配置。
+# 不解密或发送已保存的管理员凭据；不创建应用、Key 或 DSL；不执行工作流/模型。
+curl -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
+  http://localhost:3001/admin/dify/preflight
+```
+
+安全预检返回 Dify 版本、Console 接口可达性、加密配置和明确的“未执行”项目。它**不等于**真实管理员权限或模型可用性的证明，设计目的就是在零密钥、零模型费用的前提下排除本地部署问题。
+
+如需确认管理员授权，使用「Dify 引擎」弹窗中的“验证管理员授权（不保存）”，或调用下方接口。它只用提交的 Token（或一次性邮箱/密码换取的 Token）对 Dify Console `GET /apps` 做只读验证；凭据不会写入数据库，也不会创建应用、生成 Service API Key、导入 DSL 或执行模型。
+
+```bash
+curl -X POST http://localhost:3001/admin/dify/validate-authorization \
+  -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"<DIFY_PASSWORD>"}'
+```
+
+确认授权无误后，才执行“保存授权并启用自动建应用 / Key”。保存前网关同样会做只读管理员验证；保存动作本身不创建共享执行应用或模型调用。后续每个**明确发布**的工作流版本才会创建自己的 Dify 应用和加密 Service API Key。
+
 1. 先在 `http://localhost:8080` 完成 Dify 的初次账号初始化，并配置 Dify 自身可用的模型供应商。
 2. 在 futureFlow `.env` 设置随机且至少 32 位的 `DIFY_KEY_ENCRYPTION_SECRET`。首次由 `start.bat` / `pnpm run env:init` 创建 `.env` 时会自动生成本机随机值；生产环境必须改为由部署密钥系统持久管理的值，不能使用示例值。
-3. 登录 futureFlow 后，在「我的工作流」页面点击「Dify 引擎」，输入一次 Dify 管理员邮箱/密码或 Console Token。密码只用于换取令牌，不会被 futureFlow 保存。也可使用下面的管理员 API 自动化部署。
+3. 登录 futureFlow 后，在「我的工作流」页面完成“运行安全预检”与“验证管理员授权（不保存）”。确认后再保存授权。密码只用于换取令牌，不会被 futureFlow 保存。也可使用下面的管理员 API 自动化部署。
 
 ```bash
 curl -X POST http://localhost:3001/admin/dify/bootstrap \
@@ -390,6 +414,10 @@ curl -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
 - Dify Console 会话过期时，网关先尝试使用加密的刷新令牌续期；续期失败才要求管理员再次授权。
 - 启动时如果 `.env` 已提供 `DIFY_CONSOLE_TOKEN` 和真实的加密密钥，平台会自动完成首次 Console 授权；后续发布无需再手动复制任何 Dify Key。该 Console Token 不会写回 `.env`。
 - `DIFY_API_KEY` 保留为兼容旧部署的后备方案；未配置任何 Dify 凭据时，网关降级为直接 LLM 模式。
+
+#### 真实模型与费用验收（需显式授权）
+
+本仓库的自动化回归和安全预检**不会**使用真实管理员凭据，也不会触发 Dify 内的模型供应商调用或费用。生产上线前，需由拥有 Dify 与模型供应商权限的负责人在隔离工作区中明确执行一次低额度验收：发布一个最小工作流 → 确认专属 Dify 应用同步 → 以受限平台 API Key 调用一次 → 对账 Dify 用量、futureFlow 运行记录和扣费流水。该步骤会产生外部请求并可能产生费用，因此不由启动脚本、预检接口或自动化测试代为执行。
 
 ### 执行引擎选择逻辑
 
@@ -441,6 +469,8 @@ futureFlow 内置管理员后台，用于管理用户、API Key、工作流和�
 ```
 GET    /admin/stats                    # 仪表盘统计
 GET    /admin/dify/status              # Dify 授权和发布版本映射状态（不含明文密钥）
+GET    /admin/dify/preflight           # 零凭据、零计费的 Dify 服务与加密配置预检
+POST   /admin/dify/validate-authorization # 只读验证提交的管理员授权；不保存、不建应用/Key、不执行模型
 POST   /admin/dify/bootstrap           # 一次 Console 授权，启用发布自动建应用和 Key
 POST   /admin/dify/rotate-key          # 为指定专属应用轮换 Key（workflowId、workflowVersion）
 GET    /admin/users                    # 用户列表（分页）
