@@ -4,7 +4,7 @@
  * 支持 localStorage → sessionStorage → cookie → 内存变量 降级
  */
 
-import { GATEWAY_URL } from './config';
+import { gatewayFetch } from './config';
 
 const TOKEN_KEY = 'futureflow_token';
 const USER_KEY = 'futureflow_user';
@@ -123,7 +123,7 @@ export async function login(
   account: string,
   password: string,
 ): Promise<any> {
-  const res = await fetch(`${GATEWAY_URL}/auth/login`, {
+  const res = await gatewayFetch('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ account, password }),
@@ -142,7 +142,7 @@ export async function register(
   email: string,
   password: string,
 ): Promise<any> {
-  const res = await fetch(`${GATEWAY_URL}/auth/register`, {
+  const res = await gatewayFetch('/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
@@ -159,7 +159,7 @@ export async function register(
 export async function fetchProfile(): Promise<any> {
   const token = getToken();
   if (!token) return null;
-  const res = await fetch(`${GATEWAY_URL}/auth/profile`, {
+  const res = await gatewayFetch('/auth/profile', {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
@@ -175,7 +175,7 @@ export async function fetchProfile(): Promise<any> {
 export async function fetchVipInfo(): Promise<any> {
   const token = getToken();
   if (!token) return null;
-  const res = await fetch(`${GATEWAY_URL}/auth/vip-info`, {
+  const res = await gatewayFetch('/auth/vip-info', {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {

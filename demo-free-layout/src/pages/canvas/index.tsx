@@ -1,11 +1,6 @@
-/**
- * 画布编辑器页面
- * 从后端加载工作流数据，嵌入 FlowGram 编辑器，支持保存
- */
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Input, Toast, Spin } from '@douyinfe/semi-ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
 import {
@@ -16,8 +11,7 @@ import {
 } from '@flowgram.ai/free-layout-editor';
 import { LocaleProvider as SemiLocaleProvider } from '@douyinfe/semi-ui';
 import zh_CN from '@douyinfe/semi-ui/lib/es/locale/source/zh_CN';
-import styled from 'styled-components';
-
+import './canvas.css';
 import '@flowgram.ai/free-layout-editor/index.css';
 import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
@@ -61,9 +55,9 @@ export const CanvasPage = () => {
         return;
       }
       try {
-        const wf = await apiJson<{ name: string; flowgramJson?: any }>(`/workflows/${id}`);
-        setWorkflowName(wf.name);
-        setFlowgramData(wf.flowgramJson || { nodes: [], edges: [] });
+        const workflow = await apiJson<{ name: string; flowgramJson?: any }>('/workflows/' + id);
+        setWorkflowName(workflow.name);
+        setFlowgramData(workflow.flowgramJson || { nodes: [], edges: [] });
       } catch (error: any) {
         if (error instanceof ApiError && error.status === 401) return;
         Toast.error(error.message || '加载工作流失败');
@@ -72,7 +66,8 @@ export const CanvasPage = () => {
         setLoading(false);
       }
     };
-    loadWorkflow();
+
+    void loadWorkflow();
   }, [id, navigate]);
 
   const markDirty = useCallback(() => {
@@ -81,8 +76,8 @@ export const CanvasPage = () => {
     setSaveStatus('unsaved');
   }, []);
 
-  const handleEditorReady = useCallback((ctx: FreeLayoutPluginContext) => {
-    editorRef.current = ctx;
+  const handleEditorReady = useCallback((context: FreeLayoutPluginContext) => {
+    editorRef.current = context;
   }, []);
 
   const saveWorkflow = useCallback(async (showToast = false) => {
@@ -114,12 +109,12 @@ export const CanvasPage = () => {
     setSaveStatus('saving');
 
     try {
-      const ctx = editorRef.current;
+      const context = editorRef.current;
       const flowgramJson = {
-        ...ctx.document.toJSON(),
-        globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
+        ...context.document.toJSON(),
+        globalVariable: context.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
       };
-      await apiJson(`/workflows/${id}`, {
+      await apiJson('/workflows/' + id, {
         method: 'PUT',
         body: JSON.stringify({
           name: trimmedName,
@@ -136,13 +131,13 @@ export const CanvasPage = () => {
         saveQueuedRef.current = true;
       }
       if (showToast) Toast.success('已保存');
-    } catch (e: any) {
+    } catch (error: any) {
       setSaveStatus('error');
-      if (e instanceof ApiError && e.status === 401) {
+      if (error instanceof ApiError && error.status === 401) {
         saveQueuedRef.current = false;
         return;
       }
-      if (showToast) Toast.error(`保存失败: ${e?.message || '网络错误'}`);
+      if (showToast) Toast.error('保存失败: ' + (error?.message || '网络错误'));
     } finally {
       setSaving(false);
       saveInFlightRef.current = false;
@@ -153,13 +148,12 @@ export const CanvasPage = () => {
         window.setTimeout(() => void saveRunnerRef.current(false), 0);
       }
     }
-  }, [id, workflowName, navigate]);
+  }, [id, workflowName]);
 
   saveRunnerRef.current = saveWorkflow;
 
   useEffect(() => {
     if (changeRevision === savedRevisionRef.current) return;
-
     const timer = window.setTimeout(() => {
       void saveWorkflow(false);
     }, AUTOSAVE_DELAY);
@@ -189,57 +183,54 @@ export const CanvasPage = () => {
   }, [saveWorkflow]);
 
   const handleBack = useCallback(() => {
-    if (
-      (revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current) &&
-      !window.confirm('当前更改尚未保存完成，确定要离开吗？')
-    ) {
-      return;
-    }
+    const hasPendingWork = revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current;
+    if (hasPendingWork && !window.confirm('当前更改尚未保存完成，确定要离开吗？')) return;
     navigate('/');
   }, [navigate]);
 
   const saveStatusText = (() => {
-    if (saveStatus === 'saving') return '正在自动保存…';
+    if (saveStatus === 'saving') return '正在自动保存';
     if (saveStatus === 'unsaved') return '有未保存更改';
     if (saveStatus === 'error') return '自动保存失败，请手动重试';
     if (!lastSavedAt) return '已保存';
-    return `已保存 ${lastSavedAt.toLocaleTimeString('zh-CN', {
+    return '已保存 ' + lastSavedAt.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
-    })}`;
+    });
   })();
 
   if (loading) {
     return (
-      <LoadingCenter>
-        <Spin size="large" tip="加载画布..." />
-      </LoadingCenter>
+      <div className="canvas-loading">
+        <Spin size="large" tip="加载画布" />
+      </div>
     );
   }
 
   return (
-    <CanvasContainer>
-      <CanvasTopBar>
-        <LeftGroup>
+    <main className="canvas-page">
+      <header className="canvas-header">
+        <div className="canvas-header-left">
           <Button
-            icon={<IconArrowLeft />}
-            onClick={handleBack}
             theme="borderless"
+            icon={<IconArrowLeft />}
             aria-label="返回工作流"
+            onClick={handleBack}
           />
-          <CanvasTitleGroup>
-            <CanvasEyebrow>工作流画布</CanvasEyebrow>
-            <CanvasName
-            value={workflowName}
-            onChange={(value) => {
-              setWorkflowName(value);
-              markDirty();
-            }}
+          <div className="canvas-name-group">
+            <span>工作流画布</span>
+            <Input
+              className="canvas-name-input"
+              value={workflowName}
+              onChange={(value) => {
+                setWorkflowName(value);
+                markDirty();
+              }}
             />
-          </CanvasTitleGroup>
-        </LeftGroup>
-        <SaveActions>
-          <SaveStatusText $status={saveStatus}>{saveStatusText}</SaveStatusText>
+          </div>
+        </div>
+        <div className="canvas-save-actions">
+          <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
           <Button
             theme="solid"
             type="primary"
@@ -249,10 +240,10 @@ export const CanvasPage = () => {
           >
             保存
           </Button>
-        </SaveActions>
-      </CanvasTopBar>
+        </div>
+      </header>
 
-      <EditorWrapper>
+      <section className="canvas-editor-wrap">
         <SemiLocaleProvider locale={zh_CN}>
           <CanvasEditor
             key={id}
@@ -261,23 +252,18 @@ export const CanvasPage = () => {
             onContentChange={markDirty}
           />
         </SemiLocaleProvider>
-      </EditorWrapper>
-    </CanvasContainer>
+      </section>
+    </main>
   );
 };
 
-/**
- * 内部编辑器组件
- * useClientContext 必须在 FreeLayoutEditorProvider 内部的子组件中调用，
- * 否则 ctx 永远是 undefined，导致保存功能失效
- */
 const CanvasEditor = ({
   initialData,
   onReady,
   onContentChange,
 }: {
   initialData: any;
-  onReady: (ctx: FreeLayoutPluginContext) => void;
+  onReady: (context: FreeLayoutPluginContext) => void;
   onContentChange: () => void;
 }) => {
   const editorProps = useEditorProps(initialData, nodeRegistries);
@@ -289,24 +275,21 @@ const CanvasEditor = ({
   );
 };
 
-/**
- * 在 Provider 内部调用 useClientContext，确保能拿到 ctx
- */
 const CanvasInner = ({
   onReady,
   onContentChange,
 }: {
-  onReady: (ctx: FreeLayoutPluginContext) => void;
+  onReady: (context: FreeLayoutPluginContext) => void;
   onContentChange: () => void;
 }) => {
-  const ctx = useClientContext();
-  useEffect(() => {
-    if (!ctx) return;
+  const context = useClientContext();
 
-    onReady(ctx);
-    const disposable = ctx.document.onContentChange(() => onContentChange());
+  useEffect(() => {
+    if (!context) return;
+    onReady(context);
+    const disposable = context.document.onContentChange(() => onContentChange());
     return () => disposable.dispose();
-  }, [ctx, onReady, onContentChange]);
+  }, [context, onContentChange, onReady]);
 
   return (
     <div className="demo-container">
@@ -316,107 +299,3 @@ const CanvasInner = ({
     </div>
   );
 };
-
-const CanvasContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-`;
-
-const CanvasTopBar = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 64px;
-  padding: 10px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e5e9f1;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, .02);
-  flex-shrink: 0;
-
-  @media (max-width: 720px) {
-    min-height: 56px;
-    padding: 8px 10px;
-    gap: 8px;
-  }
-`;
-
-const LeftGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-`;
-
-const CanvasTitleGroup = styled.div`
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-`;
-
-const CanvasEyebrow = styled.div`
-  color: #98a2b3;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .05em;
-
-  @media (max-width: 720px) { display: none; }
-`;
-
-const CanvasName = styled(Input)`
-  width: 300px;
-  .semi-input { color: #182230; font-size: 15px; font-weight: 600; }
-  &.semi-input-wrapper { border-color: transparent !important; background: transparent; padding: 0; }
-  &.semi-input-wrapper:hover, &.semi-input-wrapper-focus { border-color: #d8deea !important; background: #fff; padding: 0 8px; }
-
-  @media (max-width: 720px) {
-    width: 100%;
-    min-width: 0;
-  }
-`;
-
-const SaveActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 0 0 auto;
-`;
-
-const SaveStatusText = styled.span<{ $status: SaveStatus }>`
-  min-width: 162px;
-  color: ${(props) => {
-    if (props.$status === 'error') return '#d92d20';
-    if (props.$status === 'unsaved') return '#b54708';
-    return '#667085';
-  }};
-  font-size: 12px;
-  text-align: right;
-
-  @media (max-width: 720px) { display: none; }
-`;
-
-const EditorWrapper = styled.div`
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-`;
-
-const LoadingCenter = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  gap: 12px;
-
-  /* 让 Spin 的 tip 文本不换行，与 spinner 同行显示 */
-  :global(.semi-spin-content) {
-    white-space: nowrap;
-  }
-`;

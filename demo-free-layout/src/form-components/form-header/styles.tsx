@@ -1,41 +1,39 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import styled from 'styled-components';
 
 export const Header = styled.div`
-  box-sizing: border-box;
   display: flex;
-  justify-content: flex-start;
-  align-items: center;
   width: 100%;
-  column-gap: 8px;
-  border-radius: 8px 8px 0 0;
-  cursor: move;
-
-  background: linear-gradient(#f2f2ff 0%, rgb(251, 251, 251) 100%);
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
   overflow: hidden;
-
-  padding: 8px;
+  border-bottom: 1px solid #edf0f5;
+  border-radius: var(--ff-radius) var(--ff-radius) 0 0;
+  background: #f8fafc;
+  box-sizing: border-box;
+  cursor: move;
 `;
 
 export const Title = styled.div`
-  font-size: 20px;
-  flex: 1;
   width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ff-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 export const Icon = styled.img`
-  width: 24px;
-  height: 24px;
-  scale: 0.8;
-  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: cover;
 `;
 
 export const Operators = styled.div`
   display: flex;
   align-items: center;
-  column-gap: 4px;
+  gap: 4px;
 `;

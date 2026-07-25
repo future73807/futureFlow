@@ -1,29 +1,57 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
-import { useNodeRender, FlowNodeEntity } from '@flowgram.ai/free-layout-editor';
-
+import { Component, ReactNode } from 'react';
+import { FlowNodeEntity, useNodeRender } from '@flowgram.ai/free-layout-editor';
+import './sidebar-node-renderer.css';
 import { NodeRenderContext } from '../../context';
 
-export function SidebarNodeRenderer(props: { node: FlowNodeEntity }) {
-  const { node } = props;
+interface RenderBoundaryProps {
+  children: ReactNode;
+}
+
+interface RenderBoundaryState {
+  failed: boolean;
+}
+
+class NodeRenderBoundary extends Component<RenderBoundaryProps, RenderBoundaryState> {
+  state: RenderBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): RenderBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidUpdate(previousProps: RenderBoundaryProps) {
+    if (previousProps.children !== this.props.children && this.state.failed) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="canvas-node-form-fallback">
+          <strong>节点配置无法加载</strong>
+          <span>请重新选择该节点，或检查节点字段后重试。</span>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export function SidebarNodeRenderer({ node }: { node: FlowNodeEntity }) {
   const nodeRender = useNodeRender(node);
 
   return (
     <NodeRenderContext.Provider value={nodeRender}>
-      <div
-        style={{
-          background: 'rgb(251, 251, 251)',
-          height: '100%',
-          width: '100%',
-          borderRadius: 8,
-          border: '1px solid rgba(82,100,154, 0.13)',
-          boxSizing: 'border-box',
-        }}
-      >
-        {nodeRender.form?.render()}
+      <div className="canvas-node-form-surface">
+        <NodeRenderBoundary>
+          {nodeRender.form?.render() || (
+            <div className="canvas-node-form-fallback">
+              <strong>节点尚未配置</strong>
+              <span>请选择节点后继续编辑。</span>
+            </div>
+          )}
+        </NodeRenderBoundary>
       </div>
     </NodeRenderContext.Provider>
   );

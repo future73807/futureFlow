@@ -1,15 +1,20 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
+import { useState } from 'react';
+import { IconApps } from '@douyinfe/semi-icons';
 import { type FlowNodeEntity } from '@flowgram.ai/free-layout-editor';
-
 import { FlowNodeRegistry } from '../../typings';
 import { Icon } from './styles';
 
+const NodeHeaderIcon = ({ source }: { source?: string }) => {
+  const [failed, setFailed] = useState(!source);
+
+  if (failed) {
+    return <span className="node-header-icon-fallback"><IconApps /></span>;
+  }
+
+  return <Icon src={source} onError={() => setFailed(true)} />;
+};
+
 export const getIcon = (node: FlowNodeEntity) => {
-  const icon = node.getNodeRegistry<FlowNodeRegistry>().info?.icon;
-  if (!icon) return null;
-  return <Icon src={icon} />;
+  const source = node.getNodeRegistry<FlowNodeRegistry>().info?.icon;
+  return <NodeHeaderIcon source={source} />;
 };

@@ -4,7 +4,7 @@
  */
 
 import { getToken, removeToken } from './auth';
-import { GATEWAY_URL } from './config';
+import { gatewayFetch } from './config';
 
 export const AUTH_EXPIRED_EVENT = 'futureflow:auth-expired';
 
@@ -54,7 +54,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
 
   let response: Response;
   try {
-    response = await fetch(`${GATEWAY_URL}${path}`, { ...options, headers });
+    response = await gatewayFetch(path, { ...options, headers });
   } catch (error: any) {
     if (error?.name === 'AbortError') throw error;
     throw new ApiError('无法连接网关服务，请确认服务已启动', 0);

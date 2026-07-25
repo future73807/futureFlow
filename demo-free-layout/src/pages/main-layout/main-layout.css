@@ -1,0 +1,283 @@
+.app-layout {
+  display: flex;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--ff-page);
+}
+
+.app-sidebar {
+  display: flex;
+  width: 264px;
+  flex: 0 0 264px;
+  flex-direction: column;
+  padding: 18px 12px 14px;
+  background: var(--ff-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  color: #dbe5f2;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 6px 8px 20px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 18px;
+  text-align: left;
+}
+
+.app-brand-mark {
+  display: inline-flex;
+  color: var(--ff-primary);
+  line-height: 0;
+}
+
+.sidebar-actions {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-create,
+.sidebar-command {
+  width: 100%;
+  justify-content: flex-start !important;
+}
+
+.sidebar-create {
+  height: 42px;
+  justify-content: center !important;
+}
+
+.sidebar-command {
+  color: #cbd5e1 !important;
+}
+
+.sidebar-command:hover,
+.sidebar-logout:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.sidebar-label {
+  padding: 18px 10px 7px;
+  color: var(--ff-sidebar-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  gap: 11px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--ff-radius);
+  background: transparent;
+  color: #b5c0d1;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.sidebar-nav-item > span {
+  display: inline-flex;
+  font-size: 17px;
+}
+
+.sidebar-nav-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.sidebar-nav-item.is-active {
+  background: rgba(37, 99, 235, 0.22);
+  color: #ffffff;
+  box-shadow: inset 2px 0 0 #60a5fa;
+}
+
+.sidebar-footer {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 9px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: var(--ff-radius);
+  background: transparent;
+  color: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-account:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-account .semi-avatar {
+  background: #334155;
+  color: #ffffff;
+}
+
+.sidebar-account > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sidebar-account .semi-typography {
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account .semi-typography-secondary {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.sidebar-logout {
+  justify-content: flex-start !important;
+  color: #b5c0d1 !important;
+}
+
+.app-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ff-page);
+}
+
+@media (max-width: 720px) {
+  .app-layout {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .app-sidebar {
+    display: grid;
+    width: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .app-brand {
+    grid-column: 1;
+    padding: 4px 2px;
+    font-size: 16px;
+  }
+
+  .sidebar-actions {
+    display: flex;
+    grid-column: 2;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+  }
+
+  .sidebar-create {
+    width: auto;
+    min-width: 108px;
+    height: 36px;
+  }
+
+  .sidebar-command {
+    width: 36px;
+    min-width: 36px;
+    justify-content: center !important;
+    font-size: 0;
+  }
+
+  .sidebar-command .semi-button-content {
+    gap: 0;
+  }
+
+  .sidebar-command .semi-button-content .semi-icon {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .sidebar-label {
+    display: none;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .sidebar-nav-item {
+    width: auto;
+    min-width: max-content;
+    height: 36px;
+  }
+
+  .sidebar-footer {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0;
+    padding-top: 2px;
+    border: 0;
+  }
+
+  .sidebar-account {
+    width: auto;
+    padding: 4px 2px;
+  }
+
+  .sidebar-logout {
+    width: auto;
+    font-size: 0;
+  }
+
+  .sidebar-logout .semi-button-content {
+    gap: 0;
+  }
+
+  .sidebar-logout .semi-icon {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .app-content {
+    overflow: visible;
+  }
+}

@@ -1,14 +1,9 @@
-/**
- * futureFlow 登录/注册页面
- * 简洁商务风：纯白背景 + 居中卡片
- */
-
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Button, Typography, Toast } from '@douyinfe/semi-ui';
-import { IconUser, IconLock, IconMail } from '@douyinfe/semi-icons';
-import styled from 'styled-components';
-import { login, register, isLoggedIn } from '../../utils/auth';
+import { Button, Form, Toast } from '@douyinfe/semi-ui';
+import { IconLock, IconMail, IconUser } from '@douyinfe/semi-icons';
+import './login.css';
+import { isLoggedIn, login, register } from '../../utils/auth';
 
 export const LoginRegisterPage = () => {
   const navigate = useNavigate();
@@ -21,59 +16,50 @@ export const LoginRegisterPage = () => {
     }
   }, [navigate]);
 
-  const handleLogin = useCallback(
-    async (values: any) => {
-      setLoading(true);
-      try {
-        await login(values.account, values.password);
-        Toast.success('登录成功');
-        navigate('/', { replace: true });
-      } catch (err: any) {
-        Toast.error(err.message || '登录失败');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [navigate],
-  );
+  const handleLogin = useCallback(async (values: any) => {
+    setLoading(true);
+    try {
+      await login(values.account, values.password);
+      Toast.success('登录成功');
+      navigate('/', { replace: true });
+    } catch (error: any) {
+      Toast.error(error.message || '登录失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
 
-  const handleRegister = useCallback(
-    async (values: any) => {
-      setLoading(true);
-      try {
-        await register(values.username, values.email, values.password);
-        Toast.success('注册成功');
-        navigate('/', { replace: true });
-      } catch (err: any) {
-        Toast.error(err.message || '注册失败');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [navigate],
-  );
+  const handleRegister = useCallback(async (values: any) => {
+    setLoading(true);
+    try {
+      await register(values.username, values.email, values.password);
+      Toast.success('注册成功');
+      navigate('/', { replace: true });
+    } catch (error: any) {
+      Toast.error(error.message || '注册失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
 
   return (
-    <PageWrapper>
-      <LoginCard>
-        {/* 顶部 Logo */}
-        <LogoRow>
-          <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="10" fill="#4834d4" />
-            <path d="M14 18 L24 14 L34 18 L34 30 L24 34 L14 30 Z" stroke="white" strokeWidth="2.5" fill="none" strokeLinejoin="round" />
-            <circle cx="24" cy="24" r="3" fill="white" />
-          </svg>
-          <Typography.Title heading={4} style={{ margin: 0, fontWeight: 600 }}>
-            futureFlow
-          </Typography.Title>
-        </LogoRow>
+    <main className="auth-page">
+      <section className="auth-surface" aria-labelledby="auth-title">
+        <div className="auth-brand">
+          <span className="auth-brand-mark" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="12" fill="currentColor" />
+              <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
+              <circle cx="24" cy="24" r="3" fill="white" />
+            </svg>
+          </span>
+          <strong>futureFlow</strong>
+        </div>
 
-        <Typography.Title heading={5} style={{ marginTop: 8, marginBottom: 4, fontWeight: 500 }}>
-          {isLogin ? '登录' : '注册'}
-        </Typography.Title>
-        <Typography.Text type="tertiary" size="small" style={{ marginBottom: 28, display: 'block' }}>
-          {isLogin ? '登录你的账号以继续' : '创建一个新账号'}
-        </Typography.Text>
+        <header className="auth-heading">
+          <h1 id="auth-title">{isLogin ? '登录工作区' : '创建账号'}</h1>
+          <p>{isLogin ? '继续管理和运行你的 AI 工作流。' : '用一个账户开始构建新的工作流。'}</p>
+        </header>
 
         {isLogin ? (
           <Form onSubmit={handleLogin} key="login-form">
@@ -81,7 +67,7 @@ export const LoginRegisterPage = () => {
               field="account"
               label="用户名"
               prefix={<IconUser />}
-              placeholder="demo"
+              placeholder="输入用户名"
               size="large"
               rules={[{ required: true, message: '请输入用户名' }]}
             />
@@ -94,15 +80,7 @@ export const LoginRegisterPage = () => {
               size="large"
               rules={[{ required: true, message: '请输入密码' }]}
             />
-            <Button
-              type="primary"
-              theme="solid"
-              htmlType="submit"
-              loading={loading}
-              size="large"
-              block
-              style={{ marginTop: 12, height: 42 }}
-            >
+            <Button type="primary" theme="solid" htmlType="submit" loading={loading} size="large" block>
               登录
             </Button>
           </Form>
@@ -123,7 +101,7 @@ export const LoginRegisterPage = () => {
               field="email"
               label="邮箱"
               prefix={<IconMail />}
-              placeholder="your@email.com"
+              placeholder="name@example.com"
               size="large"
               rules={[
                 { required: true, message: '请输入邮箱' },
@@ -142,91 +120,21 @@ export const LoginRegisterPage = () => {
                 { min: 8, message: '至少 8 位' },
               ]}
             />
-            <Button
-              type="primary"
-              theme="solid"
-              htmlType="submit"
-              loading={loading}
-              size="large"
-              block
-              style={{ marginTop: 12, height: 42 }}
-            >
-              注册
+            <Button type="primary" theme="solid" htmlType="submit" loading={loading} size="large" block>
+              创建账号
             </Button>
           </Form>
         )}
 
-        {/* 切换登录/注册 */}
-        <SwitchRow>
-          <Typography.Text type="tertiary" size="small">
-            {isLogin ? '没有账号？' : '已有账号？'}
-          </Typography.Text>
-          <SwitchButton onClick={() => setIsLogin(!isLogin)}>
+        <div className="auth-switch">
+          <span>{isLogin ? '还没有账号？' : '已经有账号？'}</span>
+          <button type="button" onClick={() => setIsLogin((current) => !current)}>
             {isLogin ? '去注册' : '去登录'}
-          </SwitchButton>
-        </SwitchRow>
+          </button>
+        </div>
 
-        {/* 演示账号提示 */}
-        {isLogin && (
-          <DemoBox>
-            <Typography.Text type="tertiary" size="small">
-              演示账号：demo / demo123456
-            </Typography.Text>
-          </DemoBox>
-        )}
-      </LoginCard>
-    </PageWrapper>
+        {isLogin && <p className="auth-demo">演示账号：demo / demo123456</p>}
+      </section>
+    </main>
   );
 };
-
-const PageWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  padding: 24px;
-  background: #f7f8fb;
-`;
-
-const LoginCard = styled.div`
-  width: min(100%, 420px);
-  padding: 36px;
-  background: #fff;
-  border-radius: 14px;
-  border: 1px solid #e5e9f1;
-  box-shadow: 0 16px 36px rgba(16, 24, 40, .08);
-`;
-
-const LogoRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-`;
-
-const SwitchRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 20px;
-`;
-
-const SwitchButton = styled.span`
-  color: #4054bf;
-  font-size: 13px;
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
-  }
-`;
-
-const DemoBox = styled.div`
-  margin-top: 16px;
-  padding: 8px 12px;
-  background: #f7f9fd;
-  border-radius: 8px;
-  text-align: center;
-  border: 1px solid #e5e9f1;
-`;

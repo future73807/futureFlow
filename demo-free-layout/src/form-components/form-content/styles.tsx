@@ -1,26 +1,21 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import styled from 'styled-components';
 
 export const FormWrapper = styled.div`
-  box-sizing: border-box;
-  width: 100%;
   display: flex;
+  width: 100%;
   flex-direction: column;
-  gap: 6px;
-  background-color: rgb(251, 251, 251);
-  border-radius: 0 0 8px 8px;
+  gap: 8px;
   padding: 0 12px 12px;
+  border-radius: 0 0 var(--ff-radius) var(--ff-radius);
+  background: #ffffff;
+  box-sizing: border-box;
 `;
 
 export const FormTitleDescription = styled.div`
-  color: var(--semi-color-text-2);
+  padding: 0 4px;
+  color: var(--ff-muted);
   font-size: 12px;
   line-height: 20px;
-  padding: 0px 4px;
-  word-break: break-all;
+  word-break: break-word;
   white-space: break-spaces;
 `;

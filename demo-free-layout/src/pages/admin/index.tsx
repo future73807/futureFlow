@@ -242,7 +242,7 @@ const DashboardView = ({ stats, loading }: { stats: Stats | null; loading: boole
         </StatCard>
       </StatsGrid>
 
-      <Card title="最近 7 天运行趋势" style={{ marginTop: 16, borderRadius: 12 }}>
+      <Card title="最近 7 天运行趋势" style={{ marginTop: 16, borderRadius: 8, borderColor: 'var(--ff-border)', boxShadow: 'var(--ff-shadow-sm)' }}>
         {stats.recentRuns && stats.recentRuns.length > 0 ? (
           <TrendChart data={stats.recentRuns} />
         ) : (
@@ -501,7 +501,7 @@ const ApiKeysView = ({
       title: 'Key 前缀',
       dataIndex: 'keyPrefix',
       width: 120,
-      render: (t: string) => <code style={{ color: '#4834d4' }}>{t}...</code>,
+      render: (t: string) => <code style={{ color: 'var(--ff-primary)' }}>{t}...</code>,
     },
     {
       title: '所属用户',
@@ -828,7 +828,7 @@ const StatLabel = styled.div`
 const StatValue = styled.div<{ $accent?: boolean }>`
   font-size: 28px;
   font-weight: 700;
-  color: ${(p) => (p.$accent ? '#4054bf' : 'var(--ff-text)')};
+  color: ${(p) => (p.$accent ? 'var(--ff-primary)' : 'var(--ff-text)')};
 `;
 
 const ActionGroup = styled.div`
@@ -859,7 +859,7 @@ const Bar = styled.div`
 const BarFill = styled.div`
   width: 28px;
   min-height: 4px;
-  background: #7d8aec;
+  background: #60a5fa;
   border-radius: 4px 4px 0 0;
   transition: height 0.3s;
 `;
@@ -873,5 +873,5 @@ const BarLabel = styled.div`
 const BarCount = styled.div`
   font-size: 13px;
   font-weight: 600;
-  color: #1a1d29;
+  color: var(--ff-text);
 `;

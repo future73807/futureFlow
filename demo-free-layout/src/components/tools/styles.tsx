@@ -9,9 +9,9 @@ import { IconMinimap } from '../../assets/icon-minimap';
 
 export const ToolContainer = styled.div`
   position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
+  bottom: 18px;
+  left: 18px;
+  right: 18px;
   display: flex;
   justify-content: center;
   min-width: 360px;
@@ -36,15 +36,34 @@ export const ToolSection = styled.div`
   border: 1px solid #dfe5ef;
   border-radius: 12px;
   box-shadow: 0 6px 20px rgba(16, 24, 40, 0.10);
-  column-gap: 3px;
+  column-gap: 4px;
   min-height: 44px;
-  padding: 4px 12px 4px 8px;
+  padding: 4px 10px;
+
+  > :last-child {
+    margin-right: 2px;
+  }
   pointer-events: auto;
+
+  .gedit-flow-panel-layer-wrap-floating:has(.gedit-flow-panel-right-area .gedit-flow-panel-wrap) & {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 4px 8px;
+
+    > :nth-child(-n + 14),
+    > :nth-child(10),
+    > :nth-child(11),
+    > :nth-child(16) {
+      display: none !important;
+    }
+  }
 
   @media (max-width: 720px) {
     width: 100%;
-    justify-content: space-between;
-    padding: 4px 6px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 4px 8px;
 
     > :nth-child(-n + 14),
     > :nth-child(10),

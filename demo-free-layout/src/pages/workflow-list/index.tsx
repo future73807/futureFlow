@@ -17,7 +17,7 @@ import {
   Tag,
   Popconfirm,
 } from '@douyinfe/semi-ui';
-import { IconPlus, IconDelete, IconEdit, IconMore } from '@douyinfe/semi-icons';
+import { IconDelete, IconEdit, IconMore } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 import { apiJson } from '../../utils/api';
 import { GATEWAY_URL } from '../../utils/config';
@@ -598,35 +598,46 @@ export const WorkflowListPage = () => {
     }
   }, [fetchWorkflows, versionsWorkflow]);
 
+  const publishedCount = workflows.filter((workflow) => !!workflow.publishedVersion).length;
+  const draftCount = workflows.length - publishedCount;
+  const latestWorkflow = workflows.slice().sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0];
+  const latestUpdate = latestWorkflow ? new Date(latestWorkflow.updatedAt).toLocaleDateString('zh-CN') : '-';
+
   return (
     <PageContainer>
       <PageHeader>
         <HeaderTitle>
-          <Typography.Title heading={3} style={{ margin: 0, fontWeight: 600 }}>
-            我的工作流
+          <div className="page-eyebrow">工作区</div>
+          <Typography.Title heading={3} style={{ margin: 0, fontWeight: 700 }}>
+            工作流
           </Typography.Title>
-          <Typography.Text type="tertiary" style={{ marginTop: 4, display: 'block' }}>
-            创建和管理你的 AI 工作流画布
+          <Typography.Text type="tertiary" style={{ marginTop: 5, display: 'block' }}>
+            在这里查看、编辑和发布你的 AI 工作流。
           </Typography.Text>
         </HeaderTitle>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button onClick={() => void openDifySettings()} style={{ borderRadius: 8, height: 40 }}>
-            Dify 引擎
-          </Button>
-          <Button onClick={openTemplates} style={{ display: 'none' }}>
-            模板库
-          </Button>
-        <Button
-          theme="solid"
-          type="primary"
-          icon={<IconPlus />}
-          onClick={() => setCreateVisible(true)}
-          style={{ display: 'none' }}
-        >
-          创建画布
+        <Button onClick={() => void openDifySettings()}>
+          Dify 引擎
         </Button>
-        </div>
       </PageHeader>
+
+      <WorkspaceSummary>
+        <SummaryItem>
+          <SummaryLabel>全部工作流</SummaryLabel>
+          <SummaryValue>{workflows.length}</SummaryValue>
+        </SummaryItem>
+        <SummaryItem>
+          <SummaryLabel>已发布</SummaryLabel>
+          <SummaryValue>{publishedCount}</SummaryValue>
+        </SummaryItem>
+        <SummaryItem>
+          <SummaryLabel>草稿</SummaryLabel>
+          <SummaryValue>{draftCount}</SummaryValue>
+        </SummaryItem>
+        <SummaryItem>
+          <SummaryLabel>最近更新</SummaryLabel>
+          <SummaryValue>{latestUpdate}</SummaryValue>
+        </SummaryItem>
+      </WorkspaceSummary>
 
       {loading ? (
         <LoadingCenter>
@@ -653,8 +664,8 @@ export const WorkflowListPage = () => {
               <CardTop>
                 <CardIcon>
                   <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-                    <path d="M10 16 L24 10 L38 16 L38 32 L24 38 L10 32 Z" stroke="#4834d4" strokeWidth="2.5" fill="none" strokeLinejoin="round" />
-                    <circle cx="24" cy="24" r="3" fill="#4834d4" />
+                    <path d="M10 16 L24 10 L38 16 L38 32 L24 38 L10 32 Z" stroke="#2563eb" strokeWidth="2.5" fill="none" strokeLinejoin="round" />
+                    <circle cx="24" cy="24" r="3" fill="#2563eb" />
                   </svg>
                 </CardIcon>
                 <Tag
@@ -779,7 +790,7 @@ export const WorkflowListPage = () => {
         visible={templateVisible}
         onCancel={() => setTemplateVisible(false)}
         footer={null}
-        style={{ width: 960, maxWidth: 'calc(100vw - 40px)' }}
+        style={{ width: 960, maxWidth: 'calc(100vw - 32px)' }} bodyStyle={{ maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}
       >
         {templatesLoading ? (
           <LoadingCenter><Spin /></LoadingCenter>
@@ -1096,152 +1107,203 @@ export const WorkflowListPage = () => {
 };
 
 const PageContainer = styled.div`
-  padding: 34px 38px 48px;
   height: 100%;
   overflow-y: auto;
+  padding: 34px 40px 48px;
 
   @media (max-width: 720px) {
     height: auto;
-    padding: 20px 16px 32px;
     overflow: visible;
+    padding: 24px 16px 32px;
   }
 `;
 
-const PageHeader = styled.div`
+const PageHeader = styled.header`
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
   gap: 16px;
   margin-bottom: 24px;
 
-  @media (max-width: 520px) {
-    align-items: flex-start;
+  @media (max-width: 560px) {
     flex-direction: column;
   }
 `;
 
 const HeaderTitle = styled.div`
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
+
+  .page-eyebrow {
+    margin-bottom: 5px;
+    color: var(--ff-primary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+`;
+
+const WorkspaceSummary = styled.section`
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 18px;
+  overflow: hidden;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-border);
+  box-shadow: var(--ff-shadow-sm);
+
+  @media (max-width: 880px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr 1fr;
+  }
+`;
+
+const SummaryItem = styled.div`
+  min-height: 88px;
+  padding: 16px 18px;
+  background: var(--ff-surface);
+`;
+
+const SummaryLabel = styled.div`
+  color: var(--ff-muted);
+  font-size: 12px;
+  font-weight: 600;
+`;
+
+const SummaryValue = styled.div`
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--ff-text);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 26px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const LoadingCenter = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 300px;
+  display: grid;
+  min-height: 300px;
+  place-items: center;
 `;
 
 const EmptyState = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 300px;
+  display: grid;
+  min-height: 300px;
+  place-items: center;
 `;
 
 const ErrorState = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: grid;
+  justify-items: center;
   gap: 12px;
 `;
 
 const WorkflowGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
 
-  @media (max-width: 420px) { grid-template-columns: 1fr; }
+  @media (max-width: 420px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
-const WorkflowCard = styled.div`
-  background: #fff;
-  border-radius: var(--ff-radius-lg);
-  min-height: 248px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid var(--ff-border);
+const WorkflowCard = styled.article`
   display: flex;
+  min-height: 230px;
   flex-direction: column;
   gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 
   &:hover {
-    border-color: #b9c3f5;
-    box-shadow: 0 10px 24px rgba(16, 24, 40, .08);
+    border-color: #bfdbfe;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     transform: translateY(-1px);
   }
 `;
 
 const CardTop = styled.div`
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 `;
 
 const CardIcon = styled.div`
-  width: 40px;
-  height: 40px;
-  background: #eef1ff;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: var(--ff-radius);
+  background: #eff6ff;
 `;
 
 const CardTitle = styled.div`
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ff-text);
-  margin-top: 6px;
-  white-space: nowrap;
   overflow: hidden;
+  color: var(--ff-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
   text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const CardDesc = styled.div`
-  font-size: 13px;
-  color: var(--ff-muted);
-  min-height: 40px;
-  line-height: 19px;
-  overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  min-height: 40px;
+  overflow: hidden;
+  color: var(--ff-muted);
+  font-size: 13px;
+  line-height: 20px;
   -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 `;
 
 const CardMeta = styled.div`
-  font-size: 12px;
-  color: var(--ff-subtle);
   margin-top: auto;
+  color: var(--ff-subtle);
+  font-size: 12px;
 `;
 
 const CardActions = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  margin-top: 4px;
   padding-top: 12px;
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid #edf0f5;
 `;
 
-const ActionButton = styled.button<{ $danger?: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 4px;
+const ActionButton = styled.button`
+  display: inline-flex;
   min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 6px 10px;
-  border: 1px solid #e5e9f1;
-  border-radius: 7px;
-  background: #f8fafc;
-  color: ${(props) => (props.$danger ? '#d92d20' : '#475467')};
-  font-size: 12px;
+  border: 1px solid var(--ff-border-strong);
+  border-radius: var(--ff-radius);
+  background: #ffffff;
+  color: #475467;
   cursor: pointer;
-  transition: all 0.15s;
+  font-size: 12px;
+  font-weight: 600;
 
   &:hover {
-    background: ${(props) => (props.$danger ? '#fff1f0' : '#eef1ff')};
-    border-color: ${(props) => (props.$danger ? '#ffd4d1' : '#dce2ff')};
-    color: ${(props) => (props.$danger ? '#b42318' : '#4054bf')};
+    border-color: #bfdbfe;
+    background: #f8fbff;
+    color: #1d4ed8;
   }
 
   &:disabled {
@@ -1251,12 +1313,15 @@ const ActionButton = styled.button<{ $danger?: boolean }>`
 `;
 
 const PrimaryCardAction = styled(ActionButton)`
-  border-color: var(--ff-accent);
-  background: var(--ff-accent);
-  color: #fff;
-  font-weight: 600;
+  border-color: var(--ff-primary);
+  background: var(--ff-primary);
+  color: #ffffff;
 
-  &:hover { background: var(--ff-accent-hover); border-color: var(--ff-accent-hover); color: #fff; }
+  &:hover {
+    border-color: var(--ff-primary-hover);
+    background: var(--ff-primary-hover);
+    color: #ffffff;
+  }
 `;
 
 const MoreCardAction = styled(ActionButton)`
@@ -1266,20 +1331,30 @@ const MoreCardAction = styled(ActionButton)`
 const DeleteCardAction = styled(ActionButton)`
   min-width: 32px;
   padding: 6px;
-  color: #d92d20;
+  border-color: transparent;
+  color: var(--ff-danger);
 
-  .semi-icon { margin: 0; }
+  .semi-icon {
+    margin: 0;
+  }
+
+  &:hover {
+    border-color: #fecaca;
+    background: #fff5f5;
+    color: var(--ff-danger);
+  }
 `;
 
 const CodeBlock = styled.pre`
   margin: 0;
   padding: 14px;
   overflow-x: auto;
-  border-radius: 8px;
-  background: #1a1d29;
-  color: #d8f7d8;
+  border: 1px solid #1e293b;
+  border-radius: var(--ff-radius);
+  background: #0f172a;
+  color: #dbeafe;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
 `;
@@ -1287,108 +1362,130 @@ const CodeBlock = styled.pre`
 const TemplateGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 
-  @media (max-width: 820px) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  @media (max-width: 600px) { grid-template-columns: 1fr; }
+  @media (max-width: 840px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 580px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const TemplateCard = styled.article`
-  min-height: 232px;
-  padding: 18px;
   display: flex;
+  min-height: 222px;
   flex-direction: column;
   gap: 12px;
+  padding: 18px;
   border: 1px solid var(--ff-border);
-  border-radius: 12px;
-  background: #fff;
+  border-radius: var(--ff-radius);
+  background: #ffffff;
 
-  .semi-button { margin-top: auto; }
+  .semi-button {
+    margin-top: auto;
+  }
 `;
 
 const TemplateIntro = styled.div`
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  margin:0 0 18px;
-  padding:14px 16px;
-  border:1px solid #e2e6f5;
-  border-radius:10px;
-  background:#f7f8ff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: var(--ff-radius);
+  background: #f8fbff;
 
-  div { display:grid; gap:3px; }
-  strong { color:var(--ff-text); font-size:14px; }
-  span { color:var(--ff-muted); font-size:12px; line-height:18px; }
+  div {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong {
+    color: var(--ff-text);
+    font-size: 14px;
+  }
+
+  span {
+    color: var(--ff-muted);
+    font-size: 12px;
+    line-height: 18px;
+  }
 `;
 
 const TemplateCount = styled.span`
-  flex:0 0 auto;
-  color:#4054bf;
-  font-size:12px;
-  font-weight:600;
+  flex: 0 0 auto;
+  color: var(--ff-primary);
+  font-size: 12px;
+  font-weight: 700;
 `;
 
 const TemplateCardHeader = styled.div`
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 `;
 
 const TemplateMark = styled.div`
-  display:grid;
-  width:34px;
-  height:34px;
-  place-items:center;
-  border-radius:9px;
-  background:#eef1ff;
-  color:#4054bf;
-  font-size:14px;
-  font-weight:700;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: var(--ff-radius);
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 700;
 `;
 
 const TemplateTier = styled.span`
-  color:var(--ff-muted);
-  font-size:11px;
+  color: var(--ff-muted);
+  font-size: 11px;
+  font-weight: 600;
 `;
 
 const TemplateDescription = styled.div`
-  min-height:40px;
-  color:var(--ff-muted);
-  font-size:13px;
-  line-height:20px;
-  display:-webkit-box;
-  overflow:hidden;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
+  display: -webkit-box;
+  min-height: 40px;
+  overflow: hidden;
+  color: var(--ff-muted);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 `;
 
 const TemplateTags = styled.div`
-  min-height: 22px;
   display: flex;
+  min-height: 22px;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
 `;
 
 const RunLoading = styled.div`
-  display: flex;
-  justify-content: center;
-  padding: 40px;
+  display: grid;
+  min-height: 220px;
+  place-items: center;
 `;
 
 const RunHistory = styled.div`
   display: flex;
+  max-height: 440px;
   flex-direction: column;
   gap: 10px;
-  max-height: 460px;
   overflow-y: auto;
 `;
 
 const RunRow = styled.div`
-  padding: 12px;
-  border: 1px solid #eceef4;
-  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid #e8ecf2;
+  border-radius: var(--ff-radius);
+  background: #ffffff;
 `;
 
 const RunHeader = styled.div`
@@ -1400,14 +1497,16 @@ const RunHeader = styled.div`
 
 const RunMeta = styled.div`
   margin-top: 8px;
-  color: #666;
+  color: var(--ff-muted);
   font-size: 12px;
+  line-height: 18px;
 `;
 
 const RunError = styled.div`
   margin-top: 8px;
-  color: #e5484d;
+  color: var(--ff-danger);
   font-size: 12px;
+  line-height: 18px;
   white-space: pre-wrap;
   word-break: break-word;
 `;

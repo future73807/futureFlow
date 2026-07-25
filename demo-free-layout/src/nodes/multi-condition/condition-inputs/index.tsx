@@ -174,7 +174,7 @@ export function ConditionInputs() {
                   })
                 }
               >
-                {I18n.t('Add branch')}
+                添加分支
               </Button>
             </div>
           )}

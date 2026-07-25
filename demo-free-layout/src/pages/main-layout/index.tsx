@@ -10,7 +10,7 @@ import {
   IconSetting,
   IconUser,
 } from '@douyinfe/semi-icons';
-import styled from 'styled-components';
+import './main-layout.css';
 import { fetchProfile, isLoggedIn, removeToken } from '../../utils/auth';
 
 const NAV_ITEMS = [
@@ -29,13 +29,17 @@ export const MainLayout = () => {
       navigate('/login', { replace: true });
       return;
     }
+
     fetchProfile()
       .then((profile) => {
-        if (profile) setUser(profile);
-        else navigate('/login', { replace: true });
+        if (profile) {
+          setUser(profile);
+        } else {
+          navigate('/login', { replace: true });
+        }
       })
       .catch(() => Toast.error('无法读取账户信息，请确认网关服务已启动'));
-  }, [navigate, location.pathname]);
+  }, [location.pathname, navigate]);
 
   const handleLogout = useCallback(() => {
     removeToken();
@@ -43,286 +47,102 @@ export const MainLayout = () => {
   }, [navigate]);
 
   const openWorkflowAction = (action: 'create' | 'templates') => {
-    navigate(`/?action=${action}`);
+    navigate('/?action=' + action);
   };
 
   return (
-    <LayoutWrapper>
-      <Sidebar>
-        <Brand onClick={() => navigate('/')}>
-          <BrandMark aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+    <div className="app-layout">
+      <aside className="app-sidebar">
+        <button className="app-brand" type="button" onClick={() => navigate('/')}>
+          <span className="app-brand-mark" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
               <rect width="48" height="48" rx="12" fill="currentColor" />
               <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
               <circle cx="24" cy="24" r="3" fill="white" />
             </svg>
-          </BrandMark>
+          </span>
           <strong>futureFlow</strong>
-        </Brand>
+        </button>
 
-        <PrimaryAction type="primary" theme="solid" icon={<IconPlus />} onClick={() => openWorkflowAction('create')}>
-          创建画布
-        </PrimaryAction>
-        <QuickActions aria-label="快捷操作">
-          <QuickAction type="tertiary" theme="borderless" icon={<IconList />} onClick={() => openWorkflowAction('templates')}>
+        <div className="sidebar-actions">
+          <Button
+            className="sidebar-create"
+            type="primary"
+            theme="solid"
+            icon={<IconPlus />}
+            onClick={() => openWorkflowAction('create')}
+          >
+            创建画布
+          </Button>
+          <Button
+            className="sidebar-command"
+            type="tertiary"
+            theme="borderless"
+            icon={<IconList />}
+            onClick={() => openWorkflowAction('templates')}
+          >
             模板库
-          </QuickAction>
-          <QuickAction type="tertiary" theme="borderless" icon={<IconKey />} onClick={() => navigate('/profile?action=create-key')}>
+          </Button>
+          <Button
+            className="sidebar-command"
+            type="tertiary"
+            theme="borderless"
+            icon={<IconKey />}
+            onClick={() => navigate('/profile?action=create-key')}
+          >
             创建 Key
-          </QuickAction>
-        </QuickActions>
+          </Button>
+        </div>
 
-        <NavLabel>工作区</NavLabel>
-        <NavMenu>
-          {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
-            <NavItem
-              key={item.key}
-              $active={item.key === '/' ? location.pathname === '/' : location.pathname.startsWith(item.key)}
-              onClick={() => navigate(item.key)}
-            >
-              <span>{item.icon}</span>
-              {item.label}
-            </NavItem>
-          ))}
-        </NavMenu>
+        <div className="sidebar-label">工作区</div>
+        <nav className="sidebar-nav" aria-label="主导航">
+          {NAV_ITEMS
+            .filter((item) => !item.adminOnly || user?.role === 'admin')
+            .map((item) => {
+              const active = item.key === '/'
+                ? location.pathname === '/'
+                : location.pathname.startsWith(item.key);
+              return (
+                <button
+                  key={item.key}
+                  className={'sidebar-nav-item' + (active ? ' is-active' : '')}
+                  type="button"
+                  onClick={() => navigate(item.key)}
+                >
+                  <span aria-hidden="true">{item.icon}</span>
+                  {item.label}
+                </button>
+              );
+            })}
+        </nav>
 
-        <SidebarFooter>
-          <AccountButton onClick={() => navigate('/profile')}>
-            <Avatar size="small">{user?.username?.[0]?.toUpperCase() || 'U'}</Avatar>
-            <AccountCopy>
+        <div className="sidebar-footer">
+          <button className="sidebar-account" type="button" onClick={() => navigate('/profile')}>
+            <Avatar size="small">
+              {user?.username?.[0]?.toUpperCase() || 'U'}
+            </Avatar>
+            <span>
               <Typography.Text strong>{user?.username || '加载中'}</Typography.Text>
-              <Typography.Text type="tertiary">{user?.vipLevel?.toUpperCase() || 'FREE'} · ¥{Number(user?.balance || 0).toFixed(2)}</Typography.Text>
-            </AccountCopy>
-          </AccountButton>
-          <QuickAction type="tertiary" theme="borderless" icon={<IconExit />} onClick={handleLogout}>
+              <Typography.Text type="tertiary">
+                {user?.vipLevel?.toUpperCase() || 'FREE'} · ¥{Number(user?.balance || 0).toFixed(2)}
+              </Typography.Text>
+            </span>
+          </button>
+          <Button
+            className="sidebar-logout"
+            type="tertiary"
+            theme="borderless"
+            icon={<IconExit />}
+            onClick={handleLogout}
+          >
             退出登录
-          </QuickAction>
-        </SidebarFooter>
-      </Sidebar>
-      <ContentArea><Outlet /></ContentArea>
-    </LayoutWrapper>
+          </Button>
+        </div>
+      </aside>
+
+      <main className="app-content">
+        <Outlet />
+      </main>
+    </div>
   );
 };
-
-const LayoutWrapper = styled.div`
-  display: flex;
-  height: 100vh;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--ff-page);
-
-  @media (max-width: 720px) {
-    flex-direction: column;
-    overflow: auto;
-  }
-`;
-
-const Sidebar = styled.aside`
-  width: 248px;
-  padding: 18px 12px 14px;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  background: var(--ff-sidebar);
-  color: #d8dde8;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-
-  @media (max-width: 720px) {
-    width: 100%;
-    padding: 10px 12px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px 10px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  }
-`;
-
-const Brand = styled.button`
-  appearance: none;
-  border: 0;
-  width: 100%;
-  padding: 6px 8px 22px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #fff;
-  background: transparent;
-  cursor: pointer;
-  font-size: 18px;
-  letter-spacing: -0.35px;
-  text-align: left;
-
-  @media (max-width: 720px) {
-    grid-column: 1;
-    padding: 4px 2px;
-    font-size: 16px;
-  }
-`;
-
-const BrandMark = styled.span`
-  color: var(--ff-accent);
-  line-height: 0;
-`;
-
-const PrimaryAction = styled(Button)`
-  width: 100%;
-  height: 42px;
-  border-radius: 9px !important;
-  justify-content: center;
-  font-weight: 600;
-
-  @media (max-width: 720px) {
-    grid-column: 2;
-    width: auto;
-    min-width: 112px;
-    height: 38px;
-  }
-`;
-
-const QuickActions = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 8px 0 18px;
-
-  @media (max-width: 720px) {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, max-content);
-    justify-content: start;
-    padding: 2px 0 4px;
-  }
-`;
-
-const QuickAction = styled(Button)`
-  width: 100%;
-  min-height: 34px;
-  justify-content: flex-start !important;
-  border-radius: 8px !important;
-  color: #aeb8c9 !important;
-  font-size: 13px;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.07) !important;
-    color: #fff !important;
-  }
-`;
-
-const NavLabel = styled.div`
-  padding: 0 10px 7px;
-  color: #667085;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-
-  @media (max-width: 720px) { display: none; }
-`;
-
-const NavMenu = styled.nav`
-  display: grid;
-  gap: 3px;
-
-  @media (max-width: 720px) {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-`;
-
-const NavItem = styled.button<{ $active: boolean }>`
-  width: 100%;
-  height: 42px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  border: 0;
-  border-radius: 8px;
-  color: ${(props) => (props.$active ? '#fff' : '#aeb8c9')};
-  background: ${(props) => (props.$active ? 'rgba(99, 102, 241, 0.20)' : 'transparent')};
-  box-shadow: ${(props) => (props.$active ? 'inset 2px 0 0 var(--ff-accent)' : 'none')};
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: ${(props) => (props.$active ? 600 : 500)};
-  text-align: left;
-  outline: none;
-
-  span { display: inline-flex; font-size: 17px; }
-  &:hover { background: ${(props) => (props.$active ? 'rgba(99, 102, 241, 0.24)' : 'rgba(255, 255, 255, 0.06)')}; color: #fff; }
-  &:focus-visible { outline: 2px solid #aeb8f5; outline-offset: 2px; }
-
-  @media (max-width: 720px) {
-    width: auto;
-    min-width: max-content;
-    height: 36px;
-  }
-`;
-
-const SidebarFooter = styled.div`
-  margin-top: auto;
-  padding-top: 12px;
-  display: grid;
-  gap: 5px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-
-  @media (max-width: 720px) {
-    grid-column: 1 / -1;
-    margin-top: 0;
-    padding-top: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-top: 0;
-  }
-`;
-
-const AccountButton = styled.button`
-  width: 100%;
-  padding: 9px 8px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #f8fafc;
-  text-align: left;
-  cursor: pointer;
-
-  &:hover { background: rgba(255, 255, 255, 0.06); }
-  .semi-avatar { background: #475569; color: #fff; }
-
-  @media (max-width: 720px) {
-    width: auto;
-    padding: 5px 2px;
-  }
-`;
-
-const AccountCopy = styled.div`
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  .semi-typography { color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .semi-typography-secondary { color: #8e9aad; font-size: 12px; }
-`;
-
-const ContentArea = styled.main`
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--ff-page);
-
-  @media (max-width: 720px) {
-    flex: 0 1 auto;
-    min-height: 0;
-    overflow: visible;
-  }
-`;

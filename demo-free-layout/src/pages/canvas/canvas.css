@@ -1,0 +1,123 @@
+.canvas-page {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.canvas-header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--ff-border);
+  background: var(--ff-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.canvas-header-left,
+.canvas-save-actions {
+  display: flex;
+  align-items: center;
+}
+
+.canvas-header-left {
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+}
+
+.canvas-name-group {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.canvas-name-group > span {
+  color: var(--ff-subtle);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.canvas-name-input {
+  width: 320px;
+}
+
+.canvas-name-input.semi-input-wrapper {
+  padding: 0;
+  border-color: transparent !important;
+  background: transparent;
+}
+
+.canvas-name-input .semi-input {
+  color: var(--ff-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.canvas-name-input.semi-input-wrapper:hover,
+.canvas-name-input.semi-input-wrapper-focus {
+  padding: 0 8px;
+  border-color: var(--ff-border-strong) !important;
+  background: #ffffff;
+}
+
+.canvas-save-actions {
+  flex: 0 0 auto;
+  gap: 14px;
+}
+
+.canvas-save-status {
+  min-width: 160px;
+  color: var(--ff-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.canvas-save-status.unsaved {
+  color: var(--ff-warning);
+}
+
+.canvas-save-status.error {
+  color: var(--ff-danger);
+}
+
+.canvas-editor-wrap {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-loading {
+  display: grid;
+  height: 100%;
+  place-items: center;
+}
+
+@media (max-width: 720px) {
+  .canvas-header {
+    min-height: 56px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .canvas-name-group > span,
+  .canvas-save-status {
+    display: none;
+  }
+
+  .canvas-name-input {
+    width: min(44vw, 220px);
+  }
+
+  .canvas-save-actions {
+    gap: 6px;
+  }
+}
