@@ -20,7 +20,7 @@
     "build:gateway": "pnpm --filter futureflow-gateway build",
     "build:frontend": "pnpm --filter @flowgram.ai/demo-free-layout build:prod",
     "ts-check": "pnpm -r exec tsc --noEmit",
-    "test:platform": "pnpm --filter futureflow-gateway test:smoke && pnpm --filter futureflow-gateway test:integration",
+    "test:platform": "pnpm --filter futureflow-gateway test:smoke && pnpm --filter futureflow-gateway test:integration && pnpm --filter futureflow-gateway test:fuzz",
     "verify": "pnpm run ts-check && pnpm run test:platform && pnpm run build:gateway && pnpm run build:frontend"
   },
   "devDependencies": {

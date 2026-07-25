@@ -1,5 +1,5 @@
 import { Body, Controller, Headers, Param, Post, Res } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
 

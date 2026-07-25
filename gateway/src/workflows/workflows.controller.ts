@@ -9,13 +9,12 @@ import {
   HttpCode,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response, Request as ExpressRequest } from 'express';
 import { WorkflowsService } from './workflows.service';
 import { RunPublishedWorkflowDto, RunWorkflowDto } from './dto/run-workflow.dto';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
 import { DifyClientService } from '../dify/dify-client.service';
-import { Request as ExpressRequest } from 'express';
 import { WorkflowCrudService } from './workflow-crud.service';
 
 /**

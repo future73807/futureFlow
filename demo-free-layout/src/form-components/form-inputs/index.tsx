@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { Component } from 'react';
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { DynamicValueInput, PromptEditorWithVariables } from '@flowgram.ai/form-materials';
+import { DynamicValueInput } from '@flowgram.ai/form-materials';
 
 import { FormItem } from '../form-item';
 import { Feedback } from '../feedback';
@@ -21,38 +20,22 @@ interface PromptEditorBoundaryProps {
 }
 
 /**
- * The rich prompt editor is loaded lazily by the upstream material package.
- * If a transient chunk request fails, preserve the workflow canvas and fall
- * back to the standard dynamic input instead of letting React unmount it.
+ * The upstream rich prompt editor uses a CodeMirror marker layer. Removing an
+ * LLM node while that layer is measuring can emit an uncaught "Invalid
+ * position -1" error, even though the canvas remains visible. The dynamic
+ * value input supports the same constant/template values and variable syntax
+ * without retaining an editor instance after the node has been removed.
  */
-class PromptEditorBoundary extends Component<PromptEditorBoundaryProps, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    if (this.state.failed) {
-      return (
-        <DynamicValueInput
-          value={this.props.value}
-          onChange={this.props.onChange}
-          readonly={this.props.readonly}
-          hasError={this.props.hasError}
-          schema={this.props.schema}
-        />
-      );
-    }
-    return (
-      <PromptEditorWithVariables
-        value={this.props.value}
-        onChange={this.props.onChange}
-        readonly={this.props.readonly}
-        hasError={this.props.hasError}
-      />
-    );
-  }
+function PromptEditorBoundary(props: PromptEditorBoundaryProps) {
+  return (
+    <DynamicValueInput
+      value={props.value}
+      onChange={props.onChange}
+      readonly={props.readonly}
+      hasError={props.hasError}
+      schema={props.schema}
+    />
+  );
 }
 
 export function FormInputs() {

@@ -138,6 +138,7 @@ export class DifyConverterService {
     }
 
     const nodeIds = new Set<string>();
+    const startNodeIds: string[] = [];
     for (const node of json.nodes) {
       if (!node || typeof node.id !== 'string' || !node.id.trim()) {
         throw new BadRequestException('每个节点都必须包含有效的 id');
@@ -146,9 +147,16 @@ export class DifyConverterService {
         throw new BadRequestException(`节点 id 重复: ${node.id}`);
       }
       nodeIds.add(node.id);
-      if (typeof node.type !== 'string' || !node.type || !node.data) {
+      if (
+        typeof node.type !== 'string'
+        || !node.type
+        || !node.data
+        || typeof node.data !== 'object'
+        || Array.isArray(node.data)
+      ) {
         throw new BadRequestException(`节点 ${node.id} 缺少 type 或 data`);
       }
+      if (node.type === 'start') startNodeIds.push(node.id);
       if (node.type === 'loop') {
         throw new BadRequestException('当前版本不支持循环子画布；请改用条件分支，或等待 Iteration 节点上线');
       }
@@ -173,8 +181,71 @@ export class DifyConverterService {
       }
     }
 
-    if (!json.nodes.some((node) => node.type === 'start')) {
-      throw new BadRequestException('工作流缺少 Start 节点');
+    if (startNodeIds.length !== 1) {
+      throw new BadRequestException('工作流必须且只能包含一个 Start 节点');
+    }
+
+    const edgeIds = new Set<string>();
+    const adjacency = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+    for (const nodeId of nodeIds) {
+      adjacency.set(nodeId, []);
+      inDegree.set(nodeId, 0);
+    }
+    for (const edge of json.edges) {
+      if (edge.sourceNodeID === edge.targetNodeID) {
+        throw new BadRequestException('工作流不能包含自环连线');
+      }
+      if (edge.targetNodeID === startNodeIds[0]) {
+        throw new BadRequestException('Start 节点不能包含入口连线');
+      }
+      const edgeId = [
+        edge.sourceNodeID,
+        edge.targetNodeID,
+        edge.sourcePortID || '',
+        edge.targetPortID || '',
+      ].join('\u0000');
+      if (edgeIds.has(edgeId)) {
+        throw new BadRequestException('工作流不能包含重复连线');
+      }
+      edgeIds.add(edgeId);
+      adjacency.get(edge.sourceNodeID)!.push(edge.targetNodeID);
+      inDegree.set(edge.targetNodeID, (inDegree.get(edge.targetNodeID) || 0) + 1);
+    }
+
+    // Dify executes a DAG. Reject cyclic graphs before conversion so neither
+    // Dify nor the direct fallback sees order-dependent work.
+    const queue = [...nodeIds].filter((nodeId) => inDegree.get(nodeId) === 0);
+    let visitedCount = 0;
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      visitedCount += 1;
+      for (const targetId of adjacency.get(nodeId) || []) {
+        const nextDegree = (inDegree.get(targetId) || 0) - 1;
+        inDegree.set(targetId, nextDegree);
+        if (nextDegree === 0) queue.push(targetId);
+      }
+    }
+    if (visitedCount !== nodeIds.size) {
+      throw new BadRequestException('工作流不能包含循环连线');
+    }
+
+    // A disconnected executable node is invisible to the canvas path but can
+    // still be exported or billed. Reject it at the admission boundary.
+    const reachable = new Set<string>([startNodeIds[0]]);
+    const pending = [startNodeIds[0]];
+    while (pending.length > 0) {
+      const nodeId = pending.shift()!;
+      for (const targetId of adjacency.get(nodeId) || []) {
+        if (!reachable.has(targetId)) {
+          reachable.add(targetId);
+          pending.push(targetId);
+        }
+      }
+    }
+    const orphan = [...nodeIds].find((nodeId) => !reachable.has(nodeId));
+    if (orphan) {
+      throw new BadRequestException(`节点 ${orphan} 未连接到 Start 节点`);
     }
     const executableNodes = json.nodes.filter(
       (n) => ['llm', 'http', 'code'].includes(n.type),
