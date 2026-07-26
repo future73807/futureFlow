@@ -7,7 +7,6 @@ import { WorkflowsController } from './workflows.controller';
 import { WorkflowsService } from './workflows.service';
 import { WorkflowCrudController } from './workflow-crud.controller';
 import { WorkflowCrudService } from './workflow-crud.service';
-import { DirectLlmService } from './direct-llm.service';
 import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
 import { ConverterModule } from '../converter/converter.module';
 import { DifyModule } from '../dify/dify.module';
@@ -26,7 +25,6 @@ import { AuthModule } from '../auth/auth.module';
   providers: [
     WorkflowsService,
     WorkflowCrudService,
-    DirectLlmService,
     WorkflowExecutionGuardService,
   ],
   exports: [WorkflowsService, WorkflowCrudService],

@@ -26,7 +26,7 @@ import { WorkflowTrigger } from '../src/database/entities/workflow-trigger.entit
 import { DifyIntegration } from '../src/database/entities/dify-integration.entity';
 import { DatabaseModule } from '../src/database/database.module';
 import { DifyModule } from '../src/dify/dify.module';
-import { DirectLlmService } from '../src/workflows/direct-llm.service';
+
 import { WorkflowsModule } from '../src/workflows/workflows.module';
 import { WorkflowTemplateModule } from '../src/templates/workflow-template.module';
 import { WorkflowTriggerModule } from '../src/triggers/workflow-trigger.module';
@@ -103,34 +103,7 @@ async function createTestApp() {
       AdminModule,
     ],
   })
-    .overrideProvider(DirectLlmService)
-    .useValue({
-      async *runDirect() {
-        yield {
-          event: 'workflow_started',
-          task_id: 'integration-task',
-          workflow_run_id: 'integration-run',
-          data: { id: 'integration-run' },
-        };
-        yield {
-          event: 'text_chunk',
-          task_id: 'integration-task',
-          data: { text: 'integration response' },
-        };
-        yield {
-          event: 'workflow_finished',
-          task_id: 'integration-task',
-          workflow_run_id: 'integration-run',
-          data: {
-            status: 'succeeded',
-            total_tokens: 120,
-            total_steps: 3,
-            elapsed_time: 0.1,
-            outputs: { result: 'integration response' },
-          },
-        };
-      },
-    })
+
     .compile();
 
   const app = moduleRef.createNestApplication();

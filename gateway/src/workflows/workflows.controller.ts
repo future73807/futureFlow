@@ -47,7 +47,7 @@ export class WorkflowsController {
    *
    * 执行引擎:
    *   - Dify 已配置 → 走 Dify Service API
-   *   - Dify 未配置 → 降级到直接 LLM 模式(返回 engine_degraded 事件后继续执行)
+   *   - Dify 未配置 → 直接报错
    */
   @Post('run')
   @HttpCode(200)
@@ -219,7 +219,7 @@ export class WorkflowsController {
         latency: connectivity.latency,
         error: connectivity.error,
       },
-      executionMode: (await this.difyClient.isConfigured()) ? 'dify' : 'direct-llm',
+      executionMode: (await this.difyClient.isConfigured()) ? 'dify' : 'not_configured',
     };
   }
 }

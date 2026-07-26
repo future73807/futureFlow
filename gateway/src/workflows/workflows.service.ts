@@ -12,25 +12,21 @@ import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { DifyClientService, DifySSEEvent } from '../dify/dify-client.service';
-import { DifyConfigService } from '../dify/dify-config.service';
 import { BillingService } from '../billing/billing.service';
 import { PermissionChecker } from '../auth/auth.module';
-import { DirectLlmService } from './direct-llm.service';
 import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
 
 /**
  * 工作流服务
  *
  * 编排链路:
- *   权限校验 → 扣费预检 → 执行引擎选择 → SSE 透传 → 扣费结算
+ *   权限校验 → 扣费预检 → Dify 引擎执行 → SSE 透传 → 扣费结算
  *
- * 执行引擎选择逻辑:
- *   1. Dify 已配置（DIFY_API_KEY 为有效 app- 前缀密钥）
- *      → 走 Dify Service API（SSE 流式，支持 DAG 调度）
- *   2. Dify 未配置或格式错误
- *      → 自动降级到 DirectLlmService（直接调用 DeepSeek API）
- *      → 先返回一条 dify_not_configured 通知事件（前端可据此提示用户）
- *      → 再走直接 LLM 执行路径
+ * 执行引擎:
+ *   - Dify 已配置（DIFY_API_KEY 为有效 app- 前缀密钥）
+ *     → 走 Dify Service API（SSE 流式，支持 DAG 调度）
+ *   - Dify 未配置或格式错误
+ *     → 直接报错，不降级
  */
 @Injectable()
 export class WorkflowsService {
@@ -41,10 +37,8 @@ export class WorkflowsService {
     private readonly runRepo: Repository<WorkflowRun>,
     private readonly converter: DifyConverterService,
     private readonly difyClient: DifyClientService,
-    private readonly difyConfig: DifyConfigService,
     private readonly billing: BillingService,
     private readonly permissionChecker: PermissionChecker,
-    private readonly directLlm: DirectLlmService,
     @Optional()
     private readonly executionGuard?: WorkflowExecutionGuardService,
   ) {}
@@ -80,29 +74,22 @@ export class WorkflowsService {
       );
     }
 
-    // ── 2. 预估费用 ──
+    // ── 2. 检查 Dify 配置 ──
     const estimatedCost = this.converter.estimateCost(executableFlowgram);
-    // 仅当有 workflowId 且指定了版本时才走 Dify 执行路径（已发布的工作流）
-    // 临时执行（无 workflowId）始终使用直接 LLM 模式
-    const canUseDify = !!(workflowId && executionContext.workflowVersion);
-    const difyTarget = canUseDify
+    const hasWorkflowVersion = !!(workflowId && executionContext.workflowVersion);
+    const difyTarget = hasWorkflowVersion
       ? { workflowId, workflowVersion: executionContext.workflowVersion }
       : {};
-    const useDify = canUseDify && (await this.difyClient.isConfigured(difyTarget));
+    const difyConfigured = hasWorkflowVersion && (await this.difyClient.isConfigured(difyTarget));
 
-    if (!useDify) {
-      const unsupportedNodes = nodeTypes.filter(
-        (type) => !['start', 'end', 'llm', 'condition', 'multi-condition'].includes(type),
+    if (!difyConfigured) {
+      throw new BadRequestException(
+        `工作流执行需要 Dify 引擎。请先在 Dify 控制台创建工作流应用并发布，或联系管理员配置 DIFY_API_KEY。`,
       );
-      if (unsupportedNodes.length > 0) {
-        throw new BadRequestException(
-          `Dify 未配置时仅支持 start/llm/end 节点，当前包含: ${[...new Set(unsupportedNodes)].join(', ')}`,
-        );
-      }
     }
 
     this.logger.log(
-      `工作流执行: userId=${user.id}, nodes=${nodeTypes.join(',')}, estCost=${estimatedCost}, engine=${useDify ? 'dify' : 'direct-llm'}`,
+      `工作流执行: userId=${user.id}, nodes=${nodeTypes.join(',')}, estCost=${estimatedCost}, engine=dify`,
     );
 
     // ── 3. 创建运行记录 ──
@@ -153,82 +140,39 @@ export class WorkflowsService {
     const allEvents: DifySSEEvent[] = [];
     let executionError: Error | null = null;
 
-    if (useDify) {
-      try {
-        // A published release was imported into its own Dify app at publish
-        // time. Execution is read-only and never serializes other workflows.
-        const difyInputs = this.converter.extractInputs(executableFlowgram);
+    try {
+      // A published release was imported into its own Dify app at publish
+      // time. Execution is read-only and never serializes other workflows.
+      const difyInputs = this.converter.extractInputs(executableFlowgram);
 
-        const stream = this.difyClient.runWorkflowStream(
-          difyInputs,
-          user.username,
-          difyTarget,
-        );
-        for await (const event of stream) {
-          allEvents.push(event);
-          yield event;
-          if (event.event === 'workflow_started' && event.workflow_run_id) {
-            await this.runRepo.update(runId, {
-              difyWorkflowId: event.data?.id,
-              difyTaskId: event.task_id,
-            });
-          }
+      const stream = this.difyClient.runWorkflowStream(
+        difyInputs,
+        user.username,
+        difyTarget,
+      );
+      for await (const event of stream) {
+        allEvents.push(event);
+        yield event;
+        if (event.event === 'workflow_started' && event.workflow_run_id) {
+          await this.runRepo.update(runId, {
+            difyWorkflowId: event.data?.id,
+            difyTaskId: event.task_id,
+          });
         }
-      } catch (err) {
-        executionError = err;
-        this.logger.error(`Dify 执行异常: ${err.message}`);
-        const errorEvent: DifySSEEvent = {
-          event: 'error',
-          data: {
-            status: 500,
-            code: 'dify_execution_failed',
-            message: err.message,
-          },
-        };
-        allEvents.push(errorEvent);
-        yield errorEvent;
       }
-    } else {
-      // ═══ 降级路径:直接 LLM 模式 ═══
-      // 先返回一条降级通知事件（前端可据此显示提示）
-      const configStatus = this.difyConfig.getValidation();
-      const degradeEvent: DifySSEEvent = {
-        event: 'engine_degraded',
+    } catch (err) {
+      executionError = err;
+      this.logger.error(`Dify 执行异常: ${err.message}`);
+      const errorEvent: DifySSEEvent = {
+        event: 'error',
         data: {
-          engine: 'direct-llm',
-          reason: 'dify_not_configured',
-          message: configStatus.message,
-          suggestion: configStatus.suggestion,
+          status: 500,
+          code: 'dify_execution_failed',
+          message: err.message,
         },
       };
-      allEvents.push(degradeEvent);
-      yield degradeEvent;
-
-      this.logger.warn(
-        `降级到直接 LLM 模式: ${configStatus.message}`,
-      );
-
-      // 执行直接 LLM 调用
-      try {
-        const stream = this.directLlm.runDirect(executableFlowgram, user.username);
-        for await (const event of stream) {
-          allEvents.push(event);
-          yield event;
-        }
-      } catch (err) {
-        executionError = err;
-        this.logger.error(`直接 LLM 执行异常: ${err.message}`);
-        const errorEvent: DifySSEEvent = {
-          event: 'error',
-          data: {
-            status: 500,
-            code: 'direct_llm_failed',
-            message: err.message,
-          },
-        };
-        allEvents.push(errorEvent);
-        yield errorEvent;
-      }
+      allEvents.push(errorEvent);
+      yield errorEvent;
     }
 
     // ── 6. 提取执行结果 ──
@@ -263,7 +207,7 @@ export class WorkflowsService {
         frozenAmount,
         actualCost,
         runId,
-        `Token: ${result.totalTokens}, Steps: ${result.totalSteps}, Model: ${modelName}, Engine: ${useDify ? 'dify' : 'direct'}`,
+        `Token: ${result.totalTokens}, Steps: ${result.totalSteps}, Model: ${modelName}, Engine: dify`,
       );
 
       await this.runRepo.update(runId, {
@@ -278,14 +222,13 @@ export class WorkflowsService {
       });
 
       this.logger.log(
-        `工作流完成: runId=${runId}, tokens=${result.totalTokens}, cost=${actualCost}, model=${modelName}, engine=${useDify ? 'dify' : 'direct'}`,
+        `工作流完成: runId=${runId}, tokens=${result.totalTokens}, cost=${actualCost}, model=${modelName}, engine=dify`,
       );
     }
   }
 
   /**
    * 从 SSE 事件流中提取执行结果汇总
-   * 兼容 Dify 和直接 LLM 两种模式
    */
   private extractResult(events: DifySSEEvent[]): {
     workflowRunId: string;

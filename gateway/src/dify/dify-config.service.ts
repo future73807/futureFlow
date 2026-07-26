@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
  */
 export type DifyConfigStatus =
   | 'configured' // 已正确配置，走 Dify 执行路径
-  | 'not_configured' // 未配置（占位值或空），走降级路径
+  | 'not_configured' // 未配置（占位值或空），执行将报错
   | 'invalid_format' // 格式错误（非 app- 前缀）
   | 'missing_base'; // 缺少 API Base
 
@@ -67,9 +67,6 @@ export class DifyConfigService implements OnModuleInit {
         this.logger.warn(
           `⚠️  Dify 未配置(${v.message})`,
         );
-        this.logger.warn(
-          `   工作流将降级到直接 LLM 模式(直接调用 DeepSeek API)`,
-        );
         this.logger.warn(v.suggestion);
         break;
       case 'invalid_format':
@@ -77,16 +74,10 @@ export class DifyConfigService implements OnModuleInit {
           `❌ DIFY_API_KEY 格式错误: ${v.message}`,
         );
         this.logger.error(v.suggestion);
-        this.logger.warn(
-          `   工作流将降级到直接 LLM 模式(直接调用 DeepSeek API)`,
-        );
         break;
       case 'missing_base':
         this.logger.error(
           `❌ DIFY_API_BASE 未配置`,
-        );
-        this.logger.warn(
-          `   工作流将降级到直接 LLM 模式(直接调用 DeepSeek API)`,
         );
         break;
     }

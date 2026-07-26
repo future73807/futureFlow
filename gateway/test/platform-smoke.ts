@@ -8,7 +8,7 @@ import { DifyConverterService } from '../src/converter/dify-converter.service';
 import { DifyIntegrationService } from '../src/dify/dify-integration.service';
 import { WorkflowsController } from '../src/workflows/workflows.controller';
 import { WorkflowsService } from '../src/workflows/workflows.service';
-import { DirectLlmService } from '../src/workflows/direct-llm.service';
+
 
 async function testControllerCompletesGenerator() {
   let finalized = false;
@@ -273,7 +273,6 @@ async function testWorkflowValidationAndDirectModeGuard() {
     converter,
     { isConfigured: () => false } as any,
     {} as any,
-    {} as any,
     permissions,
     {} as any,
   );
@@ -334,7 +333,6 @@ async function testExecutionFailuresAlwaysRefund() {
         throw new Error('Dify execution failed');
       },
     } as any,
-    {} as any,
     billing as any,
     new PermissionChecker(),
     {} as any,
@@ -357,14 +355,9 @@ async function testExecutionFailuresAlwaysRefund() {
     runRepo as any,
     converter,
     { isConfigured: () => false } as any,
-    { getValidation: () => ({ message: 'not configured', suggestion: '' }) } as any,
     billing as any,
     new PermissionChecker(),
-    {
-      async *runDirect() {
-        yield { event: 'workflow_started', task_id: 'task-1' };
-      },
-    } as any,
+    {} as any,
   );
 
   for await (const _event of interruptedService.runWorkflow(
@@ -378,69 +371,7 @@ async function testExecutionFailuresAlwaysRefund() {
   assert.equal(updates.some((update) => update.status === 'failed'), true);
 }
 
-async function testDirectLlmResolvesUpstreamOutputs() {
-  const service = new DirectLlmService({
-    get: (_key: string, fallback: string) => fallback,
-  } as any);
-  const prompts: { system: string; user: string }[] = [];
-  (service as any).callLlmApi = async (config: any) => {
-    prompts.push({ system: config.systemPrompt, user: config.userPrompt });
-    return {
-      text: prompts.length === 1 ? '第一步结果' : '第二步结果',
-      tokens: 1,
-    };
-  };
 
-  const flowgram = {
-    nodes: [
-      {
-        id: 'start',
-        type: 'start',
-        data: {
-          title: 'Start',
-          outputs: {
-            properties: { query: { type: 'string', default: '天气怎么样？' } },
-          },
-        },
-      },
-      {
-        id: 'llm_1',
-        type: 'llm',
-        data: {
-          title: 'LLM 1',
-          inputsValues: { prompt: { type: 'template', content: '{{start.query}}' } },
-        },
-      },
-      {
-        id: 'llm_2',
-        type: 'llm',
-        data: {
-          title: 'LLM 2',
-          inputsValues: {
-            systemPrompt: { type: 'template', content: '参考：{{llm_1.result}}' },
-            prompt: { type: 'template', content: '{{llm_1.text}}' },
-          },
-        },
-      },
-      { id: 'approved_end', type: 'end', data: { title: 'Approved End' } },
-      { id: 'rejected_end', type: 'end', data: { title: 'Rejected End' } },
-    ],
-    edges: [
-      { sourceNodeID: 'start', targetNodeID: 'llm_1' },
-      { sourceNodeID: 'llm_1', targetNodeID: 'llm_2' },
-      { sourceNodeID: 'llm_2', targetNodeID: 'end' },
-    ],
-  } as any;
-
-  for await (const _event of service.runDirect(flowgram, 'tester')) {
-    // Consume the stream to execute both LLM nodes.
-  }
-
-  assert.deepEqual(prompts, [
-    { system: '', user: '天气怎么样？' },
-    { system: '参考：第一步结果', user: '第一步结果' },
-  ]);
-}
 
 async function testConditionBranchConversionAndDirectExecution() {
   const converter = new DifyConverterService();
@@ -502,17 +433,6 @@ async function testConditionBranchConversionAndDirectExecution() {
     dsl.workflow.graph.nodes.find((node) => node.id === 'approved_end')?.data.outputs,
     [{ variable: 'result', value_selector: ['approved_llm', 'text'] }],
   );
-
-  const service = new DirectLlmService({ get: (_key: string, fallback: string) => fallback } as any);
-  const prompts: string[] = [];
-  (service as any).callLlmApi = async (config: any) => {
-    prompts.push(config.userPrompt);
-    return { text: config.userPrompt, tokens: 1 };
-  };
-  for await (const _event of service.runDirect(flowgram, 'tester')) {
-    // Consume the execution stream.
-  }
-  assert.deepEqual(prompts, ['approved path']);
 }
 
 async function testDify015NodeSchemas() {
@@ -593,7 +513,6 @@ async function main() {
   await testHashedApiKeyAuthentication();
   await testWorkflowValidationAndDirectModeGuard();
   await testExecutionFailuresAlwaysRefund();
-  await testDirectLlmResolvesUpstreamOutputs();
   await testConditionBranchConversionAndDirectExecution();
   await testDify015NodeSchemas();
   await testDifyRejectsAmbiguousMergedEnd();

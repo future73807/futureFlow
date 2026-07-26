@@ -41,7 +41,7 @@ export interface DifyExecutionTarget {
  *
  * 配置校验委托给 DifyConfigService:
  *  - isConfigured() 检查 API Key 是否为有效的 app- 前缀密钥
- *  - 未配置时返回友好错误信息，由 WorkflowsService 降级处理
+ *  - 未配置时 WorkflowsService 将报错
  */
 @Injectable()
 export class DifyClientService {
