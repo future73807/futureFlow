@@ -82,10 +82,13 @@ export class WorkflowsService {
 
     // ── 2. 预估费用 ──
     const estimatedCost = this.converter.estimateCost(executableFlowgram);
-    const difyTarget = workflowId && executionContext.workflowVersion
+    // 仅当有 workflowId 且指定了版本时才走 Dify 执行路径（已发布的工作流）
+    // 临时执行（无 workflowId）始终使用直接 LLM 模式
+    const canUseDify = !!(workflowId && executionContext.workflowVersion);
+    const difyTarget = canUseDify
       ? { workflowId, workflowVersion: executionContext.workflowVersion }
       : {};
-    const useDify = await this.difyClient.isConfigured(difyTarget);
+    const useDify = canUseDify && (await this.difyClient.isConfigured(difyTarget));
 
     if (!useDify) {
       const unsupportedNodes = nodeTypes.filter(

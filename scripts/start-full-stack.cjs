@@ -89,6 +89,11 @@ async function main() {
   run('docker', ['compose', 'up', '-d'], env);
   await waitForHealth('futureflow-postgres', 90_000);
   await waitForHealth('futureflow-dify-api', 150_000);
+  
+  // 自动初始化 Dify（创建管理员、应用、API Key）
+  console.log('Running Dify auto-initialization...');
+  run('docker', ['compose', '--profile', 'init', 'run', '--rm', 'dify-init'], env);
+  
   run(pnpm, ['--filter', 'futureflow-gateway', 'migration:run'], env);
   if (infrastructureOnly) {
     console.log('The full container stack is ready and futureFlow database migrations have completed.');

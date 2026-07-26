@@ -114,10 +114,10 @@ services:
       - dify-storage:/app/api/storage
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 300s
 
   # ============================================================
   # Dify Worker: 异步任务处理器
@@ -184,6 +184,27 @@ services:
       PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
       DEFAULT_VECTORIZER_MODULE: "none"
       CLUSTER_HOSTNAME: "node1"
+
+  # ============================================================
+  # Dify 初始化: 自动创建管理员、应用、API Key
+  # ============================================================
+  dify-init:
+    image: node:20-alpine
+    container_name: futureflow-dify-init
+    restart: "no"
+    depends_on:
+      dify-api:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      DIFY_API_BASE: http://dify-api:5001
+      LLM_API_KEY: ${LLM_API_KEY:-***REMOVED***}
+      LLM_API_HOST: ${LLM_API_HOST:-https://api.longcat.chat/openai}
+    command: ["node", "scripts/init-dify.cjs"]
+    profiles:
+      - init
 
 volumes:
   postgres-data:
