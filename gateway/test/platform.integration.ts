@@ -30,6 +30,7 @@ import { DifyModule } from '../src/dify/dify.module';
 import { WorkflowsModule } from '../src/workflows/workflows.module';
 import { WorkflowTemplateModule } from '../src/templates/workflow-template.module';
 import { WorkflowTriggerModule } from '../src/triggers/workflow-trigger.module';
+import { DifyClientService } from '../src/dify/dify-client.service';
 
 const entities = [
   User,
@@ -103,7 +104,14 @@ async function createTestApp() {
       AdminModule,
     ],
   })
-
+    .overrideProvider(DifyClientService)
+    .useValue({
+      isConfigured: async () => true,
+      async *runWorkflowStream() {
+        yield { event: 'workflow_started', workflow_run_id: 'test-run-1', task_id: 'test-task-1' };
+        yield { event: 'workflow_finished', workflow_run_id: 'test-run-1', task_id: 'test-task-1', data: { status: 'succeeded', total_tokens: 120, outputs: { result: 'mocked' } } };
+      },
+    })
     .compile();
 
   const app = moduleRef.createNestApplication();

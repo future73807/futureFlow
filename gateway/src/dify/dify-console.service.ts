@@ -75,6 +75,12 @@ export class DifyConsoleService implements OnModuleInit {
         error?: string;
       };
       if (response.status === 200 || response.status === 202) {
+        // Publish the workflow after import
+        const publishResponse = await this.publishWorkflow(authorization, binding.appId!);
+        if (publishResponse.status !== 200 && publishResponse.status !== 201) {
+          const publishError = await publishResponse.text().catch(() => 'unknown error');
+          this.logger.warn(`Workflow publish returned ${publishResponse.status}: ${publishError}`);
+        }
         await this.integration.activateWorkflowIntegration(input.workflowId, input.workflowVersion);
         return {
           appId: binding.appId,
@@ -121,6 +127,20 @@ export class DifyConsoleService implements OnModuleInit {
         yaml_content: this.converter.toDifyDSLYaml(flowgram),
         app_id: appId,
       }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  }
+
+  private publishWorkflow(
+    authorization: DifyConsoleAuthorization,
+    appId: string,
+  ): Promise<Response> {
+    return fetch(`${authorization.consoleBase}/apps/${appId}/workflows/publish`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authorization.token}`,
+        'Content-Type': 'application/json',
+      },
       signal: AbortSignal.timeout(30_000),
     });
   }

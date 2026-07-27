@@ -80,7 +80,7 @@ export class WorkflowsService {
     const difyTarget = hasWorkflowVersion
       ? { workflowId, workflowVersion: executionContext.workflowVersion }
       : {};
-    const difyConfigured = hasWorkflowVersion && (await this.difyClient.isConfigured(difyTarget));
+    const difyConfigured = await this.difyClient.isConfigured(difyTarget);
 
     if (!difyConfigured) {
       throw new BadRequestException(

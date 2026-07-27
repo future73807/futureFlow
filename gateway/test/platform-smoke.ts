@@ -287,7 +287,7 @@ async function testWorkflowValidationAndDirectModeGuard() {
     { id: 'user-1', username: 'tester', vipLevel: 'pro' } as any,
   );
 
-  await assert.rejects(() => stream.next(), /Dify 未配置时仅支持/);
+  await assert.rejects(() => stream.next(), /工作流执行需要 Dify 引擎/);
 }
 
 async function testExecutionFailuresAlwaysRefund() {
@@ -335,13 +335,16 @@ async function testExecutionFailuresAlwaysRefund() {
     } as any,
     billing as any,
     new PermissionChecker(),
-    {} as any,
+    { reserve: async () => undefined, release: async () => undefined } as any,
   );
 
   const importEvents: any[] = [];
   for await (const event of difyFailureService.runWorkflow(
     flowgram,
     { id: 'user-1', username: 'tester', vipLevel: 'pro' } as any,
+    {},
+    'workflow-1',
+    { workflowVersion: 1 },
   )) {
     importEvents.push(event);
   }
@@ -354,15 +357,23 @@ async function testExecutionFailuresAlwaysRefund() {
   const interruptedService = new WorkflowsService(
     runRepo as any,
     converter,
-    { isConfigured: () => false } as any,
+    {
+      isConfigured: async () => true,
+      async *runWorkflowStream() {
+        // 模拟执行流中断：不 yield 任何事件就返回
+      },
+    } as any,
     billing as any,
     new PermissionChecker(),
-    {} as any,
+    { reserve: async () => undefined, release: async () => undefined } as any,
   );
 
   for await (const _event of interruptedService.runWorkflow(
     flowgram,
     { id: 'user-1', username: 'tester', vipLevel: 'pro' } as any,
+    {},
+    'workflow-1',
+    { workflowVersion: 1 },
   )) {
     // consume stream
   }
