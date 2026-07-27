@@ -15,8 +15,8 @@ async function waitForDify() {
 }
 async function main() {
   await waitForDify();
-  await fetch(DIFY_CONSOLE_BASE + '/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: ADMIN_EMAIL, password: '<REDACTED>', name: 'Admin' }) });
-  const login = await (await fetch(DIFY_CONSOLE_BASE + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: ADMIN_EMAIL, password: '<REDACTED>' }) })).json();
+  await fetch(DIFY_CONSOLE_BASE + '/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: ADMIN_EMAIL, password: 'admin123456', name: 'Admin' }) });
+  const login = await (await fetch(DIFY_CONSOLE_BASE + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: ADMIN_EMAIL, password: 'admin123456' }) })).json();
   const token = login.data.access_token;
   const app = await (await fetch(DIFY_CONSOLE_BASE + '/apps', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ name: 'futureFlow Bridge', mode: 'workflow' }) })).json();
   const appId = app.id;
