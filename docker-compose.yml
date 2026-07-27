@@ -203,8 +203,6 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-***REMOVED***}
       LLM_API_HOST: ${LLM_API_HOST:-https://api.longcat.chat/openai}
     command: ["node", "scripts/init-dify.cjs"]
-    profiles:
-      - init
 
 volumes:
   postgres-data:

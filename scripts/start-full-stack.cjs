@@ -92,7 +92,7 @@ async function main() {
   
   // 自动初始化 Dify（创建管理员、应用、API Key）
   console.log('Running Dify auto-initialization...');
-  run('docker', ['compose', '--profile', 'init', 'run', '--rm', 'dify-init'], env);
+  run('docker', ['compose', 'up', '-d', 'dify-init'], env);
   
   run(pnpm, ['--filter', 'futureflow-gateway', 'migration:run'], env);
   if (infrastructureOnly) {
