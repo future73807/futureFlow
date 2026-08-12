@@ -23,7 +23,7 @@ export function Inputs() {
   }
 
   return (
-    <FormItem name="inputs" type="object" vertical>
+    <FormItem name="输入参数" type="object" vertical>
       <Field<Record<string, IFlowValue | undefined> | undefined> name="inputsValues">
         {({ field }) => (
           <InputsValues

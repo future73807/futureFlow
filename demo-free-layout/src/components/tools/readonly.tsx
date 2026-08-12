@@ -17,18 +17,20 @@ export const Readonly = () => {
   return playground.config.readonly ? (
     <Tooltip content="切换为可编辑">
       <IconButton
+        aria-label="切换为可编辑"
         theme="borderless"
         type="tertiary"
-        icon={<IconLock size="default" />}
+        icon={<IconLock aria-hidden="true" size="default" />}
         onClick={toggleReadonly}
       />
     </Tooltip>
   ) : (
     <Tooltip content="切换为只读">
       <IconButton
+        aria-label="切换为只读"
         theme="borderless"
         type="tertiary"
-        icon={<IconUnlock size="default" />}
+        icon={<IconUnlock aria-hidden="true" size="default" />}
         onClick={toggleReadonly}
       />
     </Tooltip>

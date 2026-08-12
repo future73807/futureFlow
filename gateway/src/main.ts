@@ -7,6 +7,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const port = config.get<number>('GATEWAY_PORT', 3001);
+  const host = config.get<string>('GATEWAY_HOST', '127.0.0.1').trim() || '127.0.0.1';
   const isProduction = config.get<string>('NODE_ENV') === 'production';
 
   app.useGlobalPipes(
@@ -52,8 +53,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  await app.listen(port);
-  Logger.log('futureFlow gateway started: http://localhost:' + port, 'Bootstrap');
+  await app.listen(port, host);
+  Logger.log(`futureFlow gateway started: http://${host}:${port}`, 'Bootstrap');
   Logger.log(
     'Dify API: ' + (config.get('DIFY_API_BASE') || '(not configured)'),
     'Bootstrap',

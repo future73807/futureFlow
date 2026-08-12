@@ -42,7 +42,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = (props) => {
   return (
     <>
       <NodeWrapperStyle
-        className={selected ? 'selected' : ''}
+        className={`${selected ? 'selected ' : ''}node-type-${node.flowNodeType}`}
         ref={nodeRef}
         draggable
         onDragStart={(e) => {

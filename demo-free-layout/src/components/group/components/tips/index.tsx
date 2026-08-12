@@ -19,7 +19,7 @@ export const GroupTips = () => {
     <GroupTipsStyle className={'workflow-group-tips'}>
       <div className="container">
         <div className="content">
-          <p className="text">{`Hold ${isMacOS ? 'Cmd ⌘' : 'Ctrl'} to drag node out`}</p>
+          <p className="text">{`按住 ${isMacOS ? 'Cmd ⌘' : 'Ctrl'} 可将节点拖出分组`}</p>
           <div
             className="space"
             style={{
@@ -29,7 +29,7 @@ export const GroupTips = () => {
         </div>
         <div className="actions">
           <p className="close-forever" onClick={closeForever}>
-            Never Remind
+            不再提示
           </p>
           <div className="close" onClick={close}>
             <IconClose />

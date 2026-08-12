@@ -6,7 +6,7 @@
 import { definePluginCreator, PluginContext } from '@flowgram.ai/free-layout-editor';
 
 import { RuntimePluginOptions } from './type';
-import { WorkflowRuntimeService } from './runtime-service';
+import { WORKFLOW_RUNTIME_SERVICE, WorkflowRuntimeService } from './runtime-service';
 import {
   WorkflowRuntimeBrowserClient,
   WorkflowRuntimeClient,
@@ -23,7 +23,7 @@ export const createRuntimePlugin = definePluginCreator<RuntimePluginOptions, Plu
     } else {
       rebind(WorkflowRuntimeClient).to(WorkflowRuntimeBrowserClient);
     }
-    bind(WorkflowRuntimeService).toSelf().inSingletonScope();
+    bind(WORKFLOW_RUNTIME_SERVICE).to(WorkflowRuntimeService).inSingletonScope();
   },
   onInit(ctx, options) {
     if (options.mode === 'server') {

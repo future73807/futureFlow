@@ -15,7 +15,7 @@ export function Params() {
 
   if (!isSidebar) {
     return (
-      <FormItem name="params" type="object" vertical>
+      <FormItem name="查询参数" type="object" vertical>
         <Field<Record<string, IFlowValue | undefined> | undefined> name="paramsValues">
           {({ field }) => <DisplayInputsValues value={field.value} />}
         </Field>
@@ -24,7 +24,7 @@ export function Params() {
   }
 
   return (
-    <FormItem name="params" type="object" vertical>
+    <FormItem name="查询参数" type="object" vertical>
       <Field<Record<string, IFlowValue | undefined> | undefined> name="paramsValues">
         {({ field }) => (
           <InputsValues

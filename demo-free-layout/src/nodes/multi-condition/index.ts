@@ -12,6 +12,7 @@ import { nanoid } from 'nanoid';
 import { FlowNodeRegistry } from '../../typings';
 import { WorkflowNodeType } from '../constants';
 import iconCondition from '../../assets/icon-condition.svg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 
 import { formMeta } from './form-meta';
 
@@ -36,7 +37,7 @@ export const MultiConditionNodeRegistry: FlowNodeRegistry = {
   formMeta,
   onAdd() {
     return {
-      id: `multi_condition_${nanoid(5)}`,
+      id: createWorkflowNodeId('multi_condition'),
       type: WorkflowNodeType.MultiCondition,
       data: {
         title: `条件分支_${++index}`,

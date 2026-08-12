@@ -93,7 +93,7 @@ export class CopyShortcut implements ShortcutsHandler {
     }
     await navigator.clipboard.writeText(window.getSelection()?.toString() ?? '');
     Toast.success({
-      content: 'Text copied',
+      content: '文本已复制',
     });
     return true;
   }
@@ -113,7 +113,13 @@ export class CopyShortcut implements ShortcutsHandler {
   private isValid(nodes: WorkflowNodeEntity[]): boolean {
     if (nodes.length === 0) {
       Toast.warning({
-        content: 'No nodes selected',
+        content: '请先选择节点',
+      });
+      return false;
+    }
+    if (this.getValidNodes(nodes).length === 0) {
+      Toast.warning({
+        content: '数组批处理及其固定内部节点不能创建副本',
       });
       return false;
     }
@@ -125,6 +131,9 @@ export class CopyShortcut implements ShortcutsHandler {
    */
   private getValidNodes(nodes: WorkflowNodeEntity[]): WorkflowNodeEntity[] {
     return nodes.filter((n) => {
+      if (n.parent?.flowNodeType === WorkflowNodeType.Loop) {
+        return false;
+      }
       if (
         [WorkflowNodeType.Start, WorkflowNodeType.End].includes(n.flowNodeType as WorkflowNodeType)
       ) {
@@ -260,13 +269,13 @@ export class CopyShortcut implements ShortcutsHandler {
     ) {
       Toast.warning({
         content:
-          'The Start/End node cannot be duplicated, other nodes have been copied to the clipboard',
+          '开始/结束节点不能创建副本，其余节点已复制到剪贴板',
         showClose: false,
       });
       return;
     }
     Toast.success({
-      content: 'Nodes have been copied to the clipboard',
+      content: '节点已复制到剪贴板',
       showClose: false,
     });
     return;

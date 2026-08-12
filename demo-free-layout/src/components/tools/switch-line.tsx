@@ -18,7 +18,13 @@ export const SwitchLine = () => {
 
   return (
     <Tooltip content={'切换连线样式'}>
-      <IconButton type="tertiary" theme="borderless" onClick={switchLine} icon={IconSwitchLine} />
+      <IconButton
+        aria-label="切换连线样式"
+        type="tertiary"
+        theme="borderless"
+        onClick={switchLine}
+        icon={IconSwitchLine}
+      />
     </Tooltip>
   );
 };

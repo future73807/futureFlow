@@ -8,7 +8,6 @@ import {
   autoRenameRefEffect,
   provideJsonSchemaOutputs,
   syncVariableTitle,
-  DisplayOutputs,
   validateFlowValue,
   validateWhenVariableSync,
   listenRefSchemaChange,
@@ -16,7 +15,8 @@ import {
 import { Divider } from '@douyinfe/semi-ui';
 
 import { FlowNodeJSON } from '../typings';
-import { FormHeader, FormContent, FormInputs } from '../form-components';
+import { FormHeader, FormContent, FormInputs, LocalizedOutputs } from '../form-components';
+import { getFieldLabel } from '../form-components/field-labels';
 
 export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => (
   <>
@@ -24,7 +24,7 @@ export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => (
     <FormContent>
       <FormInputs />
       <Divider />
-      <DisplayOutputs displayFromScope />
+      <LocalizedOutputs />
     </FormContent>
   </>
 );
@@ -47,7 +47,7 @@ export const defaultFormMeta: FormMeta<FlowNodeJSON> = {
         node: context.node,
         required: required.includes(valuePropertyKey),
         errorMessages: {
-          required: `${valuePropertyKey} 不能为空`,
+          required: `${getFieldLabel(valuePropertyKey)}不能为空`,
         },
       });
     },

@@ -4,6 +4,7 @@
  */
 
 export * from './feedback';
+export * from './localized-outputs';
 export * from './form-content';
 export * from './form-inputs';
 export * from './form-header';

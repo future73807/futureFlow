@@ -40,6 +40,54 @@
   line-height: 20px;
 }
 
+.gateway-input-section > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.gateway-input-section p {
+  margin: 0;
+  color: var(--ff-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.gateway-input-field {
+  display: grid;
+  gap: 7px;
+}
+
+.gateway-input-field > span {
+  color: var(--ff-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gateway-input-field em {
+  margin-left: 3px;
+  color: #c5382d;
+  font-style: normal;
+}
+
+.gateway-input-field .semi-input-number,
+.gateway-input-field .semi-input-wrapper {
+  width: 100%;
+}
+
+.gateway-preparing,
+.gateway-empty-input {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed #d8dee9;
+  border-radius: var(--ff-radius);
+  background: #f8fafc;
+  color: var(--ff-muted);
+  font-size: 12px;
+}
+
 .gateway-node-list {
   display: grid;
   gap: 8px;

@@ -12,7 +12,8 @@ export const FitView = () => {
   return (
     <Tooltip content="适应视图">
       <IconButton
-        icon={<IconExpand />}
+        aria-label="适应视图"
+        icon={<IconExpand aria-hidden="true" />}
         type="tertiary"
         theme="borderless"
         onClick={() => tools.fitView()}

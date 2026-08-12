@@ -15,7 +15,7 @@ export class ExpandShortcut implements ShortcutsHandler {
   public commandId = FlowCommandId.EXPAND;
 
   public commandDetail: ShortcutsHandler['commandDetail'] = {
-    label: 'Expand',
+    label: '展开',
   };
 
   public shortcuts = ['meta alt closebracket', 'ctrl alt openbracket'];

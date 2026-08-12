@@ -67,7 +67,7 @@ function startNode(id: string, index: number) {
         properties: {
           query: { type: 'string', default: `query-${index}` },
           score: { type: 'number', default: index % 101 },
-          approved: { type: 'boolean', default: index % 2 === 0 },
+          approved: { type: 'integer', default: index % 2 === 0 ? 1 : 0 },
         },
       },
     },
@@ -123,7 +123,7 @@ function conditionFlow(index: number): FlowGramJSON {
             value: {
               left: { type: 'ref', content: [start.id, 'approved'] },
               operator: 'is',
-              right: value(index % 2 === 0),
+              right: value(index % 2 === 0 ? 1 : 0),
             },
           }],
         },
@@ -150,7 +150,7 @@ function validFlow(index: number): FlowGramJSON {
     const llm = llmNode(
       `llm_${index}`,
       index,
-      index % 2 ? `{{${start.id}.query}}` : '{{#start.query#}}',
+      index % 2 ? `{{${start.id}.query}}` : `{{#${start.id}.query#}}`,
     );
     const end = endNode(`end_${index}`);
     return {
@@ -177,21 +177,29 @@ function validFlow(index: number): FlowGramJSON {
           id: httpId,
           type: 'http',
           data: {
-            title: 'HTTP',
-            inputsValues: {
-              method: value(random.pick(['get', 'post', 'patch'])),
+            title: 'API 请求',
+            api: {
+              method: random.pick(['GET', 'POST', 'PATCH']),
               url: value(`https://example.test/${index}?q={{${start.id}.query}}`),
-              headers: value('{"x-test":"futureflow"}'),
-              body: value(`{"score":"{{${start.id}.score}}"}`),
             },
+            headersValues: { 'x-test': value('futureflow') },
+            body: {
+              bodyType: 'JSON',
+              json: value(`{"score":"{{${start.id}.score}}"}`),
+            },
+            timeout: { timeout: 30000, retryTimes: 0 },
           },
         },
         {
           id: codeId,
           type: 'code',
           data: {
-            title: 'Code',
-            inputsValues: { codeLanguage: value(index % 2 ? 'python3' : 'javascript') },
+            title: '代码执行',
+            inputsValues: { input: { type: 'ref', content: [httpId, 'body'] } },
+            script: {
+              language: 'javascript',
+              content: 'function main({ params }) { return { score: String(params.input).length }; }',
+            },
             outputs: { type: 'object', properties: { score: { type: 'number' } } },
           },
         },
@@ -232,7 +240,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
       return { flow, expected: /节点 id 重复/ };
     case 2:
       flow.nodes[0].type = 'llm';
-      return { flow, expected: /必须且只能包含一个 Start 节点/ };
+      return { flow, expected: /必须且只能包含一个开始节点/ };
     case 3:
       flow.nodes = 'not-an-array';
       return { flow, expected: /nodes 和 edges 数组/ };
@@ -245,7 +253,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
       return { flow, expected: /有效分支端口/ };
     case 6:
       flow.nodes.push({ id: `orphan_${index}`, type: 'llm', data: { title: 'Orphan' } });
-      return { flow, expected: /未连接到 Start 节点/ };
+      return { flow, expected: /未连接到开始节点/ };
     case 7:
       flow.edges.push({ sourceNodeID: flow.nodes[flow.nodes.length - 1].id, targetNodeID: flow.nodes[1].id });
       return { flow, expected: /循环连线/ };
@@ -258,7 +266,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
     case 10:
       flow.nodes.push({ id: `second_start_${index}`, type: 'start', data: { title: 'Second start' } });
       flow.edges.push({ sourceNodeID: flow.nodes[0].id, targetNodeID: `second_start_${index}` });
-      return { flow, expected: /必须且只能包含一个 Start 节点/ };
+      return { flow, expected: /必须且只能包含一个开始节点/ };
     case 11:
       flow.nodes = [startNode(`start_${index}`, index), endNode(`end_${index}`)];
       flow.edges = [{ sourceNodeID: `start_${index}`, targetNodeID: `end_${index}` }];
@@ -268,7 +276,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
       return { flow, expected: /nodes 和 edges 数组/ };
     case 13:
       flow.edges.push({ sourceNodeID: flow.nodes[flow.nodes.length - 1].id, targetNodeID: flow.nodes[0].id });
-      return { flow, expected: /Start 节点不能包含入口连线/ };
+      return { flow, expected: /开始节点不能包含入口连线/ };
     case 14:
       {
         const executable = flow.nodes.find((node: any) => ['llm', 'http', 'code'].includes(node.type));
@@ -278,7 +286,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
       return { flow, expected: /自环连线/ };
     case 15:
       flow.nodes[1].type = 'loop';
-      return { flow, expected: /不支持循环子画布/ };
+      return { flow, expected: /子画布必须固定/ };
     case 16:
       flow.nodes[0].data = [];
       return { flow, expected: /缺少 type 或 data/ };
@@ -316,6 +324,135 @@ function assertRejected(flow: FlowGramJSON, expected: RegExp, caseId: number) {
   assert.match(error.message, expected, `case ${caseId}: invalid graph must fail for its intended reason`);
 }
 
+function batchFlow(index: number): FlowGramJSON {
+  const suffix = `batch_${index}`;
+  const scalarType = random.pick(['string', 'number', 'boolean'] as const);
+  const inputType = scalarType === 'string' ? 'string' : 'number';
+  const codeExpression = scalarType === 'string'
+    ? "String(params.item) + '!'"
+    : scalarType === 'boolean'
+      ? 'params.item > 0'
+      : `params.item * ${1 + (index % 9)}`;
+  const start = `${suffix}_start`;
+  const source = `${suffix}_source`;
+  const loop = `${suffix}_loop`;
+  const blockStart = `${suffix}_block_start`;
+  const code = `${suffix}_code`;
+  const blockEnd = `${suffix}_block_end`;
+  const end = `${suffix}_end`;
+  return {
+    nodes: [
+      { id: start, type: 'start', meta: { position: { x: 0, y: 0 } }, data: { title: '开始' } },
+      {
+        id: source,
+        type: 'code',
+        meta: { position: { x: 300, y: 0 } },
+        data: {
+          title: '数组源',
+          inputsValues: {},
+          script: {
+            language: 'javascript',
+            content: `function main({ params }) { return { items: ${inputType === 'string' ? "['a', 'b']" : '[1, 2, 3]'} }; }`,
+          },
+          outputs: {
+            type: 'object',
+            properties: { items: { type: 'array', items: { type: inputType } } },
+          },
+        },
+      },
+      {
+        id: loop,
+        type: 'loop',
+        meta: { position: { x: 600, y: 0 } },
+        data: {
+          title: '数组批处理',
+          loopFor: { type: 'ref', content: [source, 'items'] },
+          loopOutputs: { result: { type: 'ref', content: [code, 'result'] } },
+          outputs: {
+            type: 'object',
+            properties: {
+              result: {
+                type: 'array',
+                items: { type: scalarType === 'boolean' ? 'number' : scalarType },
+              },
+            },
+          },
+        },
+        blocks: [
+          { id: blockStart, type: 'block-start', meta: { position: { x: 0, y: 0 } }, data: {} },
+          {
+            id: code,
+            type: 'code',
+            meta: { position: { x: 180, y: 0 } },
+            data: {
+              title: '逐项处理',
+              inputsValues: {
+                item: { type: 'ref', content: [`${loop}_locals`, 'item'] },
+                index: { type: 'ref', content: [`${loop}_locals`, 'index'] },
+              },
+              script: {
+                language: 'javascript',
+                content: `function main({ params }) { return { result: ${codeExpression} }; }`,
+              },
+              outputs: { type: 'object', properties: { result: { type: scalarType } } },
+            },
+          },
+          { id: blockEnd, type: 'block-end', meta: { position: { x: 520, y: 0 } }, data: {} },
+        ],
+        edges: [
+          { sourceNodeID: blockStart, targetNodeID: code },
+          { sourceNodeID: code, targetNodeID: blockEnd },
+        ],
+      },
+      {
+        id: end,
+        type: 'end',
+        meta: { position: { x: 1300, y: 0 } },
+        data: {
+          title: '结束',
+          inputsValues: { result: { type: 'ref', content: [loop, 'result'] } },
+        },
+      },
+    ] as any,
+    edges: [
+      { sourceNodeID: start, targetNodeID: source },
+      { sourceNodeID: source, targetNodeID: loop },
+      { sourceNodeID: loop, targetNodeID: end },
+    ],
+  };
+}
+
+function assertBatchFuzz() {
+  const caseCount = Math.max(50, Math.min(500, Math.floor(CASES_PER_CLASS / 20)));
+  for (let index = 0; index < caseCount; index += 1) {
+    const flow = batchFlow(index);
+    const dsl = converter.toDifyDSL(flow);
+    const loop = flow.nodes.find((node) => node.type === 'loop')!;
+    const iteration = dsl.workflow.graph.nodes.find((node) => node.id === loop.id)!;
+    assert.equal(iteration.data.type, 'iteration');
+    assert.equal(iteration.data.is_parallel, false);
+    assert.ok(['array[string]', 'array[number]'].includes(iteration.data.output_type));
+    assert.equal(dsl.workflow.graph.nodes.length, flow.nodes.length + 2);
+    assert.equal(dsl.workflow.graph.edges.length, flow.edges.length + 1);
+
+    const invalid = structuredClone(flow) as any;
+    const invalidLoop = invalid.nodes.find((node: any) => node.type === 'loop');
+    const variant = index % 6;
+    if (variant === 0) invalidLoop.blocks.push(structuredClone(invalidLoop.blocks[1]));
+    if (variant === 1) invalidLoop.edges.reverse()[0].targetNodeID = invalidLoop.blocks[1].id;
+    if (variant === 2) invalidLoop.blocks[1].data.outputs.properties.extra = { type: 'number' };
+    if (variant === 3) invalidLoop.blocks[1].data.inputsValues.item.content = [invalid.nodes[1].id, 'items'];
+    if (variant === 4) invalidLoop.data.loopOutputs.result.content[1] = 'missing';
+    if (variant === 5) invalidLoop.blocks[1].data.script.content = 'async function main({ params }) { return { result: params.item }; }';
+    assertRejected(
+      invalid,
+      /子画布必须固定|内部连线|只能声明一个输出|只能引用当前项|唯一输出|暂不支持 async|必须同步执行/,
+      index,
+    );
+  }
+  return caseCount;
+}
+
 function main() {
   for (let index = 0; index < VALID_CASES; index += 1) {
     assertDslIntegrity(validFlow(index), index);
@@ -331,8 +468,9 @@ function main() {
     Math.min(INVALID_CASES, INVALID_VARIANT_COUNT),
     'every requested invalid variant must be exercised',
   );
+  const batchCases = assertBatchFuzz();
   process.stdout.write(
-    `platform fuzz passed: seed=0x${SEED.toString(16)}, valid=${VALID_CASES}, invalid=${INVALID_CASES}, variants=${invalidVariants.size}, total=${VALID_CASES + INVALID_CASES}\n`,
+    `platform fuzz passed: seed=0x${SEED.toString(16)}, valid=${VALID_CASES}, invalid=${INVALID_CASES}, variants=${invalidVariants.size}, batch=${batchCases * 2}, total=${VALID_CASES + INVALID_CASES + batchCases * 2}\n`,
   );
 }
 

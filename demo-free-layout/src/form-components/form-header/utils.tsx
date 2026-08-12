@@ -8,10 +8,10 @@ const NodeHeaderIcon = ({ source }: { source?: string }) => {
   const [failed, setFailed] = useState(!source);
 
   if (failed) {
-    return <span className="node-header-icon-fallback"><IconApps /></span>;
+    return <span className="node-header-icon-fallback" aria-hidden="true"><IconApps /></span>;
   }
 
-  return <Icon src={source} onError={() => setFailed(true)} />;
+  return <Icon src={source} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
 };
 
 export const getIcon = (node: FlowNodeEntity) => {

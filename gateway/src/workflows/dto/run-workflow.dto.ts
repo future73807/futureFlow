@@ -1,4 +1,4 @@
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 /**
  * 运行工作流请求 DTO
@@ -27,4 +27,10 @@ export class RunPublishedWorkflowDto {
   @IsOptional()
   @IsObject()
   inputs?: Record<string, string | number | boolean>;
+
+  /** UI 可锁定刚刚展示的发布版本，避免填写期间被重发布后误跑新版本。 */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  publishedVersion?: number;
 }

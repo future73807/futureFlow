@@ -1,10 +1,8 @@
 type Environment = Record<string, string | undefined>;
 
-const DEFAULT_JWT_SECRET = 'change-me-in-production';
-
 function isPlaceholder(value?: string): boolean {
   if (!value) return true;
-  return /change-me|x{6,}|your[-_ ]?(key|secret|password)/i.test(value);
+  return /change-me|replace-with|x{6,}|your[-_ ]?(key|secret|password)/i.test(value);
 }
 
 function requirePositiveInteger(
@@ -33,17 +31,31 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
   requirePositiveInteger(environment, 'WORKFLOW_MAX_RUNS_PER_MINUTE', 30);
   requirePositiveInteger(environment, 'WORKFLOW_SCHEDULE_TICK_SECONDS', 30);
   requirePositiveInteger(environment, 'LLM_REQUEST_TIMEOUT_MS', 120000);
-
-  if (nodeEnv !== 'production') return environment;
+  requirePositiveInteger(environment, 'MEDIA_PROVIDER_TIMEOUT_MS', 120000);
+  requirePositiveInteger(environment, 'MEDIA_PROVIDER_JSON_MAX_BYTES', 41943040);
+  requirePositiveInteger(environment, 'MEDIA_DOWNLOAD_TIMEOUT_MS', 120000);
+  requirePositiveInteger(environment, 'MEDIA_IMAGE_MAX_BYTES', 26214400);
+  requirePositiveInteger(environment, 'MEDIA_VIDEO_MAX_BYTES', 262144000);
 
   const jwtSecret = environment.GATEWAY_JWT_SECRET;
-  if (!jwtSecret || jwtSecret === DEFAULT_JWT_SECRET || jwtSecret.length < 32) {
-    throw new Error('GATEWAY_JWT_SECRET must be at least 32 characters in production');
+  if (isPlaceholder(jwtSecret) || (jwtSecret || '').length < 32) {
+    throw new Error('GATEWAY_JWT_SECRET must be at least 32 characters and not a placeholder');
   }
 
-  if (isPlaceholder(environment.POSTGRES_PASSWORD) || environment.POSTGRES_PASSWORD === 'futureflow123') {
-    throw new Error('POSTGRES_PASSWORD must be changed from the sample value in production');
+  const postgresPassword = environment.POSTGRES_PASSWORD;
+  if (isPlaceholder(postgresPassword) || (postgresPassword || '').length < 32) {
+    throw new Error('POSTGRES_PASSWORD must be at least 32 characters and not a placeholder');
   }
+
+  const mediaEncryptionSecret = environment.MEDIA_CREDENTIAL_ENCRYPTION_SECRET;
+  if (mediaEncryptionSecret && (
+    isPlaceholder(mediaEncryptionSecret)
+    || mediaEncryptionSecret.length < 32
+  )) {
+    throw new Error('MEDIA_CREDENTIAL_ENCRYPTION_SECRET must be at least 32 characters and not a placeholder');
+  }
+
+  if (nodeEnv !== 'production') return environment;
 
   const corsOrigin = environment.CORS_ORIGIN;
   if (!corsOrigin || corsOrigin.split(',').some((origin) => origin.trim() === '*')) {

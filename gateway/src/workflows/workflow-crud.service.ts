@@ -5,14 +5,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Workflow } from '../database/entities/workflow.entity';
 import { WorkflowVersion } from '../database/entities/workflow-version.entity';
 import { WorkflowRun } from '../database/entities/workflow-run.entity';
+import { User } from '../database/entities/user.entity';
 import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/workflow-crud.dto';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConsoleService, DifySyncResult } from '../dify/dify-console.service';
+import { DifyIntegrationService } from '../dify/dify-integration.service';
+import { PermissionChecker } from '../auth/auth.module';
 
 @Injectable()
 export class WorkflowCrudService {
@@ -25,6 +28,8 @@ export class WorkflowCrudService {
     private readonly workflowVersionRepo: Repository<WorkflowVersion>,
     private readonly converter: DifyConverterService,
     private readonly difyConsole: DifyConsoleService,
+    private readonly difyIntegration: DifyIntegrationService,
+    private readonly permissionChecker: PermissionChecker,
   ) {}
 
   async listByUser(userId: string): Promise<Workflow[]> {
@@ -53,28 +58,38 @@ export class WorkflowCrudService {
   }
 
   async update(id: string, userId: string, dto: UpdateWorkflowDto): Promise<Workflow> {
-    const wf = await this.getById(id, userId);
-    if (dto.name !== undefined) {
-      const name = dto.name.trim();
-      if (!name) throw new BadRequestException('工作流名称不能为空');
-      wf.name = name;
-    }
-    if (dto.description !== undefined) wf.description = dto.description;
-    if (dto.flowgram !== undefined) wf.flowgramJson = this.parseFlowgram(dto.flowgram);
-    if (dto.status !== undefined) {
-      if (!['active', 'archived'].includes(dto.status)) {
-        throw new BadRequestException('无效的工作流状态');
+    return this.workflowRepo.manager.transaction(async (manager) => {
+      const workflowRepo = manager.getRepository(Workflow);
+      const wf = await this.getLockedWorkflow(manager, id, userId);
+      if (dto.name !== undefined) {
+        const name = dto.name.trim();
+        if (!name) throw new BadRequestException('工作流名称不能为空');
+        wf.name = name;
       }
-      wf.status = dto.status;
-    }
-    wf.version = Number(wf.version) + 1;
-    return this.workflowRepo.save(wf);
+      if (dto.description !== undefined) wf.description = dto.description;
+      if (dto.flowgram !== undefined) wf.flowgramJson = this.parseFlowgram(dto.flowgram);
+      if (dto.status !== undefined) {
+        if (!['active', 'archived'].includes(dto.status)) {
+          throw new BadRequestException('无效的工作流状态');
+        }
+        wf.status = dto.status;
+      }
+      wf.version = Number(wf.version) + 1;
+      return workflowRepo.save(wf);
+    });
   }
 
   async delete(id: string, userId: string): Promise<void> {
-    const wf = await this.getById(id, userId);
-    wf.status = 'deleted';
-    await this.workflowRepo.save(wf);
+    await this.workflowRepo.manager.transaction(async (manager) => {
+      const wf = await this.getLockedWorkflow(manager, id, userId);
+
+      // Keep the workflow row locked while Dify resources are removed. The
+      // lock is database-backed, so publish/sync requests in other Gateway
+      // processes cannot create a new app between cleanup and soft deletion.
+      await this.difyIntegration.deleteWorkflowIntegrations(wf.id);
+      wf.status = 'deleted';
+      await manager.getRepository(Workflow).save(wf);
+    });
   }
 
   async duplicate(id: string, userId: string): Promise<Workflow> {
@@ -94,16 +109,31 @@ export class WorkflowCrudService {
   async publish(id: string, userId: string): Promise<Workflow & { difySync: DifySyncResult }> {
     // Keep the live snapshot and its audit record atomic: callers must never
     // observe a published workflow whose recoverable version was not saved.
+    let difySyncOutcome:
+      | { ok: true; value: DifySyncResult }
+      | { ok: false; error: unknown }
+      | undefined;
     const published = await this.workflowRepo.manager.transaction(async (manager) => {
       const workflowRepo = manager.getRepository(Workflow);
       const versionRepo = manager.getRepository(WorkflowVersion);
-      const wf = await workflowRepo.findOne({ where: { id, userId } });
-      if (!wf || wf.status === 'deleted') throw new NotFoundException('工作流不存在');
+      const wf = await this.getLockedWorkflow(manager, id, userId);
       if (wf.status !== 'active') {
         throw new BadRequestException('仅可发布处于正常状态的工作流');
       }
 
-      this.converter.validateFlowGram(wf.flowgramJson as FlowGramJSON);
+      const owner = await manager.getRepository(User).findOne({ where: { id: userId } });
+      if (!owner) throw new NotFoundException('工作流所有者不存在');
+      const nodeTypes = (wf.flowgramJson as FlowGramJSON).nodes.map((node) => node.type);
+      const permission = this.permissionChecker.checkNodePermissions(owner.vipLevel, nodeTypes);
+      if (!permission.allowed) {
+        throw new BadRequestException(
+          `当前 VIP 等级(${owner.vipLevel})无权发布以下节点: ${permission.deniedNodes.join(', ')}`,
+        );
+      }
+
+      // 完整转换是发布前的无副作用门禁；变量支配关系、End 引用和 Dify DSL
+      // 结构错误必须在写入不可变快照前失败，不能留下“已发布但永远无法同步”的版本。
+      this.converter.toDifyDSL(wf.flowgramJson as FlowGramJSON);
       const publishedAt = new Date();
       wf.publishedFlowgramJson = this.cloneJson(wf.flowgramJson);
       wf.publishedVersion = wf.version;
@@ -128,37 +158,65 @@ export class WorkflowCrudService {
           }),
         );
       }
+
+      // The same PostgreSQL row lock must cover remote provisioning/import.
+      // Capture an unexpected Dify throw so the immutable local snapshot can
+      // still commit, then propagate it after the transaction releases the
+      // lock. Normal failed/not-configured results are returned as before.
+      try {
+        difySyncOutcome = {
+          ok: true,
+          value: await this.difyConsole.syncPublishedWorkflow({
+            workflowId: published.id,
+            workflowVersion: published.publishedVersion!,
+            workflowName: published.name,
+            flowgram: published.publishedFlowgramJson as FlowGramJSON,
+          }),
+        };
+      } catch (error) {
+        difySyncOutcome = { ok: false, error };
+      }
       return published;
     });
-    // This external operation deliberately happens after the database commit:
-    // a Dify outage must not roll back the immutable local release. A binding
-    // stays `provisioning` until the import is accepted, so it cannot execute
-    // an empty or stale Dify app.
-    const difySync = await this.difyConsole.syncPublishedWorkflow({
-      workflowId: published.id,
-      workflowVersion: published.publishedVersion!,
-      workflowName: published.name,
-      flowgram: published.publishedFlowgramJson as FlowGramJSON,
-    });
-    return Object.assign(published, { difySync });
+    if (!difySyncOutcome) {
+      throw new Error('Dify 同步未返回结果');
+    }
+    if (!difySyncOutcome.ok) {
+      throw difySyncOutcome.error;
+    }
+    return Object.assign(published, { difySync: difySyncOutcome.value });
   }
 
   async unpublish(id: string, userId: string): Promise<Workflow> {
-    const wf = await this.getById(id, userId);
-    wf.publishedFlowgramJson = null;
-    wf.publishedVersion = null;
-    wf.publishedAt = null;
-    return this.workflowRepo.save(wf);
+    return this.workflowRepo.manager.transaction(async (manager) => {
+      const workflowRepo = manager.getRepository(Workflow);
+      const wf = await this.getLockedWorkflow(manager, id, userId);
+      wf.publishedFlowgramJson = null;
+      wf.publishedVersion = null;
+      wf.publishedAt = null;
+      return workflowRepo.save(wf);
+    });
   }
 
   /** Re-imports the current immutable release after Dify was authorized later. */
   async syncPublishedDify(id: string, userId: string): Promise<DifySyncResult> {
-    const workflow = await this.getPublished(id, userId);
-    return this.difyConsole.syncPublishedWorkflow({
-      workflowId: workflow.id,
-      workflowVersion: workflow.publishedVersion!,
-      workflowName: workflow.name,
-      flowgram: workflow.publishedFlowgramJson as FlowGramJSON,
+    return this.workflowRepo.manager.transaction(async (manager) => {
+      const workflow = await this.getLockedWorkflow(manager, id, userId);
+      if (workflow.status !== 'active') {
+        throw new NotFoundException('工作流不可用');
+      }
+      if (!workflow.publishedFlowgramJson || !workflow.publishedVersion) {
+        throw new BadRequestException('工作流尚未发布，请先在画布中发布当前版本');
+      }
+
+      // A manual retry can provision an app too, so it participates in the
+      // same cross-process row lock as publish and delete.
+      return this.difyConsole.syncPublishedWorkflow({
+        workflowId: workflow.id,
+        workflowVersion: workflow.publishedVersion,
+        workflowName: workflow.name,
+        flowgram: workflow.publishedFlowgramJson as FlowGramJSON,
+      });
     });
   }
 
@@ -228,17 +286,20 @@ export class WorkflowCrudService {
     if (!Number.isInteger(version) || version < 1) {
       throw new BadRequestException('版本号必须是正整数');
     }
-    const wf = await this.getById(id, userId);
-    const history = await this.workflowVersionRepo.findOne({
-      where: { workflowId: id, userId, version },
-    });
-    if (!history) throw new NotFoundException('指定的发布版本不存在');
+    return this.workflowRepo.manager.transaction(async (manager) => {
+      const workflowRepo = manager.getRepository(Workflow);
+      const wf = await this.getLockedWorkflow(manager, id, userId);
+      const history = await manager.getRepository(WorkflowVersion).findOne({
+        where: { workflowId: id, userId, version },
+      });
+      if (!history) throw new NotFoundException('指定的发布版本不存在');
 
-    wf.name = history.name;
-    wf.description = history.description;
-    wf.flowgramJson = this.cloneJson(history.flowgramJson);
-    wf.version = Number(wf.version) + 1;
-    return this.workflowRepo.save(wf);
+      wf.name = history.name;
+      wf.description = history.description;
+      wf.flowgramJson = this.cloneJson(history.flowgramJson);
+      wf.version = Number(wf.version) + 1;
+      return workflowRepo.save(wf);
+    });
   }
 
   private parseFlowgram(value: string): Record<string, any> {
@@ -251,6 +312,26 @@ export class WorkflowCrudService {
     } catch {
       throw new BadRequestException('flowgram 必须是包含 nodes 和 edges 数组的 JSON');
     }
+  }
+
+  private async getLockedWorkflow(
+    manager: EntityManager,
+    id: string,
+    userId: string,
+  ): Promise<Workflow> {
+    // Do not catch lock errors here. Real PostgreSQL must never silently fall
+    // back to an unlocked read; pg-mem accepts this FOR UPDATE query for tests.
+    const workflow = await manager.getRepository(Workflow).findOne({
+      where: { id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!workflow || workflow.status === 'deleted') {
+      throw new NotFoundException('工作流不存在');
+    }
+    if (workflow.userId !== userId) {
+      throw new ForbiddenException('无权访问此工作流');
+    }
+    return workflow;
   }
 
   private cloneJson(value: Record<string, any>): Record<string, any> {

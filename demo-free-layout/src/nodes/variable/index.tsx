@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { nanoid } from 'nanoid';
-
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconVariable from '../../assets/icon-variable.png';
+import iconVariable from '../../assets/icon-variable.svg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
 let index = 0;
@@ -26,10 +25,10 @@ export const VariableNodeRegistry: FlowNodeRegistry = {
   },
   onAdd() {
     return {
-      id: `variable_${nanoid(5)}`,
+      id: createWorkflowNodeId('variable'),
       type: 'variable',
       data: {
-        title: `Variable_${++index}`,
+        title: `变量赋值 ${++index}`,
         assign: [
           {
             operator: 'declare',

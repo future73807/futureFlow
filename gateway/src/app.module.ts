@@ -13,6 +13,7 @@ import { validateEnvironment } from './config/environment.validation';
 import { HealthModule } from './health/health.module';
 import { WorkflowTemplateModule } from './templates/workflow-template.module';
 import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
       host: config.get<string>('POSTGRES_HOST', 'localhost'),
       port: Number.parseInt(config.get<string>('POSTGRES_PORT', '5432'), 10),
       username: config.get<string>('POSTGRES_USER', 'futureflow'),
-      password: config.get<string>('POSTGRES_PASSWORD', 'futureflow123'),
+      password: config.getOrThrow<string>('POSTGRES_PASSWORD'),
       database: config.get<string>('POSTGRES_DB', 'futureflow'),
       autoLoadEntities: true,
       // 开发环境自动同步表结构,生产环境关闭
@@ -48,7 +49,7 @@ import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
       global: true,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('GATEWAY_JWT_SECRET', 'change-me-in-production'),
+        secret: config.getOrThrow<string>('GATEWAY_JWT_SECRET'),
         signOptions: {
           // 默认 7 天过期，避免画布长时间编辑后保存失败
           expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d'),
@@ -65,6 +66,7 @@ import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
     HealthModule,
     WorkflowTemplateModule,
     WorkflowTriggerModule,
+    MediaModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,27 @@
+.localized-output-list {
+  display: grid;
+  gap: 7px;
+}
+
+.localized-output-list > strong {
+  color: #667085;
+  font-size: 12px;
+}
+
+.localized-output-list > div {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #e8ecf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 12px;
+}
+
+.localized-output-empty {
+  color: #98a2b3;
+  font-size: 12px;
+}

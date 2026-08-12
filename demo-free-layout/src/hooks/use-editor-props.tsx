@@ -23,17 +23,22 @@ import { canContainNode, onDragLineEnd } from '../utils';
 import { FlowNodeRegistry, FlowDocumentJSON } from '../typings';
 import { shortcuts } from '../shortcuts';
 import { CustomService, ValidateService } from '../services';
-import { WorkflowRuntimeService } from '../plugins/runtime-plugin/runtime-service';
+import {
+  WORKFLOW_RUNTIME_SERVICE,
+  WorkflowRuntimeService,
+} from '../plugins/runtime-plugin/runtime-service';
 import {
   createRuntimePlugin,
   createContextMenuPlugin,
   createVariablePanelPlugin,
+  GetGlobalVariableSchema,
   createPanelManagerPlugin,
 } from '../plugins';
 import { defaultFormMeta } from '../nodes/default-form-meta';
 import { WorkflowNodeType } from '../nodes';
 import { SelectorBoxPopover } from '../components/selector-box-popover';
 import { BaseNode, CommentRender, GroupNodeRender, LineAddButton, NodePanel } from '../components';
+import { LOCALIZED_MATERIAL_COMPONENTS } from '../form-components/localized-materials';
 
 export function useEditorProps(
   initialData: FlowDocumentJSON,
@@ -88,7 +93,9 @@ export function useEditorProps(
         return {
           type,
           meta: {
-            defaultExpanded: true,
+            // 普通节点默认保持紧凑，点击节点后在右侧面板完成详细配置。
+            // 循环节点需要展示子画布，因此默认展开。
+            defaultExpanded: type === WorkflowNodeType.Loop,
           },
           formMeta: defaultFormMeta,
         };
@@ -149,20 +156,30 @@ export function useEditorProps(
        * 判断是否能删除连线, 这个会在默认快捷键 (Backspace or Delete) 触发
        */
       canDeleteLine(ctx, line, newLineInfo, silent) {
-        return true;
+        return ![line.from?.parent?.flowNodeType, line.to?.parent?.flowNodeType].includes(
+          WorkflowNodeType.Loop
+        );
       },
       /**
        * Check whether the node can be deleted, this triggers on the default shortcut `Bakspace` or `Delete`
        * 判断是否能删除节点, 这个会在默认快捷键 (Backspace or Delete) 触发
        */
       canDeleteNode(ctx, node) {
-        return true;
+        return node.parent?.flowNodeType !== WorkflowNodeType.Loop;
       },
       /**
        * 是否允许拖入子画布 (loop or group)
        * Whether to allow dragging into the sub-canvas (loop or group)
        */
-      canDropToNode: (ctx, params) => canContainNode(params.dragNodeType!, params.dropNodeType!),
+      canDropToNode: (ctx, params) => {
+        if (
+          params.dragNode?.parent?.flowNodeType === WorkflowNodeType.Loop
+          && params.dropNode?.id !== params.dragNode.parent.id
+        ) {
+          return false;
+        }
+        return canContainNode(params.dragNodeType!, params.dropNodeType!);
+      },
       /**
        * Whether to reset line
        * 是否允许重连
@@ -191,7 +208,7 @@ export function useEditorProps(
         enableScrollLimit: false,
       },
       materials: {
-        components: {},
+        components: LOCALIZED_MATERIAL_COMPONENTS,
         /**
          * Render Node
          */
@@ -225,7 +242,14 @@ export function useEditorProps(
       /**
        * Running line
        */
-      isFlowingLine: (ctx, line) => ctx.get(WorkflowRuntimeService).isFlowingLine(line),
+      isFlowingLine: (ctx, line) => {
+        if (!ctx.container?.isBound?.(WORKFLOW_RUNTIME_SERVICE)) {
+          return false;
+        }
+        return ctx
+          .get<WorkflowRuntimeService>(WORKFLOW_RUNTIME_SERVICE)
+          .isFlowingLine(line);
+      },
       /**
        * Shortcuts
        */
@@ -236,6 +260,14 @@ export function useEditorProps(
       onBind: ({ bind }) => {
         bind(CustomService).toSelf().inSingletonScope();
         bind(ValidateService).toSelf().inSingletonScope();
+        // Global variables are intentionally disabled until the published
+        // Dify runtime can provide matching semantics. Bind the getter in the
+        // editor's root container so autosave and the runtime service resolve
+        // the same stable, serializable empty schema.
+        bind(GetGlobalVariableSchema).toConstantValue(() => ({
+          type: 'object',
+          properties: {},
+        }));
       },
       /**
        * Playground init
@@ -268,11 +300,11 @@ export function useEditorProps(
             'Start': '开始节点',
             'End': '结束节点',
             'LLM': '大语言模型',
-            'HTTP': 'HTTP 请求',
+            'HTTP': 'API 请求',
             'Code': '代码执行',
             'Variable': '变量赋值',
             'Condition': '条件分支',
-            'Loop': '循环',
+            'Loop': '数组批处理',
             'Comment': '注释',
             'Delete': '删除',
             'Copy': '复制',
@@ -411,13 +443,34 @@ export function useEditorProps(
             'THEN': '则',
             'ELSE': '否则',
             'ELSE IF': '否则如果',
-            'Iteration': '迭代',
-            'Iterations': '迭代次数',
+            'ELSE-IF': '否则如果',
+            'Add condition': '添加条件',
+            'Remove branch': '删除分支',
+            'Configure via child fields': '通过子字段配置',
+            'Default value if parameter is not provided': '参数未提供时使用的默认值',
+            'Generate': '生成',
+            'Help LLM to understand the property': '帮助大语言模型理解该字段',
+            'Input Key': '输入字段名',
+            'Input Variable Name': '输入变量名',
+            'JSON to JSONSchema': '将 JSON 转为数据结构',
+            'Paste JSON data': '粘贴 JSON 数据',
+            'Please Input Array': '请输入数组',
+            'Please Input Integer': '请输入整数',
+            'Please Input Map': '请输入映射',
+            'Please Input Number': '请输入数字',
+            'Please Input Object': '请输入对象',
+            'Please Input String': '请输入文本',
+            'Please Select Boolean': '请选择布尔值',
+            'Select Variable': '选择变量',
+            'Unsupported type': '不支持的类型',
+            'Unknown': '未知',
+            'Iteration': '数组批处理',
+            'Iterations': '批处理次数',
             'For': '对于',
             'While': '当',
             'Do': '执行',
-            'End Loop': '结束循环',
-            'Start Loop': '开始循环',
+            'End Loop': '批处理结束',
+            'Start Loop': '批处理开始',
             'Script': '脚本',
             'Language': '语言',
             'JavaScript': 'JavaScript',

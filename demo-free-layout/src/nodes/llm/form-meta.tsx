@@ -1,18 +1,12 @@
 import { FormMeta } from '@flowgram.ai/free-layout-editor';
-import { createInferInputsPlugin } from '@flowgram.ai/form-materials';
 import { FlowNodeJSON } from '../../typings';
 import { defaultFormMeta } from '../default-form-meta';
 
 /*
- * The LLM editor uses the full base form contract.  This keeps every lifecycle
- * hook present when the node is created from either the picker or a connector.
+ * 大语言模型节点的输入结构是固定的。这里不能使用通用输入推断插件，
+ * 否则保存时会覆盖 required 与 prompt-editor 元数据，刷新后提示词编辑器
+ * 会退化为普通单值输入。
  */
 export const formMeta: FormMeta<FlowNodeJSON> = {
   ...defaultFormMeta,
-  plugins: [
-    createInferInputsPlugin({
-      sourceKey: 'inputsValues',
-      targetKey: 'inputs',
-    }),
-  ],
 };

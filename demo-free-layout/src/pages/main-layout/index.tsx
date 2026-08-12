@@ -90,7 +90,7 @@ export const MainLayout = () => {
             icon={<IconKey />}
             onClick={() => navigate('/profile?action=create-key')}
           >
-            创建 Key
+            创建密钥
           </Button>
         </div>
 

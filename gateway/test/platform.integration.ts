@@ -44,6 +44,8 @@ const entities = [
   DifyIntegration,
 ];
 
+const bootstrapAdminPassword = 'integration-admin-secret-2026-4e8f6a1c';
+
 async function createTestApp() {
   const database = newDb({ autoCreateForeignKeyIndices: true });
   database.public.registerFunction({
@@ -76,6 +78,14 @@ async function createTestApp() {
         ignoreEnvFile: true,
         load: [() => ({
           GATEWAY_JWT_SECRET: 'integration-test-secret',
+          GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
+          GATEWAY_BOOTSTRAP_ADMIN_USERNAME: 'demo',
+          GATEWAY_BOOTSTRAP_ADMIN_EMAIL: 'demo@futureflow.test',
+          GATEWAY_BOOTSTRAP_ADMIN_PASSWORD: bootstrapAdminPassword,
+          // This suite replaces the Dify client with an in-memory test double;
+          // managed Console bootstrap is covered by platform-smoke and the
+          // fresh-volume acceptance test instead.
+          DIFY_AUTO_BOOTSTRAP: 'false',
           DIFY_API_KEY: '',
           LLM_API_KEY: 'integration-test-key',
           LLM_DEFAULT_MODEL: 'deepseek-chat',
@@ -127,7 +137,7 @@ async function main() {
   try {
     const loginResponse = await request(server)
       .post('/auth/login')
-      .send({ account: 'demo', password: 'demo123456' })
+      .send({ account: 'demo', password: bootstrapAdminPassword })
       .expect(201);
     const adminToken = loginResponse.body.accessToken;
     assert.equal(loginResponse.body.user.role, 'admin');
@@ -142,7 +152,7 @@ async function main() {
 
     const renamedLogin = await request(server)
       .post('/auth/login')
-      .send({ account: 'demo-updated', password: 'demo123456' })
+      .send({ account: 'demo-updated', password: bootstrapAdminPassword })
       .expect(201);
     assert.equal(renamedLogin.body.user.username, 'demo-updated');
 
@@ -328,14 +338,14 @@ async function main() {
       .set('Authorization', `Bearer ${apiKey}`)
       .set('Idempotency-Key', 'integration-run-1')
       .send({ flowgram: workflowJson })
-      .expect(200);
-    assert.match(runResponse.text, /workflow_finished/);
+      .expect(400);
+    assert.match(runResponse.body.message, /草稿仅支持在画布中试运行/);
     await request(server)
       .post('/workflows/run')
       .set('Authorization', `Bearer ${apiKey}`)
       .set('Idempotency-Key', 'integration-run-1')
       .send({ flowgram: workflowJson })
-      .expect(409);
+      .expect(400);
 
     const runs = await request(server)
       .get('/admin/runs')

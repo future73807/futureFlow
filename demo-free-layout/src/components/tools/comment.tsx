@@ -64,6 +64,7 @@ export const Comment = () => {
       content="添加注释"
     >
       <IconButton
+        aria-label="添加注释"
         disabled={playground.config.readonly}
         icon={
           <IconComment

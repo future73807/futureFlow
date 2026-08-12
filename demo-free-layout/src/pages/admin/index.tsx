@@ -393,9 +393,9 @@ const UsersView = ({
             value={r.vipLevel}
             onChange={(v: any) => handleVipChange(r.id, v as string)}
             optionList={[
-              { value: 'free', label: 'Free' },
-              { value: 'pro', label: 'Pro' },
-              { value: 'enterprise', label: 'Enterprise' },
+              { value: 'free', label: '免费版' },
+              { value: 'pro', label: '专业版' },
+              { value: 'enterprise', label: '企业版' },
             ]}
           />
           <ActionSelect
@@ -651,6 +651,7 @@ const RunsView = ({
           running: '运行中',
           succeeded: '成功',
           failed: '失败',
+          cancelled: '已取消',
         };
         return <Tag size="small" color={color}>{label[s] || s}</Tag>;
       },

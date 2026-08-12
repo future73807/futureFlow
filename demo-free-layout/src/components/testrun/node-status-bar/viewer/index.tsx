@@ -38,9 +38,9 @@ const TreeNode: React.FC<TreeNodeProps> = ({ label, value, level, isLast = false
 
   const renderPrimitiveValue = (val: any) => {
     if (val === null)
-      return <span className={classnames(styles.primitiveValue, styles.null)}>null</span>;
+      return <span className={classnames(styles.primitiveValue, styles.null)}>空值</span>;
     if (val === undefined)
-      return <span className={classnames(styles.primitiveValue, styles.undefined)}>undefined</span>;
+      return <span className={classnames(styles.primitiveValue, styles.undefined)}>未定义</span>;
 
     switch (typeof val) {
       case 'string':
@@ -166,7 +166,7 @@ export const DataStructureViewer: React.FC<DataStructureViewerProps> = ({ data, 
   if (data === null || data === undefined || typeof data !== 'object') {
     return (
       <div className={styles.dataStructureViewer}>
-        <TreeNode label="value" value={data} level={0} />
+        <TreeNode label="值：" value={data} level={0} />
       </div>
     );
   }

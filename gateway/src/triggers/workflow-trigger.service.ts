@@ -43,7 +43,7 @@ export class WorkflowTriggerService {
   async create(userId: string, workflowId: string, dto: CreateWorkflowTriggerDto) {
     const workflow = await this.getOwnedPublishedWorkflow(userId, workflowId);
     const name = this.normalizeName(dto.name);
-    this.validateInputs(workflow, dto.staticInputs);
+    this.validateInputs(workflow, dto.staticInputs, dto.type === 'schedule');
     if (dto.type === 'schedule' && !dto.intervalMinutes) {
       throw new BadRequestException('定时触发器必须设置 intervalMinutes');
     }
@@ -91,7 +91,7 @@ export class WorkflowTriggerService {
     if (dto.status !== undefined) trigger.status = dto.status;
     if (dto.staticInputs !== undefined) {
       const workflow = await this.getOwnedPublishedWorkflow(userId, trigger.workflowId);
-      this.validateInputs(workflow, dto.staticInputs);
+      this.validateInputs(workflow, dto.staticInputs, trigger.type === 'schedule');
       trigger.staticInputs = dto.staticInputs;
     }
     if (dto.intervalMinutes !== undefined) {
@@ -204,13 +204,33 @@ export class WorkflowTriggerService {
    * Reject malformed trigger inputs when they are configured, instead of
    * creating a trigger that can only fail later in the background.
    */
-  private validateInputs(workflow: Workflow, inputs?: Record<string, unknown>) {
-    if (!inputs) return;
+  private validateInputs(
+    workflow: Workflow,
+    inputs?: Record<string, unknown>,
+    requireComplete = false,
+  ) {
     const startNode = (workflow.publishedFlowgramJson as any)?.nodes?.find(
       (node: any) => node.type === 'start',
     );
     const properties = startNode?.data?.outputs?.properties || {};
-    for (const [key, value] of Object.entries(inputs)) {
+    if (requireComplete) {
+      const required = Array.isArray(startNode?.data?.outputs?.required)
+        ? startNode.data.outputs.required.map(String)
+        : [];
+      for (const key of required) {
+        const supplied = Object.prototype.hasOwnProperty.call(inputs || {}, key)
+          ? inputs![key]
+          : startNode?.data?.inputsValues?.[key]?.content ?? properties[key]?.default;
+        if (
+          supplied === undefined
+          || supplied === null
+          || (typeof supplied === 'string' && !supplied.trim())
+        ) {
+          throw new BadRequestException(`定时触发器缺少必填工作流输入参数: ${key}`);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(inputs || {})) {
       if (!key || !['string', 'number', 'boolean'].includes(typeof value)) {
         throw new BadRequestException('触发器输入仅支持字符串、数字或布尔值');
       }
@@ -218,13 +238,20 @@ export class WorkflowTriggerService {
         throw new BadRequestException(`未知的工作流输入参数: ${key}`);
       }
       const expectedType = properties[key]?.type;
-      if (
-        expectedType &&
-        ['string', 'number', 'boolean'].includes(expectedType) &&
-        typeof value !== expectedType
-      ) {
+      const typeMatches = expectedType === 'integer'
+        ? typeof value === 'number' && Number.isInteger(value)
+        : !expectedType
+          || !['string', 'number', 'boolean'].includes(expectedType)
+          || typeof value === expectedType;
+      if (!typeMatches) {
+        const expectedLabel = ({
+          string: '字符串',
+          number: '数字',
+          integer: '整数',
+          boolean: '布尔值',
+        } as Record<string, string>)[expectedType] || expectedType;
         throw new BadRequestException(
-          `输入参数 ${key} 必须是 ${expectedType} 类型`,
+          `输入参数 ${key} 必须是${expectedLabel}类型`,
         );
       }
     }

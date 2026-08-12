@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { nanoid } from 'nanoid';
-
 import { FlowNodeRegistry } from '../../typings';
 import iconBreak from '../../assets/icon-break.jpg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -34,10 +33,10 @@ export const BreakNodeRegistry: FlowNodeRegistry = {
   formMeta,
   onAdd() {
     return {
-      id: `break_${nanoid(5)}`,
+      id: createWorkflowNodeId('break'),
       type: 'break',
       data: {
-        title: `Break_${++index}`,
+        title: `中断循环 ${++index}`,
       },
     };
   },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui';
+import { Button, Input, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
 import {
@@ -18,6 +18,8 @@ import { nodeRegistries } from '../../nodes';
 import { useEditorProps } from '../../hooks';
 import { GetGlobalVariableSchema } from '../../plugins/variable-panel-plugin';
 import { ApiError, apiJson } from '../../utils/api';
+import { normalizeCanvasLocale } from '../../utils/normalize-canvas-data';
+import { LocalizedSchemaTypeProvider } from '../../form-components/localized-materials';
 
 const AUTOSAVE_DELAY = 1500;
 
@@ -57,7 +59,7 @@ export const CanvasPage = () => {
       try {
         const workflow = await apiJson<{ name: string; flowgramJson?: any }>('/workflows/' + id);
         setWorkflowName(workflow.name);
-        setFlowgramData(workflow.flowgramJson || { nodes: [], edges: [] });
+        setFlowgramData(normalizeCanvasLocale(workflow.flowgramJson || { nodes: [], edges: [] }));
       } catch (error: any) {
         if (error instanceof ApiError && error.status === 401) return;
         Toast.error(error.message || '加载工作流失败');
@@ -211,14 +213,24 @@ export const CanvasPage = () => {
     <main className="canvas-page">
       <header className="canvas-header">
         <div className="canvas-header-left">
-          <Button
-            theme="borderless"
-            icon={<IconArrowLeft />}
-            aria-label="返回工作流"
-            onClick={handleBack}
-          />
+          <Tooltip content="返回工作流列表">
+            <Button
+              className="canvas-back-button"
+              theme="borderless"
+              icon={<IconArrowLeft aria-hidden="true" />}
+              aria-label="返回工作流列表"
+              onClick={handleBack}
+            />
+          </Tooltip>
+          <span className="canvas-brand-mark" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="12" fill="currentColor" />
+              <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
+              <circle cx="24" cy="24" r="3" fill="white" />
+            </svg>
+          </span>
           <div className="canvas-name-group">
-            <span>工作流画布</span>
+            <span>futureFlow · 可视化工作流</span>
             <Input
               className="canvas-name-input"
               value={workflowName}
@@ -230,11 +242,13 @@ export const CanvasPage = () => {
           </div>
         </div>
         <div className="canvas-save-actions">
+          <span className="canvas-autosave-badge">自动保存</span>
           <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
           <Button
             theme="solid"
             type="primary"
-            icon={<IconSave />}
+            aria-label="保存工作流"
+            icon={<IconSave aria-hidden="true" />}
             loading={saving}
             onClick={() => void saveWorkflow(true)}
           >
@@ -270,7 +284,9 @@ const CanvasEditor = ({
 
   return (
     <FreeLayoutEditorProvider {...editorProps}>
-      <CanvasInner onReady={onReady} onContentChange={onContentChange} />
+      <LocalizedSchemaTypeProvider>
+        <CanvasInner onReady={onReady} onContentChange={onContentChange} />
+      </LocalizedSchemaTypeProvider>
     </FreeLayoutEditorProvider>
   );
 };

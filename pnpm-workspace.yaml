@@ -8,3 +8,6 @@ allowBuilds:
   '@nestjs/core': true
   'core-js': true
   'unrs-resolver': true
+
+patchedDependencies:
+  '@flowgram.ai/runtime-js@1.0.12': patches/@flowgram.ai__runtime-js@1.0.12.patch

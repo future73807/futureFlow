@@ -6,17 +6,15 @@
 import { Field } from '@flowgram.ai/free-layout-editor';
 import {
   IFlowTemplateValue,
-  JsonEditorWithVariables,
-  PromptEditorWithVariables,
 } from '@flowgram.ai/form-materials';
-import { Select } from '@douyinfe/semi-ui';
+import { Select, Typography } from '@douyinfe/semi-ui';
 
 import { useNodeRenderContext } from '../../../hooks';
-import { FormItem } from '../../../form-components';
+import { Feedback, FormItem, PromptEditorBoundary } from '../../../form-components';
 
 const BODY_TYPE_OPTIONS = [
   {
-    label: 'None',
+    label: '无请求体',
     value: 'none',
   },
   {
@@ -24,7 +22,7 @@ const BODY_TYPE_OPTIONS = [
     value: 'JSON',
   },
   {
-    label: 'Raw Text',
+    label: '纯文本',
     value: 'raw-text',
   },
 ];
@@ -36,32 +34,46 @@ export function Body() {
     switch (bodyType) {
       case 'JSON':
         return (
-          <Field<IFlowTemplateValue> name="body.json">
-            {({ field }) => (
-              <JsonEditorWithVariables
-                value={field.value?.content}
-                readonly={readonly}
-                activeLinePlaceholder="use var by '@'"
-                onChange={(value) => {
-                  field.onChange({ type: 'template', content: value });
-                }}
-              />
+          <Field<IFlowTemplateValue>
+            name="body.json"
+            defaultValue={{ type: 'template', content: '' }}
+          >
+            {({ field, fieldState }) => (
+              <>
+                <PromptEditorBoundary
+                  value={field.value}
+                  readonly={readonly}
+                  hasError={Boolean(fieldState?.errors?.length)}
+                  placeholder="输入 JSON；可在下方插入上游变量"
+                  helperText="发布前会校验 JSON 格式"
+                  minRows={4}
+                  maxRows={12}
+                  onChange={field.onChange}
+                />
+                <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
+              </>
             )}
           </Field>
         );
       case 'raw-text':
         return (
-          <Field<IFlowTemplateValue> name="body.rawText">
-            {({ field }) => (
-              <PromptEditorWithVariables
-                disableMarkdownHighlight
-                readonly={readonly}
-                style={{ flexGrow: 1 }}
-                placeholder="Input raw text, use var by '{'"
-                onChange={(value) => {
-                  field.onChange(value!);
-                }}
-              />
+          <Field<IFlowTemplateValue>
+            name="body.json"
+            defaultValue={{ type: 'template', content: '' }}
+          >
+            {({ field, fieldState }) => (
+              <>
+                <PromptEditorBoundary
+                  readonly={readonly}
+                  hasError={Boolean(fieldState?.errors?.length)}
+                  placeholder="输入文本；可在下方插入上游变量"
+                  minRows={3}
+                  maxRows={10}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+                <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
+              </>
             )}
           </Field>
         );
@@ -71,24 +83,36 @@ export function Body() {
   };
 
   return (
-    <Field<string> name="body.bodyType" defaultValue="JSON">
-      {({ field }) => (
-        <div style={{ marginTop: 5 }}>
-          <FormItem name="Body" vertical type="object">
-            <Select
-              value={field.value}
-              onChange={(value) => {
-                field.onChange(value as string);
-              }}
-              style={{ width: '100%', marginBottom: 10 }}
-              disabled={readonly}
-              size="small"
-              optionList={BODY_TYPE_OPTIONS}
-            />
-            {renderBodyEditor(field.value)}
-          </FormItem>
-        </div>
-      )}
+    <Field<string> name="api.method" defaultValue="GET">
+      {({ field: methodField }) => {
+        const method = String(methodField.value || 'GET').toUpperCase();
+        const bodyDisabled = method === 'GET' || method === 'HEAD';
+        return (
+          <Field<string> name="body.bodyType" defaultValue="none">
+            {({ field }) => (
+              <div style={{ marginTop: 5 }}>
+                <FormItem name="请求体" vertical type="object">
+                  <Select
+                    value={bodyDisabled ? 'none' : field.value}
+                    onChange={(value) => {
+                      field.onChange(value as string);
+                    }}
+                    style={{ width: '100%', marginBottom: bodyDisabled ? 4 : 10 }}
+                    disabled={readonly || bodyDisabled}
+                    size="small"
+                    optionList={BODY_TYPE_OPTIONS}
+                  />
+                  {bodyDisabled ? (
+                    <Typography.Text type="tertiary" size="small">
+                      {method} 请求不会发送请求体
+                    </Typography.Text>
+                  ) : renderBodyEditor(field.value)}
+                </FormItem>
+              </div>
+            )}
+          </Field>
+        );
+      }}
     </Field>
   );
 }

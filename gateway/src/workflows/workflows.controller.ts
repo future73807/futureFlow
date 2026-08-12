@@ -8,22 +8,23 @@ import {
   Headers,
   HttpCode,
   Logger,
+  BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import type { Response, Request as ExpressRequest } from 'express';
 import { WorkflowsService } from './workflows.service';
-import { RunPublishedWorkflowDto, RunWorkflowDto } from './dto/run-workflow.dto';
+import { RunPublishedWorkflowDto } from './dto/run-workflow.dto';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
-import { DifyClientService } from '../dify/dify-client.service';
 import { WorkflowCrudService } from './workflow-crud.service';
 
 /**
  * 工作流控制器
  *
  * 路由:
- *   POST /workflows/run       — 执行工作流(SSE 流式)
+ *   POST /workflows/run       — 已停用的旧草稿直跑入口
  *   GET  /workflows/health    — 网关健康检查
- *   GET  /workflows/dify-status — Dify 配置状态与连通性
+ * 管理员 Dify 诊断统一由受保护的 /admin/dify/status 提供。
  */
 @Controller('workflows')
 export class WorkflowsController {
@@ -32,38 +33,20 @@ export class WorkflowsController {
   constructor(
     private readonly workflowsService: WorkflowsService,
     private readonly difyConfig: DifyConfigService,
-    private readonly difyClient: DifyClientService,
     private readonly workflowCrudService: WorkflowCrudService,
   ) {}
 
   /**
    * POST /workflows/run
    *
-   * 请求体: { flowgram: FlowGramJSON }
-   * 鉴权: Authorization: Bearer {JWT 或 API Key}
-   *
-   * 响应: text/event-stream (SSE)
-   * 每条消息格式: data: {event, data}\n\n
-   *
-   * 执行引擎:
-   *   - Dify 已配置 → 走 Dify Service API
-   *   - Dify 未配置 → 直接报错
+   * 草稿由浏览器 runtime-js 试运行；生产执行必须绑定不可变的已发布版本。
+   * 旧入口把任意客户端 FlowGram 与一个固定 legacy Dify 应用混用，执行语义
+   * 与提交的图不一致，因此明确停用，避免校验/计费对象与实际工作流错位。
    */
   @Post('run')
-  @HttpCode(200)
-  async runWorkflow(
-    @Body() dto: RunWorkflowDto,
-    @Res() res: Response,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ) {
-    const req = res.req as ExpressRequest & { user: any };
-    return this.streamWorkflow(
-      dto.flowgram as FlowGramJSON,
-      dto.inputs || {},
-      req.user,
-      res,
-      undefined,
-      { source: 'manual', idempotencyKey },
+  runWorkflow() {
+    throw new BadRequestException(
+      '草稿仅支持在画布中试运行；生产调用请先发布，再使用 /workflows/:id/execute',
     );
   }
 
@@ -86,6 +69,14 @@ export class WorkflowsController {
     }
 
     const workflow = await this.workflowCrudService.getPublished(id, req.user.id);
+    if (
+      dto.publishedVersion !== undefined
+      && dto.publishedVersion !== workflow.publishedVersion
+    ) {
+      throw new ConflictException(
+        `已发布版本已从 v${dto.publishedVersion} 更新为 v${workflow.publishedVersion}，请刷新输入后重试`,
+      );
+    }
     return this.streamWorkflow(
       workflow.publishedFlowgramJson as FlowGramJSON,
       dto.inputs || {},
@@ -111,6 +102,7 @@ export class WorkflowsController {
       triggerId?: string;
       idempotencyKey?: string;
       workflowVersion?: number;
+      abortSignal?: AbortSignal;
     } = {},
   ) {
     if (!user) {
@@ -123,20 +115,35 @@ export class WorkflowsController {
       `开始执行工作流: userId=${user.id}, username=${user.username}`,
     );
 
+    const abortController = new AbortController();
+    let clientDisconnected = false;
+    const onClose = () => {
+      clientDisconnected = true;
+      abortController.abort();
+    };
+    res.once('close', onClose);
+
     try {
       const stream = this.workflowsService.runWorkflow(
         flowgram,
         user,
         inputs,
         workflowId,
-        executionContext,
+        { ...executionContext, abortSignal: abortController.signal },
       );
 
       // Admission and validation execute before HTTP 200 + SSE headers.
       const first = await stream.next();
+      if (clientDisconnected || res.destroyed) {
+        await stream.return?.(undefined);
+        return;
+      }
       this.openSse(res);
       if (!first.done) this.writeSse(res, first.value);
       for await (const event of stream) {
+        // Breaking the async iteration invokes the generator finalizer. That
+        // finalizer records a cancelled run and releases its frozen balance.
+        if (clientDisconnected || res.destroyed) break;
         this.writeSse(res, event);
 
         // 不在 workflow_finished/error 事件处提前 break。
@@ -163,6 +170,7 @@ export class WorkflowsController {
       };
       res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
     } finally {
+      res.removeListener('close', onClose);
       if (!res.writableEnded) res.end();
     }
   }
@@ -193,33 +201,4 @@ export class WorkflowsController {
     };
   }
 
-  /**
-   * GET /workflows/dify-status
-   * Dify 配置状态与连通性探测
-   *
-   * 返回:
-   *   - config: 配置校验结果(状态、脱敏 Key、提示信息)
-   *   - connectivity: Dify 服务连通性(可达性、延迟)
-   */
-  @Get('dify-status')
-  async difyStatus() {
-    const config = this.difyConfig.getValidation();
-    const connectivity = await this.difyClient.ping();
-
-    return {
-      config: {
-        status: config.status,
-        apiBase: config.apiBase,
-        maskedKey: config.maskedKey,
-        message: config.message,
-        suggestion: config.suggestion,
-      },
-      connectivity: {
-        reachable: connectivity.reachable,
-        latency: connectivity.latency,
-        error: connectivity.error,
-      },
-      executionMode: (await this.difyClient.isConfigured()) ? 'dify' : 'not_configured',
-    };
-  }
 }

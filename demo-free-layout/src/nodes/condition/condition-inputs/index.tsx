@@ -7,7 +7,11 @@ import { useLayoutEffect } from 'react';
 
 import { nanoid } from 'nanoid';
 import { Field, FieldArray, I18n } from '@flowgram.ai/free-layout-editor';
-import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials';
+import {
+  ConditionProvider,
+  ConditionRow,
+  ConditionRowValueType,
+} from '@flowgram.ai/form-materials';
 import { Button } from '@douyinfe/semi-ui';
 import { IconPlus, IconCrossCircleStroked } from '@douyinfe/semi-icons';
 
@@ -15,6 +19,7 @@ import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
 import { Feedback } from '../../../form-components';
 import { ConditionPort } from './styles';
+import { CHINESE_CONDITION_OPS, FUTUREFLOW_CONDITION_RULES } from '../condition-ops';
 
 interface ConditionValue {
   key: string;
@@ -31,13 +36,14 @@ export function ConditionInputs() {
   }, [node]);
 
   return (
-    <FieldArray name="conditions">
-      {({ field }) => (
-        <>
+    <ConditionProvider ops={CHINESE_CONDITION_OPS} rules={FUTUREFLOW_CONDITION_RULES}>
+      <FieldArray name="conditions">
+        {({ field }) => (
+          <>
           {field.map((child, index) => (
             <Field<ConditionValue> key={child.name} name={child.name}>
               {({ field: childField, fieldState: childState }) => (
-                <FormItem name="if" type="boolean" required={true} labelWidth={50}>
+                <FormItem name={I18n.t('IF')} type="boolean" required={true} labelWidth={80}>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <ConditionRow
                       readonly={readonly}
@@ -62,7 +68,7 @@ export function ConditionInputs() {
               )}
             </Field>
           ))}
-          <FormItem name="else" type="boolean" required={true} labelWidth={100}>
+          <FormItem name={I18n.t('ELSE')} type="boolean" required={true} labelWidth={100}>
             <ConditionPort data-port-id="else" data-port-type="output" />
           </FormItem>
           {!readonly && (
@@ -81,8 +87,9 @@ export function ConditionInputs() {
               </Button>
             </div>
           )}
-        </>
-      )}
-    </FieldArray>
+          </>
+        )}
+      </FieldArray>
+    </ConditionProvider>
   );
 }

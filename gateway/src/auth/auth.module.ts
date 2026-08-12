@@ -19,12 +19,11 @@ import { ApiKeyController } from './api-key.controller';
  * VIP 等级与可用节点类型映射
  */
 export const VIP_NODE_PERMISSIONS: Record<string, string[]> = {
-  // 条件分支已同时接入 Dify 转换和直接 LLM 执行，应作为所有工作流
-  // 的基础能力，而不是在运行时被误拒绝。
-  free: ['start', 'end', 'llm', 'condition', 'multi-condition'],
-  pro: ['start', 'end', 'llm', 'condition', 'multi-condition', 'http', 'code'],
-  // Loop 仍未实现可验证的执行语义，继续拒绝而非生成不可执行工作流。
-  enterprise: ['start', 'end', 'llm', 'condition', 'multi-condition', 'http', 'code'],
+  // 条件分支已接入 Dify 转换，应作为所有工作流的基础能力，
+  // 而不是在运行时被误拒绝。
+  free: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition'],
+  pro: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop'],
+  enterprise: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop'],
 };
 
 /**

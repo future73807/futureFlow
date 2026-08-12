@@ -4,8 +4,8 @@ const { resolve } = require('node:path');
 
 const DIFY_API_BASE = process.env.DIFY_API_BASE || 'http://localhost:5001';
 const DIFY_CONSOLE_BASE = DIFY_API_BASE + '/console/api';
-const ADMIN_EMAIL = 'admin@futureflow.ai';
-const ADMIN_PASSWORD = 'admin123456';
+const ADMIN_EMAIL = process.env.DIFY_ADMIN_EMAIL || 'admin@futureflow.local';
+const ADMIN_PASSWORD = process.env.DIFY_ADMIN_PASSWORD || '';
 const APP_NAME = 'futureFlow Bridge';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -146,6 +146,9 @@ function updateEnvFile(appId, apiKey) {
 }
 
 async function main() {
+  if (ADMIN_PASSWORD.length < 16) {
+    throw new Error('DIFY_ADMIN_PASSWORD must contain at least 16 characters; run pnpm env:init');
+  }
   console.log('Waiting for Dify API...');
   await waitForDify();
   
@@ -166,7 +169,7 @@ async function main() {
   
   console.log('=== Dify Initialization Complete ===');
   console.log('App ID:', appId);
-  console.log('API Key:', apiKey);
+  console.log('Service API key saved to .env');
 }
 
 main().catch(e => { console.error('Fatal error:', e.message); process.exit(1); });

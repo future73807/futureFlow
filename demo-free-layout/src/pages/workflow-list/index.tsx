@@ -36,7 +36,7 @@ interface Workflow {
 
 interface WorkflowRun {
   id: string;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   totalTokens: number;
   totalSteps: number;
   estimatedCost: number;
@@ -89,6 +89,13 @@ interface DifyIntegrationStatus {
     keyFingerprint: string | null;
     lastRotatedAt: string | null;
   }>;
+  modelProvider?: {
+    provider: string | null;
+    model: string | null;
+    status: 'active' | 'configured' | 'not_configured' | 'unsupported' | 'disabled';
+    configuredNow: boolean;
+    message: string;
+  };
 }
 
 type DifyPreflightState = 'passed' | 'failed' | 'not_configured' | 'not_checked';
@@ -271,7 +278,9 @@ export const WorkflowListPage = () => {
         }),
       });
       setDifyStatus(status);
-      Toast.success('Dify 已授权；之后每次发布都会自动创建独立应用和加密 Key');
+      Toast.success(status.modelProvider?.configuredNow
+        ? 'Dify 已授权，模型 Provider 已验证；发布后即可运行完整工作流'
+        : 'Dify 已授权；之后每次发布都会自动创建独立应用和加密 Key');
     } catch (error: any) {
       Toast.error(error.message || 'Dify 授权或自动建 Key 失败');
     } finally {
@@ -410,7 +419,7 @@ export const WorkflowListPage = () => {
               type: 'start',
               meta: { position: { x: 80, y: 200 } },
               data: {
-                title: 'Start',
+                title: '开始',
                 outputs: {
                   type: 'object',
                   properties: {
@@ -424,7 +433,7 @@ export const WorkflowListPage = () => {
               type: 'llm',
               meta: { position: { x: 480, y: 200 } },
               data: {
-                title: 'LLM_1',
+                title: '大语言模型 1',
                 inputsValues: {
                   modelName: { type: 'constant', content: 'deepseek-chat' },
                   temperature: { type: 'constant', content: 0.7 },
@@ -452,7 +461,7 @@ export const WorkflowListPage = () => {
               type: 'end',
               meta: { position: { x: 880, y: 200 } },
               data: {
-                title: 'End',
+                title: '结束',
                 inputsValues: { result: { type: 'ref', content: ['llm_0', 'result'] } },
                 inputs: { type: 'object', properties: { result: { type: 'string' } } },
               },
@@ -526,7 +535,7 @@ export const WorkflowListPage = () => {
         if (result.dify?.status === 'synced') {
           Toast.success(`${result.message}，已同步至版本专属 Dify 应用`);
         } else {
-          Toast.success(`${result.message}；${result.dify?.message || '当前使用直接 LLM 引擎'}`);
+          Toast.warning(`${result.message}；${result.dify?.message || '尚未同步至 Dify，暂不能云端运行'}`);
         }
         await fetchWorkflows();
       } catch (error: any) {
@@ -837,7 +846,7 @@ export const WorkflowListPage = () => {
         ) : (
           <>
             <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>
-              只需完成一次管理员授权。futureFlow 会在每次发布时，为该工作流版本自动创建独立 Dify 应用、生成独立 Service API Key，并将密钥加密保存；页面不会回显明文密钥。
+              只需完成一次管理员授权。futureFlow 会在每次发布时，为该工作流版本自动创建独立 Dify 应用、生成独立 Service API Key，并将密钥加密保存；页面不会回显明文密钥。若服务端已配置 LLM_API_KEY，还会在 Provider 缺失时安全同步到 Dify。
             </Typography.Text>
             {difyStatus && (
               <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: '#f7f8fa' }}>
@@ -850,6 +859,11 @@ export const WorkflowListPage = () => {
                 {!difyStatus.encryptionReady && (
                   <Typography.Text type="warning" style={{ display: 'block', marginTop: 8 }}>
                     请先在 .env 设置至少 32 位且非示例值的 DIFY_KEY_ENCRYPTION_SECRET。
+                  </Typography.Text>
+                )}
+                {difyStatus.modelProvider && (
+                  <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 8 }}>
+                    模型 Provider：{difyStatus.modelProvider.message}
                   </Typography.Text>
                 )}
               </div>
@@ -927,7 +941,7 @@ export const WorkflowListPage = () => {
                 </Button>
               </div>
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 10 }}>
-                保存授权只启用后续发布的资源自动创建；真实模型执行与可能的模型供应商费用，仍需由你显式运行已发布工作流。
+                保存授权只启用后续发布的资源自动创建；若首次同步模型 Provider，Dify 会发送一次凭据验证请求，可能产生极少量模型用量。真实工作流仍需由你显式运行。
               </Typography.Text>
             </Form>
           </>
@@ -978,16 +992,28 @@ export const WorkflowListPage = () => {
                 <RunHeader>
                   <Tag
                     size="small"
-                    color={run.status === 'succeeded' ? 'green' : run.status === 'failed' ? 'red' : 'blue'}
+                    color={run.status === 'succeeded'
+                      ? 'green'
+                      : run.status === 'failed'
+                        ? 'red'
+                        : run.status === 'running'
+                          ? 'blue'
+                          : 'grey'}
                   >
-                    {run.status === 'succeeded' ? '成功' : run.status === 'failed' ? '失败' : '运行中'}
+                    {{
+                      pending: '等待中',
+                      running: '运行中',
+                      succeeded: '成功',
+                      failed: '失败',
+                      cancelled: '已取消',
+                    }[run.status]}
                   </Tag>
                   <Typography.Text type="tertiary" size="small">
                     {new Date(run.createdAt).toLocaleString('zh-CN')}
                   </Typography.Text>
                 </RunHeader>
                 <RunMeta>
-                  {run.totalTokens} Tokens · {run.totalSteps} 步 · {run.elapsedTime?.toFixed(2) || '0.00'} 秒 · ¥{Number(run.actualCost || 0).toFixed(4)}
+                  {run.totalTokens} 令牌 · {run.totalSteps} 步 · {run.elapsedTime?.toFixed(2) || '0.00'} 秒 · ¥{Number(run.actualCost || 0).toFixed(4)}
                 </RunMeta>
                 {run.errorMessage && <RunError>{run.errorMessage}</RunError>}
               </RunRow>

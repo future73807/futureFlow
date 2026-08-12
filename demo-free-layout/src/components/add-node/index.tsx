@@ -13,9 +13,11 @@ export const AddNode = (props: { disabled: boolean }) => {
   return (
     <Button
       data-testid="demo.free-layout.add-node"
-      icon={<IconPlus />}
-      color="highlight"
-      style={{ backgroundColor: 'rgba(171,181,255,0.3)', borderRadius: '8px' }}
+      className="canvas-add-node-action"
+      aria-label="添加节点"
+      icon={<IconPlus aria-hidden="true" />}
+      type="primary"
+      theme="light"
       disabled={props.disabled}
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();

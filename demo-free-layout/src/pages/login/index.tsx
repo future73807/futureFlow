@@ -132,8 +132,6 @@ export const LoginRegisterPage = () => {
             {isLogin ? '去注册' : '去登录'}
           </button>
         </div>
-
-        {isLogin && <p className="auth-demo">演示账号：demo / demo123456</p>}
       </section>
     </main>
   );

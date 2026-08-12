@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { nanoid } from 'nanoid';
-
 import { FlowNodeRegistry } from '../../typings';
 import iconContinue from '../../assets/icon-continue.jpg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -34,10 +33,10 @@ export const ContinueNodeRegistry: FlowNodeRegistry = {
   formMeta,
   onAdd() {
     return {
-      id: `continue_${nanoid(5)}`,
+      id: createWorkflowNodeId('continue'),
       type: 'continue',
       data: {
-        title: `Continue_${++index}`,
+        title: `继续循环 ${++index}`,
       },
     };
   },

@@ -67,7 +67,7 @@
 
 .button {
   border-radius: 8px;
-  width: 358px;
+  flex: 1;
   height: 40px;
 
   &.running {
@@ -79,6 +79,12 @@
     background-color: rgba(0, 178, 60, 1) !important; // override semi style
     color: #fff;
   }
+}
+
+.download-button {
+  flex: 1;
+  height: 40px;
+  border-radius: 8px;
 }
 
 
@@ -138,6 +144,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
     width: 100%;
   }
 }

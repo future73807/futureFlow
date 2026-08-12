@@ -37,7 +37,7 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
         size="small"
         style={{ display: 'flex', flexWrap: 'nowrap', height: BUTTON_HEIGHT }}
       >
-        <Tooltip content={'Collapse'}>
+        <Tooltip content="折叠节点">
           <Button
             icon={<IconShrink />}
             style={{ height: BUTTON_HEIGHT }}
@@ -49,7 +49,7 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
           />
         </Tooltip>
 
-        <Tooltip content={'Expand'}>
+        <Tooltip content="展开节点">
           <Button
             icon={<IconExpand />}
             style={{ height: BUTTON_HEIGHT }}
@@ -61,7 +61,7 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
           />
         </Tooltip>
 
-        <Tooltip content={'Create Group'}>
+        <Tooltip content="创建分组">
           <Button
             icon={<IconGroup size={14} />}
             style={{ height: BUTTON_HEIGHT }}
@@ -73,7 +73,7 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
           />
         </Tooltip>
 
-        <Tooltip content={'Copy'}>
+        <Tooltip content="创建副本">
           <Button
             icon={<IconCopy />}
             style={{ height: BUTTON_HEIGHT }}
@@ -85,7 +85,7 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
           />
         </Tooltip>
 
-        <Tooltip content={'Delete'}>
+        <Tooltip content="删除">
           <Button
             type="primary"
             theme="solid"

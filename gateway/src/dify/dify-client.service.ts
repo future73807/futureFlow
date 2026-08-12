@@ -5,6 +5,11 @@ import {
 } from '@nestjs/common';
 import { DifyConfigService } from './dify-config.service';
 import { DifyIntegrationService } from './dify-integration.service';
+import {
+  redactInputValues,
+  redactSensitiveValues,
+  sanitizeSensitiveData,
+} from '../security/sensitive-data';
 
 /**
  * Dify SSE 事件类型
@@ -46,6 +51,7 @@ export interface DifyExecutionTarget {
 @Injectable()
 export class DifyClientService {
   private readonly logger = new Logger(DifyClientService.name);
+  private readonly maxSseEventBytes = 8 * 1024 * 1024;
 
   constructor(
     private readonly difyConfig: DifyConfigService,
@@ -116,9 +122,10 @@ export class DifyClientService {
       // 其他状态码都说明服务可达
       return { reachable: true, latency };
     } catch (err) {
+      this.logger.warn(`Dify 健康检查失败: ${err instanceof Error ? err.message : String(err)}`);
       return {
         reachable: false,
-        error: `Dify 服务不可达: ${err.message}`,
+        error: 'Dify 服务不可达，请检查网络连接和服务状态',
       };
     }
   }
@@ -136,6 +143,8 @@ export class DifyClientService {
     inputs: Record<string, any>,
     user: string,
     target: DifyExecutionTarget = {},
+    sensitiveValues: readonly string[] = [],
+    abortSignal?: AbortSignal,
   ): AsyncGenerator<DifySSEEvent> {
     // 二次校验配置
     if (!(await this.isConfigured(target))) {
@@ -166,12 +175,16 @@ export class DifyClientService {
           response_mode: 'streaming',
           user,
         }),
-        signal: AbortSignal.timeout(120000), // 2 分钟超时
+        signal: abortSignal
+          ? AbortSignal.any([AbortSignal.timeout(120000), abortSignal])
+          : AbortSignal.timeout(120000), // 2 分钟超时
       });
     } catch (err) {
-      this.logger.error(`Dify 连接失败: ${err.message}`);
+      this.logger.error(
+        `Dify 连接失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
       throw new InternalServerErrorException(
-        `Dify 服务连接失败: ${err.message}。请确认 Dify 已启动且 ${apiBase} 可达。`,
+        'Dify 服务连接失败，请确认服务已启动且配置地址可达。',
       );
     }
 
@@ -185,16 +198,16 @@ export class DifyClientService {
       let friendlyMessage: string;
       switch (response.status) {
         case 401:
-          friendlyMessage = 'Dify API Key 无效或已过期，请检查 .env 中的 DIFY_API_KEY';
+          friendlyMessage = 'Dify 访问凭据无效或已过期，请重新发布工作流或更新 Dify 配置。';
           break;
         case 404:
-          friendlyMessage = `Dify 工作流应用不存在，请确认 API Key 对应的工作流已发布。URL: ${url}`;
+          friendlyMessage = 'Dify 工作流应用不存在，请重新发布工作流后再试。';
           break;
         case 500:
-          friendlyMessage = `Dify 内部错误: ${errorText.slice(0, 200)}`;
+          friendlyMessage = 'Dify 服务内部错误，请稍后重试。';
           break;
         default:
-          friendlyMessage = `Dify API 返回错误 ${response.status}: ${errorText.slice(0, 200)}`;
+          friendlyMessage = `Dify 请求失败（状态码 ${response.status}），请检查服务状态后重试。`;
       }
 
       throw new InternalServerErrorException({
@@ -209,7 +222,67 @@ export class DifyClientService {
     }
 
     // 解析 SSE 流
-    yield* this.parseSSEStream(response.body);
+    for await (const event of this.parseSSEStream(response.body)) {
+      yield this.localizeExecutionEvent(event, sensitiveValues);
+    }
+  }
+
+  private localizeExecutionEvent(
+    event: DifySSEEvent,
+    sensitiveValues: readonly string[] = [],
+  ): DifySSEEvent {
+    // Dify emits resolved inputs on workflow/node events. Hide every input
+    // value regardless of its user-defined name, while keeping the object
+    // shape useful for diagnostics. Outputs remain the intentional result.
+    const hasOutputs = event.data
+      && Object.prototype.hasOwnProperty.call(event.data, 'outputs');
+    const isStartNode = event.data?.node_type === 'start';
+    const hasExecutionDetails = event.data
+      && (
+        Object.prototype.hasOwnProperty.call(event.data, 'inputs')
+        || Object.prototype.hasOwnProperty.call(event.data, 'process_data')
+        || hasOutputs
+      );
+    const safeEvent = hasExecutionDetails
+      ? {
+          ...event,
+          data: {
+            ...(event.data || {}),
+            inputs: redactInputValues(event.data?.inputs),
+            process_data: sanitizeSensitiveData(event.data?.process_data, 'process_data'),
+            outputs: isStartNode
+              ? redactInputValues(event.data?.outputs)
+              : sanitizeSensitiveData(event.data?.outputs, 'outputs'),
+          },
+        }
+      : event;
+
+    let localizedEvent = safeEvent;
+    if (safeEvent.event === 'error') {
+      localizedEvent = {
+        ...safeEvent,
+        data: {
+          ...(safeEvent.data || {}),
+          message: 'Dify 执行失败，请检查节点配置或服务状态后重试。',
+        },
+      };
+    } else if (
+      (safeEvent.event === 'node_finished' || safeEvent.event === 'workflow_finished')
+      && safeEvent.data?.status !== 'succeeded'
+      && safeEvent.data?.error
+    ) {
+      localizedEvent = {
+        ...safeEvent,
+        data: {
+          ...safeEvent.data,
+          error: safeEvent.event === 'node_finished'
+            ? '节点执行失败，请检查该节点配置后重试。'
+            : '工作流执行失败，请检查失败节点配置后重试。',
+        },
+      };
+    }
+
+    return redactSensitiveValues(localizedEvent, sensitiveValues);
   }
 
   /**
@@ -233,6 +306,12 @@ export class DifyClientService {
         // 按双换行分割 SSE 消息
         const messages = buffer.split(/\r?\n\r?\n/);
         buffer = messages.pop() || '';
+        if (Buffer.byteLength(buffer, 'utf8') > this.maxSseEventBytes) {
+          throw new InternalServerErrorException({
+            code: 'dify_sse_event_too_large',
+            message: 'Dify 返回的单个事件超过安全大小限制',
+          });
+        }
 
         for (const message of messages) {
           const jsonStr = message
@@ -242,35 +321,54 @@ export class DifyClientService {
             .join('\n')
             .trim();
           if (!jsonStr) continue;
-          try {
-            const event: DifySSEEvent = JSON.parse(jsonStr);
-            yield event;
-          } catch {
-            this.logger.warn(`SSE JSON 解析失败: ${jsonStr.slice(0, 100)}`);
-          }
+          yield this.parseSseEvent(jsonStr);
         }
       }
 
-      // 处理 buffer 中剩余的数据
+      buffer += decoder.decode();
+      // SSE 事件必须由空行结束；EOF 时仍有内容说明响应被截断。
       if (buffer.trim()) {
-        const jsonStr = buffer
-          .trim()
-          .split(/\r?\n/)
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart())
-          .join('\n')
-          .trim();
-        if (jsonStr) {
-          try {
-            yield JSON.parse(jsonStr);
-          } catch {
-            // 忽略不完整的最后一条
-          }
-        }
+        throw new InternalServerErrorException({
+          code: 'dify_sse_truncated',
+          message: 'Dify 事件流提前结束，最后一条事件不完整',
+        });
       }
     } finally {
       reader.releaseLock();
     }
+  }
+
+  private parseSseEvent(jsonStr: string): DifySSEEvent {
+    if (Buffer.byteLength(jsonStr, 'utf8') > this.maxSseEventBytes) {
+      throw new InternalServerErrorException({
+        code: 'dify_sse_event_too_large',
+        message: 'Dify 返回的单个事件超过安全大小限制',
+      });
+    }
+
+    let event: unknown;
+    try {
+      event = JSON.parse(jsonStr);
+    } catch {
+      this.logger.warn(`Dify SSE JSON 解析失败（${jsonStr.length} 字符）`);
+      throw new InternalServerErrorException({
+        code: 'dify_sse_malformed',
+        message: 'Dify 返回了格式损坏的事件流',
+      });
+    }
+
+    if (
+      !event
+      || typeof event !== 'object'
+      || typeof (event as DifySSEEvent).event !== 'string'
+      || !(event as DifySSEEvent).event.trim()
+    ) {
+      throw new InternalServerErrorException({
+        code: 'dify_sse_invalid_event',
+        message: 'Dify 返回了缺少事件类型的无效数据',
+      });
+    }
+    return event as DifySSEEvent;
   }
 
   /**

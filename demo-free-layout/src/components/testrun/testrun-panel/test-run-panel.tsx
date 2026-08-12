@@ -6,28 +6,33 @@
 import { FC, useState, useEffect } from 'react';
 
 import classnames from 'classnames';
-import { WorkflowInputs, WorkflowOutputs } from '@flowgram.ai/runtime-interface';
+import { IReport, WorkflowInputs, WorkflowOutputs } from '@flowgram.ai/runtime-interface';
 import { useService } from '@flowgram.ai/free-layout-editor';
 import { Button, Switch } from '@douyinfe/semi-ui';
-import { IconClose, IconPlay, IconSpin } from '@douyinfe/semi-icons';
+import { IconClose, IconDownload, IconPlay, IconSpin } from '@douyinfe/semi-icons';
 
 import { TestRunJsonInput } from '../testrun-json-input';
 import { TestRunForm } from '../testrun-form';
 import { NodeStatusGroup } from '../node-status-bar/group';
-import { WorkflowRuntimeService } from '../../../plugins/runtime-plugin/runtime-service';
+import {
+  WORKFLOW_RUNTIME_SERVICE,
+  WorkflowRuntimeService,
+} from '../../../plugins/runtime-plugin/runtime-service';
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
 import { IconCancel } from '../../../assets/icon-cancel';
+import { downloadResultArchive, extractTextOutput } from '../../../utils/result-archive';
 
 import styles from './index.module.less';
 
 export interface TestRunSidePanelProps {}
 
 export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
-  const runtimeService = useService(WorkflowRuntimeService);
+  const runtimeService = useService<WorkflowRuntimeService>(WORKFLOW_RUNTIME_SERVICE);
   const { close: closePanel } = useTestRunFormPanel();
   const [isRunning, setRunning] = useState(false);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<string[]>();
+  const [report, setReport] = useState<IReport>();
   const [result, setResult] = useState<
     | {
         inputs: WorkflowInputs;
@@ -54,6 +59,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     }
     setResult(undefined);
     setErrors(undefined);
+    setReport(undefined);
     const taskID = await runtimeService.taskRun(values);
     if (taskID) {
       setRunning(true);
@@ -69,7 +75,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
 
   const renderRunning = (
     <div className={styles['testrun-panel-running']}>
-      <IconSpin spin size="large" />
+      <IconSpin aria-hidden="true" spin size="large" />
       <div className={styles.text}>运行中...</div>
     </div>
   );
@@ -103,7 +109,10 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const renderButton = (
     <Button
       onClick={onTestRun}
-      icon={isRunning ? <IconCancel /> : <IconPlay size="small" />}
+      aria-label={isRunning ? '取消试运行' : '开始试运行'}
+      icon={isRunning
+        ? <IconCancel aria-hidden="true" />
+        : <IconPlay aria-hidden="true" size="small" />}
       className={classnames(styles.button, {
         [styles.running]: isRunning,
         [styles.default]: !isRunning,
@@ -113,10 +122,39 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     </Button>
   );
 
+  const renderDownloadButton = !isRunning && (result || errors?.length) ? (
+    <Button
+      aria-label="打包下载试运行结果"
+      className={styles['download-button']}
+      icon={<IconDownload aria-hidden="true" />}
+      theme="light"
+      type="primary"
+      onClick={() => void downloadResultArchive({
+        workflowName: '本地试运行',
+        status: result ? '执行成功' : '执行失败',
+        outputs: result?.outputs as Record<string, unknown> | undefined,
+        inputs: result?.inputs as Record<string, unknown> | undefined,
+        text: extractTextOutput(result?.outputs as Record<string, unknown> | undefined),
+        nodes: report ? Object.values(report.reports) : [],
+        statistics: report ? {
+          status: report.workflowStatus.status,
+          startTime: report.workflowStatus.startTime,
+          endTime: report.workflowStatus.endTime,
+          elapsedTime: report.workflowStatus.timeCost,
+          nodeCount: Object.keys(report.reports).length,
+        } : undefined,
+        error: errors?.join('\n'),
+      })}
+    >
+      打包下载 ZIP
+    </Button>
+  ) : null;
+
   useEffect(() => {
-    const disposer = runtimeService.onResultChanged(({ result, errors }) => {
+    const disposer = runtimeService.onResultChanged(({ result, errors, report }) => {
       setRunning(false);
       setResult(result);
+      setReport(report);
       if (errors) {
         setErrors(errors);
       } else {
@@ -138,9 +176,10 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       <div className={styles['testrun-panel-header']}>
         <div className={styles['testrun-panel-title']}>试运行</div>
         <Button
+          aria-label="关闭试运行面板"
           className={styles['testrun-panel-title']}
           type="tertiary"
-          icon={<IconClose />}
+          icon={<IconClose aria-hidden="true" />}
           size="small"
           theme="borderless"
           onClick={onClose}
@@ -149,7 +188,10 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       <div className={styles['testrun-panel-content']}>
         {isRunning ? renderRunning : renderForm}
       </div>
-      <div className={styles['testrun-panel-footer']}>{renderButton}</div>
+      <div className={styles['testrun-panel-footer']}>
+        {renderButton}
+        {renderDownloadButton}
+      </div>
     </div>
   );
 };

@@ -13,6 +13,7 @@ import './styles/index.css';
 import { nodeRegistries } from './nodes';
 import { initialData } from './initial-data';
 import { useEditorProps } from './hooks';
+import { LocalizedSchemaTypeProvider } from './form-components/localized-materials';
 
 export const Editor = () => {
   const editorProps = useEditorProps(initialData, nodeRegistries);
@@ -20,11 +21,13 @@ export const Editor = () => {
     <SemiLocaleProvider locale={zh_CN}>
       <div className="doc-free-feature-overview">
         <FreeLayoutEditorProvider {...editorProps}>
-          <div className="demo-container">
-            <DockedPanelLayer>
-              <EditorRenderer className="demo-editor" />
-            </DockedPanelLayer>
-          </div>
+          <LocalizedSchemaTypeProvider>
+            <div className="demo-container">
+              <DockedPanelLayer>
+                <EditorRenderer className="demo-editor" />
+              </DockedPanelLayer>
+            </div>
+          </LocalizedSchemaTypeProvider>
         </FreeLayoutEditorProvider>
       </div>
     </SemiLocaleProvider>

@@ -61,10 +61,11 @@ export const DownloadTool: FC = () => {
 
   const button = (
     <IconButton
+      aria-label="导出画布"
       type="tertiary"
       theme="borderless"
       className={visible ? '!coz-mg-secondary-pressed' : undefined}
-      icon={<IconFilledArrowDown />}
+      icon={<IconFilledArrowDown aria-hidden="true" />}
       loading={downloading}
       onClick={() => setVisible(true)}
     />

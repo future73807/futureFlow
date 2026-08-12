@@ -4,8 +4,33 @@
  */
 
 const http = require('node:http');
+const { existsSync, readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
 
-const BASE_URL = 'http://localhost:3001';
+function loadExistingEnv() {
+  const envPath = resolve(__dirname, '..', '.env');
+  if (!existsSync(envPath)) return;
+
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2].trim();
+    if (
+      value.length >= 2
+      && ((value.startsWith('"') && value.endsWith('"'))
+        || (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
+loadExistingEnv();
+
+const BASE_URL = process.env.GATEWAY_BASE_URL || 'http://localhost:3201';
+const ADMIN_ACCOUNT = process.env.GATEWAY_BOOTSTRAP_ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD;
 
 function makeRequest(method, path, body = null, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -43,21 +68,50 @@ function makeRequest(method, path, body = null, headers = {}) {
   });
 }
 
-async function runTest(name, testFn) {
+function parseSseEvents(body) {
+  return String(body)
+    .split(/\r?\n\r?\n/)
+    .map((message) => message
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+    .map((jsonText) => {
+      try {
+        return JSON.parse(jsonText);
+      } catch {
+        throw new Error(`Malformed SSE event: ${jsonText.slice(0, 120)}`);
+      }
+    });
+}
+
+async function runTest(name, testFn, results) {
   const start = Date.now();
   try {
     const result = await testFn();
     const duration = Date.now() - start;
     console.log(`✅ ${name} - PASSED (${duration}ms)`);
-    return { name, status: 'PASS', duration, result };
+    const record = { name, status: 'PASS', duration, result };
+    results.push(record);
+    return record;
   } catch (err) {
     const duration = Date.now() - start;
     console.log(`❌ ${name} - FAILED (${duration}ms): ${err.message}`);
-    return { name, status: 'FAIL', duration, error: err.message };
+    const record = { name, status: 'FAIL', duration, error: err.message };
+    results.push(record);
+    return record;
   }
 }
 
 async function main() {
+  if (!ADMIN_ACCOUNT || !ADMIN_PASSWORD) {
+    throw new Error(
+      'Set GATEWAY_BOOTSTRAP_ADMIN_USERNAME and GATEWAY_BOOTSTRAP_ADMIN_PASSWORD before running this test.',
+    );
+  }
+
   console.log('========================================');
   console.log('futureFlow API Test Suite');
   console.log('========================================\n');
@@ -69,8 +123,8 @@ async function main() {
   let workflowId = null;
   
   // Test 1: Health Check
-  await runTest('GET /workflows/health', async () => {
-    const res = await makeRequest('GET', '/workflows/health');
+  await runTest('GET /healthz', async () => {
+    const res = await makeRequest('GET', '/healthz');
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
     return res.data;
   }, results);
@@ -78,14 +132,14 @@ async function main() {
   // Test 2: Admin Login
   await runTest('POST /auth/login (admin)', async () => {
     const res = await makeRequest('POST', '/auth/login', {
-      account: 'demo',
-      password: 'demo123456'
+      account: ADMIN_ACCOUNT,
+      password: ADMIN_PASSWORD,
     });
     if (res.status !== 201) throw new Error(`Status: ${res.status}`);
     if (!res.data.accessToken) throw new Error('No access token');
     if (res.data.user?.role !== 'admin') throw new Error('Not admin');
     adminToken = res.data.accessToken;
-    return { token: res.data.accessToken.substring(0, 20) + '...', role: res.data.user.role };
+    return { authenticated: true, role: res.data.user.role };
   }, results);
   
   // Test 3: Get Profile
@@ -112,6 +166,8 @@ async function main() {
       Authorization: `Bearer ${adminToken}`
     });
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
+    if (!res.data.encryptionReady) throw new Error('Dify encryption is not ready');
+    if (!res.data.connectionAuthorized) throw new Error('Dify Console connection is not authorized');
     return { status: res.data.status, connection: res.data.connectionAuthorized };
   }, results);
   
@@ -125,7 +181,7 @@ async function main() {
     if (res.status !== 201) throw new Error(`Status: ${res.status}`);
     apiKey = res.data.plaintext;
     apiKeyId = res.data.id;
-    return { id: res.data.id, key: res.data.plaintext.substring(0, 20) + '...' };
+    return { id: res.data.id, created: true };
   }, results);
   
   // Test 7: Create Workflow
@@ -199,10 +255,32 @@ async function main() {
     });
     
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
-    if (!res.body.includes('workflow_finished') && !res.body.includes('succeeded')) {
-      throw new Error('Workflow did not complete: ' + res.body.substring(0, 200));
+    const events = parseSseEvents(res.body);
+    const finished = events.find((event) => event.event === 'workflow_finished');
+    if (!finished) throw new Error('Workflow stream ended without workflow_finished');
+    if (finished.data?.status !== 'succeeded') {
+      throw new Error(`Workflow failed: ${finished.data?.error || finished.data?.status || 'unknown'}`);
     }
-    return { completed: true, length: res.body.length };
+    const outputValues = Object.values(finished.data?.outputs || {});
+    if (!outputValues.some((value) => typeof value === 'string' && value.trim())) {
+      throw new Error('Workflow completed without a non-empty text output');
+    }
+    const nodeResults = events.filter((event) => event.event === 'node_finished');
+    const failedNode = nodeResults.find((event) => event.data?.status !== 'succeeded');
+    if (failedNode) {
+      throw new Error(`Node failed: ${failedNode.data?.title || failedNode.data?.node_id}`);
+    }
+    for (const nodeId of ['start_0', 'llm_0', 'end_0']) {
+      if (!nodeResults.some((event) => event.data?.node_id === nodeId)) {
+        throw new Error(`Missing successful node event: ${nodeId}`);
+      }
+    }
+    return {
+      completed: true,
+      events: events.length,
+      succeededNodes: nodeResults.length,
+      totalSteps: finished.data?.total_steps,
+    };
   }, results);
   
   // Test 11: Get Workflow Runs
@@ -211,6 +289,9 @@ async function main() {
       Authorization: `Bearer ${adminToken}`
     });
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
+    if (!Number.isInteger(res.data.total) || res.data.total < 1) {
+      throw new Error('Published workflow run was not recorded');
+    }
     return { total: res.data.total };
   }, results);
   

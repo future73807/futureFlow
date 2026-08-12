@@ -211,7 +211,7 @@ export const ProfilePage = () => {
       <section className="profile-section">
         <div className="profile-section-header">
           <div>
-            <h2>API Key</h2>
+            <h2>API 密钥</h2>
             <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
           </div>
           <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>

@@ -5,7 +5,7 @@
 
 import { IFlowConstantRefValue } from '@flowgram.ai/runtime-interface';
 import { FlowNodeJSON } from '@flowgram.ai/free-layout-editor';
-import { IFlowTemplateValue, IJsonSchema } from '@flowgram.ai/form-materials';
+import { IFlowConstantValue, IFlowTemplateValue, IJsonSchema } from '@flowgram.ai/form-materials';
 
 export interface HTTPNodeJSON extends FlowNodeJSON {
   data: {
@@ -14,6 +14,14 @@ export interface HTTPNodeJSON extends FlowNodeJSON {
     api: {
       method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD';
       url: IFlowTemplateValue;
+    };
+    authorization: {
+      type: 'none' | 'bearer' | 'api-key' | 'basic';
+      token?: IFlowTemplateValue;
+      headerName?: IFlowConstantValue;
+      apiKey?: IFlowTemplateValue;
+      username?: IFlowConstantValue;
+      password?: IFlowConstantValue;
     };
     headers: IJsonSchema<'object'>;
     headersValues: Record<string, IFlowConstantRefValue>;

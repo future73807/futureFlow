@@ -11,23 +11,33 @@
 import { useEffect, useState } from 'react';
 
 import { NodeReport } from '@flowgram.ai/runtime-interface';
-import { useCurrentEntity, useService } from '@flowgram.ai/free-layout-editor';
+import { useCurrentEntity, usePlaygroundContainer } from '@flowgram.ai/free-layout-editor';
 
-import { WorkflowRuntimeService } from '../../../plugins/runtime-plugin/runtime-service';
+import {
+  WORKFLOW_RUNTIME_SERVICE,
+  WorkflowRuntimeService,
+} from '../../../plugins/runtime-plugin/runtime-service';
 import { NodeStatusRender } from './render';
 
 const useNodeReport = () => {
   const node = useCurrentEntity();
   const [report, setReport] = useState<NodeReport>();
-
-  const runtimeService = useService(WorkflowRuntimeService);
+  const container = usePlaygroundContainer();
+  const runtimeService = container?.isBound?.(WORKFLOW_RUNTIME_SERVICE)
+    ? container.get<WorkflowRuntimeService>(WORKFLOW_RUNTIME_SERVICE)
+    : undefined;
 
   useEffect(() => {
+    setReport(undefined);
+    if (!runtimeService) {
+      return undefined;
+    }
+
     const reportDisposer = runtimeService.onNodeReportChange((nodeReport) => {
       if (nodeReport.id !== node.id) {
         return;
       }
-      setReport((prev) =>({
+      setReport((prev) => ({
         ...prev,
         ...nodeReport,
       }));
@@ -39,7 +49,7 @@ const useNodeReport = () => {
       reportDisposer.dispose();
       resetDisposer.dispose();
     };
-  }, []);
+  }, [runtimeService, node.id]);
 
   return report;
 };

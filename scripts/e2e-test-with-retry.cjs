@@ -18,15 +18,51 @@ const { spawn, execSync } = require('node:child_process');
 const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 const http = require('node:http');
+const { randomBytes } = require('node:crypto');
+const net = require('node:net');
+
+const randomSecret = () => randomBytes(32).toString('hex');
+
+function loadExistingEnv() {
+  const envPath = resolve(__dirname, '..', '.env');
+  if (!existsSync(envPath)) return;
+
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2].trim();
+    if (
+      value.length >= 2
+      && ((value.startsWith('"') && value.endsWith('"'))
+        || (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
+// Reuse the deployment's existing credentials and encryption keys. Explicit
+// environment variables still win, while missing values are generated below.
+loadExistingEnv();
 
 // ==================== 配置 ====================
 const CONFIG = {
   DIFY_API_BASE: 'http://localhost:5001',
   DIFY_CONSOLE_BASE: 'http://localhost:5001/console/api',
-  GATEWAY_PORT: 3001,
-  GATEWAY_URL: 'http://localhost:3001',
-  ADMIN_EMAIL: 'admin@futureflow.ai',
-  ADMIN_PASSWORD: 'admin123456',
+  GATEWAY_PORT: 3201,
+  GATEWAY_URL: 'http://localhost:3201',
+  GATEWAY_ADMIN_USERNAME:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_USERNAME || 'futureflow-e2e-admin',
+  GATEWAY_ADMIN_EMAIL:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_EMAIL || 'futureflow-e2e-admin@futureflow.test',
+  GATEWAY_ADMIN_PASSWORD:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD ||
+    'futureflow-e2e-admin-secret-2026-08-09-strong',
+  ADMIN_EMAIL: process.env.DIFY_ADMIN_EMAIL || 'admin-e2e@futureflow.local',
+  ADMIN_PASSWORD: process.env.DIFY_ADMIN_PASSWORD || randomSecret(),
+  DIFY_SECRET_KEY: process.env.DIFY_SECRET_KEY || randomSecret(),
+  DIFY_SANDBOX_API_KEY: process.env.DIFY_SANDBOX_API_KEY || randomSecret(),
   APP_NAME: 'futureFlow Bridge',
   MAX_RETRIES: 5,
   RETRY_DELAY: 5000,
@@ -36,6 +72,19 @@ const CONFIG = {
 // ==================== 工具函数 ====================
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+function assertPortAvailable(port) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', () => {
+      reject(new Error(`E2E port ${port} is already in use; stop the process you own on that port and retry.`));
+    });
+    probe.listen({ host: '127.0.0.1', port }, () => {
+      probe.close((error) => error ? reject(error) : resolve());
+    });
+  });
 }
 
 function log(level, message) {
@@ -73,6 +122,32 @@ function httpRequest(method, url, body = null, headers = {}) {
     if (body) req.write(JSON.stringify(body));
     req.end();
   });
+}
+
+function parseSseEvents(body) {
+  const source = String(body).replace(/\r\n/g, '\n');
+  if (!source.trim()) throw new Error('Workflow returned an empty SSE stream');
+  const frames = source.split('\n\n');
+  const trailing = frames.pop();
+  if (trailing?.trim()) {
+    throw new Error(`Workflow SSE stream was truncated: ${trailing.trim().slice(0, 120)}`);
+  }
+
+  return frames
+    .map((frame) => frame
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+    .map((jsonText) => {
+      try {
+        return JSON.parse(jsonText);
+      } catch {
+        throw new Error(`Workflow returned malformed SSE JSON: ${jsonText.slice(0, 120)}`);
+      }
+    });
 }
 
 // ==================== 步骤 1: 启动容器 ====================
@@ -177,7 +252,7 @@ async function step2_initDify() {
       Authorization: `Bearer ${token}`
     });
     apiKey = keyRes.data.token;
-    log('success', `API key created: ${apiKey.substring(0, 20)}...`);
+    log('success', 'Service API key created');
   }
   
   // 更新 .env
@@ -186,6 +261,10 @@ async function step2_initDify() {
     DIFY_APP_ID: appId,
     DIFY_CONSOLE_TOKEN: token,
     DIFY_AUTO_BOOTSTRAP: 'true',
+    DIFY_ADMIN_EMAIL: CONFIG.ADMIN_EMAIL,
+    DIFY_ADMIN_PASSWORD: CONFIG.ADMIN_PASSWORD,
+    DIFY_SECRET_KEY: CONFIG.DIFY_SECRET_KEY,
+    DIFY_SANDBOX_API_KEY: CONFIG.DIFY_SANDBOX_API_KEY,
   });
   
   return { appId, apiKey, token };
@@ -276,42 +355,33 @@ async function step4_startGateway() {
   log('info', 'Step 4: Starting gateway...');
   
   const gatewayDir = resolve(process.cwd(), 'gateway');
-  
-  // 杀掉旧的网关进程（如果存在）
-  try {
-    const netstat = execSync('netstat -ano | findstr :3001', { encoding: 'utf8' });
-    const lines = netstat.split('\n');
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length >= 5 && parts[4] === 'LISTENING') {
-        const pid = parts[parts.length - 1];
-        log('info', `Killing old gateway process (PID: ${pid})`);
-        execSync(`taskkill /F /PID ${pid}`, { stdio: 'pipe' });
-      }
-    }
-    await sleep(2000);
-  } catch (err) {
-    log('info', 'No old gateway process to kill');
-  }
+  await assertPortAvailable(CONFIG.GATEWAY_PORT);
   
   // 运行数据库 migration（如果是全新环境）
   try {
     log('info', 'Running database migrations...');
-    execSync('npm run migration:run', { cwd: gatewayDir, stdio: 'pipe', timeout: 60000 });
+    execSync('corepack pnpm run migration:run', { cwd: gatewayDir, stdio: 'pipe', timeout: 60000 });
     log('success', 'Database migrations completed');
   } catch (err) {
     log('warn', `Migration may have already run: ${err.message}`);
   }
   
-  // 构建（如果需要）
-  if (!existsSync(resolve(gatewayDir, 'dist/src/main.js'))) {
-    log('info', 'Building gateway...');
-    execSync('npm run build', { cwd: gatewayDir, stdio: 'pipe', timeout: 120000 });
-  }
+  // 始终构建当前工作区，避免复用过期 dist。
+  log('info', 'Building gateway...');
+  execSync('corepack pnpm run build', { cwd: gatewayDir, stdio: 'pipe', timeout: 120000 });
   
   const child = spawn('node', ['dist/src/main.js'], {
     cwd: gatewayDir,
-    env: { ...process.env, NODE_ENV: 'development', GATEWAY_JWT_SECRET: 'e2e-test-jwt-secret-that-is-long-enough-1234567890' },
+    env: {
+      ...process.env,
+      NODE_ENV: 'development',
+      GATEWAY_PORT: String(CONFIG.GATEWAY_PORT),
+      GATEWAY_JWT_SECRET: 'e2e-test-jwt-secret-that-is-long-enough-1234567890',
+      GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
+      GATEWAY_BOOTSTRAP_ADMIN_USERNAME: CONFIG.GATEWAY_ADMIN_USERNAME,
+      GATEWAY_BOOTSTRAP_ADMIN_EMAIL: CONFIG.GATEWAY_ADMIN_EMAIL,
+      GATEWAY_BOOTSTRAP_ADMIN_PASSWORD: CONFIG.GATEWAY_ADMIN_PASSWORD,
+    },
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,
   });
@@ -321,7 +391,7 @@ async function step4_startGateway() {
   const start = Date.now();
   while (Date.now() - start < 30000) {
     try {
-      const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/workflows/health`);
+      const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/healthz`);
       if (res.status === 200) {
         log('success', 'Gateway is ready');
         // 等待 seed 用户创建完成
@@ -330,8 +400,8 @@ async function step4_startGateway() {
         while (Date.now() - loginStart < 30000) {
           try {
             const loginRes = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-              account: 'demo',
-              password: 'demo123456'
+              account: CONFIG.GATEWAY_ADMIN_USERNAME,
+              password: CONFIG.GATEWAY_ADMIN_PASSWORD,
             });
             if (loginRes.status === 201) {
               log('success', 'Seed user is ready');
@@ -360,8 +430,8 @@ async function step5_apiTests() {
   let workflowId = null;
   
   // 测试 1: 健康检查
-  await runTest('GET /workflows/health', async () => {
-    const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/workflows/health`);
+  await runTest('GET /healthz', async () => {
+    const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/healthz`);
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
     return res.data;
   }, results);
@@ -369,7 +439,8 @@ async function step5_apiTests() {
   // 测试 2: 管理员登录
   await runTest('POST /auth/login', async () => {
     const res = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-      account: 'demo', password: 'demo123456'
+      account: CONFIG.GATEWAY_ADMIN_USERNAME,
+      password: CONFIG.GATEWAY_ADMIN_PASSWORD,
     });
     if (res.status !== 201) throw new Error(`Status: ${res.status}`);
     if (res.data.user?.role !== 'admin') throw new Error('Not admin');
@@ -475,10 +546,36 @@ async function step5_apiTests() {
     });
     
     if (res.status !== 200) throw new Error(`Status: ${res.status}`);
-    if (!res.body.includes('workflow_finished') && !res.body.includes('succeeded')) {
-      throw new Error('Workflow did not complete: ' + res.body.substring(0, 300));
+    const events = parseSseEvents(res.body);
+    const terminalEvents = events.filter((event) => event.event === 'workflow_finished');
+    if (terminalEvents.length !== 1) {
+      throw new Error(`Expected exactly one workflow_finished event, received ${terminalEvents.length}`);
     }
-    return { completed: true, length: res.body.length };
+    const finished = terminalEvents[0];
+    if (finished.data?.status !== 'succeeded') {
+      throw new Error(`Workflow failed: ${finished.data?.error || finished.data?.status || 'unknown'}`);
+    }
+    if (!Object.values(finished.data?.outputs || {}).some((value) =>
+      typeof value === 'string' ? value.trim().length > 0 : value !== undefined && value !== null
+    )) {
+      throw new Error('Workflow completed without non-empty outputs');
+    }
+    const nodeResults = events.filter((event) => event.event === 'node_finished');
+    const failedNode = nodeResults.find((event) => event.data?.status !== 'succeeded');
+    if (failedNode) {
+      throw new Error(`Node failed: ${failedNode.data?.title || failedNode.data?.node_id || 'unknown'}`);
+    }
+    for (const nodeId of ['start_0', 'llm_0', 'end_0']) {
+      if (!nodeResults.some((event) => event.data?.node_id === nodeId)) {
+        throw new Error(`Missing successful node event: ${nodeId}`);
+      }
+    }
+    return {
+      completed: true,
+      events: events.length,
+      succeededNodes: nodeResults.length,
+      totalSteps: finished.data?.total_steps,
+    };
   }, results);
   
   // 测试 10: 获取运行记录
@@ -552,25 +649,25 @@ async function runTest(name, testFn, results) {
   }
 }
 
-// ==================== 步骤 6: UI 模拟测试 ====================
-async function step6_uiSimulationTests() {
-  log('info', 'Step 6: Running UI simulation tests (via API calls)...');
+// ==================== 步骤 6: 页面数据 API 契约测试 ====================
+async function step6_pageDataContractTests() {
+  log('info', 'Step 6: Running page-data API contract tests (not browser UI tests)...');
   
   const results = [];
   
-  // 模拟 UI 登录
-  await runTest('UI: Login page load', async () => {
+  await runTest('Page data: login contract', async () => {
     const res = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-      account: 'demo', password: 'demo123456'
+      account: CONFIG.GATEWAY_ADMIN_USERNAME,
+      password: CONFIG.GATEWAY_ADMIN_PASSWORD,
     });
     if (res.status !== 201) throw new Error(`Login failed: ${res.status}`);
     return { loggedIn: true };
   }, results);
   
-  // 模拟 UI 获取工作流列表
-  await runTest('UI: Load workflow list', async () => {
+  await runTest('Page data: workflow list contract', async () => {
     const login = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-      account: 'demo', password: 'demo123456'
+      account: CONFIG.GATEWAY_ADMIN_USERNAME,
+      password: CONFIG.GATEWAY_ADMIN_PASSWORD,
     });
     const token = login.data.accessToken;
     const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/workflows`, null, {
@@ -580,30 +677,32 @@ async function step6_uiSimulationTests() {
     return { workflowCount: res.data?.length || res.data?.items?.length || 0 };
   }, results);
   
-  // 模拟 UI 获取仪表盘
-  await runTest('UI: Load dashboard stats', async () => {
+  await runTest('Page data: dashboard stats contract', async () => {
     const login = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-      account: 'demo', password: 'demo123456'
+      account: CONFIG.GATEWAY_ADMIN_USERNAME,
+      password: CONFIG.GATEWAY_ADMIN_PASSWORD,
     });
     const token = login.data.accessToken;
     const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/admin/stats`, null, {
       Authorization: `Bearer ${token}`
     });
     if (res.status !== 200) throw new Error(`Failed: ${res.status}`);
-    return { hasStats: !!res.data };
+    if (!res.data || typeof res.data !== 'object') throw new Error('Dashboard payload missing');
+    return { hasStats: true };
   }, results);
   
-  // 模拟 UI 获取 Dify 状态
-  await runTest('UI: Load Dify status', async () => {
+  await runTest('Page data: Dify status contract', async () => {
     const login = await httpRequest('POST', `${CONFIG.GATEWAY_URL}/auth/login`, {
-      account: 'demo', password: 'demo123456'
+      account: CONFIG.GATEWAY_ADMIN_USERNAME,
+      password: CONFIG.GATEWAY_ADMIN_PASSWORD,
     });
     const token = login.data.accessToken;
     const res = await httpRequest('GET', `${CONFIG.GATEWAY_URL}/admin/dify/status`, null, {
       Authorization: `Bearer ${token}`
     });
     if (res.status !== 200) throw new Error(`Failed: ${res.status}`);
-    return { difyStatus: res.data?.status };
+    if (!res.data?.status) throw new Error('Dify status payload missing');
+    return { difyStatus: res.data.status };
   }, results);
   
   return results;
@@ -612,11 +711,19 @@ async function step6_uiSimulationTests() {
 // ==================== 主流程（带重试） ====================
 async function main() {
   log('info', '========================================');
+
+  Object.assign(process.env, {
+    DIFY_ADMIN_EMAIL: CONFIG.ADMIN_EMAIL,
+    DIFY_ADMIN_PASSWORD: CONFIG.ADMIN_PASSWORD,
+    DIFY_SECRET_KEY: CONFIG.DIFY_SECRET_KEY,
+    DIFY_SANDBOX_API_KEY: CONFIG.DIFY_SANDBOX_API_KEY,
+  });
   log('info', 'futureFlow E2E Test with Retry');
   log('info', '========================================');
   
   for (let attempt = 1; attempt <= CONFIG.MAX_RETRIES; attempt++) {
     log('info', `--- Attempt ${attempt}/${CONFIG.MAX_RETRIES} ---`);
+    let gatewayProcess = null;
     
     try {
       // Step 1: 启动容器
@@ -629,16 +736,16 @@ async function main() {
       await step3_publishWorkflow(token, appId);
       
       // Step 4: 启动网关
-      await step4_startGateway();
+      gatewayProcess = await step4_startGateway();
       
       // Step 5: API 测试
       const apiResults = await step5_apiTests();
       
-      // Step 6: UI 模拟测试
-      const uiResults = await step6_uiSimulationTests();
+      // Step 6: 页面数据 API 契约测试（浏览器 UI 由 e2e-full-test.cjs 负责）
+      const contractResults = await step6_pageDataContractTests();
       
       // 汇总
-      const allResults = [...apiResults, ...uiResults];
+      const allResults = [...apiResults, ...contractResults];
       const passed = allResults.filter(r => r.status === 'PASS').length;
       const total = allResults.length;
       
@@ -647,7 +754,7 @@ async function main() {
       log('info', '========================================');
       
       if (passed === total) {
-        log('success', '🎉 ALL TESTS PASSED!');
+        log('success', '🎉 API AND PAGE-DATA CONTRACT TESTS PASSED!');
         return 0;
       } else {
         const failed = allResults.filter(r => r.status === 'FAIL');
@@ -663,6 +770,11 @@ async function main() {
       if (attempt < CONFIG.MAX_RETRIES) {
         log('warn', `Retrying in ${CONFIG.RETRY_DELAY / 1000}s...`);
         await sleep(CONFIG.RETRY_DELAY);
+      }
+    } finally {
+      if (gatewayProcess && gatewayProcess.exitCode === null) {
+        gatewayProcess.kill();
+        await sleep(500);
       }
     }
   }

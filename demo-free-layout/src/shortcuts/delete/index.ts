@@ -51,6 +51,17 @@ export class DeleteShortcut implements ShortcutsHandler {
       return;
     }
     const selection = Array.isArray(nodes) ? nodes : this.selectService.selection;
+    if (selection.some((entity) => (
+      entity instanceof WorkflowLineEntity
+      && [entity.from?.parent?.flowNodeType, entity.to?.parent?.flowNodeType]
+        .includes(WorkflowNodeType.Loop)
+    ))) {
+      Toast.error({
+        content: '数组批处理内的固定节点和连线不能删除',
+        showClose: false,
+      });
+      return;
+    }
     if (
       !this.isValid(
         selection.filter((n) => n instanceof WorkflowNodeEntity) as WorkflowNodeEntity[]
@@ -91,7 +102,14 @@ export class DeleteShortcut implements ShortcutsHandler {
     );
     if (hasSystemNodes) {
       Toast.error({
-        content: 'Start or End node cannot be deleted',
+        content: '开始节点和结束节点不能删除',
+        showClose: false,
+      });
+      return false;
+    }
+    if (nodes.some((node) => node.parent?.flowNodeType === WorkflowNodeType.Loop)) {
+      Toast.error({
+        content: '数组批处理内的固定节点和连线不能删除',
         showClose: false,
       });
       return false;

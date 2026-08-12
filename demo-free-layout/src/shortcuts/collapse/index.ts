@@ -15,7 +15,7 @@ export class CollapseShortcut implements ShortcutsHandler {
   public commandId = FlowCommandId.COLLAPSE;
 
   public commandDetail: ShortcutsHandler['commandDetail'] = {
-    label: 'Collapse',
+    label: '折叠',
   };
 
   public shortcuts = ['meta alt openbracket', 'ctrl alt openbracket'];

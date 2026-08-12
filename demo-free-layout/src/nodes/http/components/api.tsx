@@ -4,18 +4,18 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { IFlowTemplateValue, PromptEditorWithVariables } from '@flowgram.ai/form-materials';
+import { IFlowTemplateValue } from '@flowgram.ai/form-materials';
 import { Select } from '@douyinfe/semi-ui';
 
 import { useNodeRenderContext } from '../../../hooks';
-import { FormItem } from '../../../form-components';
+import { Feedback, FormItem, PromptEditorBoundary } from '../../../form-components';
 
 export function Api() {
   const { readonly } = useNodeRenderContext();
 
   return (
     <div>
-      <FormItem name="API" required vertical type="string">
+      <FormItem name="请求地址" required vertical type="string">
         <div style={{ display: 'flex', gap: 5 }}>
           <Field<string> name="api.method" defaultValue="GET">
             {({ field }) => (
@@ -39,18 +39,23 @@ export function Api() {
             )}
           </Field>
 
-          <Field<IFlowTemplateValue> name="api.url">
-            {({ field }) => (
-              <PromptEditorWithVariables
-                disableMarkdownHighlight
-                readonly={readonly}
-                style={{ flexGrow: 1 }}
-                placeholder="Input URL, use var by '{'"
-                value={field.value}
-                onChange={(value) => {
-                  field.onChange(value!);
-                }}
-              />
+          <Field<IFlowTemplateValue>
+            name="api.url"
+            defaultValue={{ type: 'template', content: '' }}
+          >
+            {({ field, fieldState }) => (
+              <div style={{ display: 'grid', flexGrow: 1 }}>
+                <PromptEditorBoundary
+                  readonly={readonly}
+                  hasError={Boolean(fieldState?.errors?.length)}
+                  placeholder="输入 URL；可在下方插入上游变量"
+                  minRows={1}
+                  maxRows={4}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+                <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
+              </div>
             )}
           </Field>
         </div>

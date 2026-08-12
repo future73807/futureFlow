@@ -78,7 +78,7 @@ export class PasteShortcut implements ShortcutsHandler {
     const nodes = this.apply(data);
     if (nodes.length > 0) {
       Toast.success({
-        content: 'Copy successfully',
+        content: '粘贴成功',
         showClose: false,
       });
       // wait for nodes to render - 等待节点渲染
@@ -125,14 +125,14 @@ export class PasteShortcut implements ShortcutsHandler {
   private isValidData(data?: WorkflowClipboardData): boolean {
     if (data?.type !== WorkflowClipboardDataID) {
       Toast.error({
-        content: 'Invalid clipboard data',
+        content: '剪贴板数据无效',
       });
       return false;
     }
     // Cross-domain means different environments, different plugins, cannot be copied - 跨域名表示不同环境，上架插件不同，不能复制
     if (data.source.host !== window.location.host) {
       Toast.error({
-        content: 'Cannot paste nodes from different host',
+        content: '不能粘贴来自其他工作区的节点',
       });
       return false;
     }
@@ -146,7 +146,7 @@ export class PasteShortcut implements ShortcutsHandler {
       });
       if (!res.allowDrop) {
         Toast.error({
-          content: res.message ?? 'Cannot paste nodes to invalid container',
+          content: res.message ?? '不能将节点粘贴到当前容器',
         });
         return false;
       }

@@ -15,7 +15,7 @@ export function Headers() {
 
   if (!isSidebar) {
     return (
-      <FormItem name="headers" type="object" vertical>
+      <FormItem name="请求头" type="object" vertical>
         <Field<Record<string, IFlowValue | undefined> | undefined> name="headersValues">
           {({ field }) => <DisplayInputsValues value={field.value} />}
         </Field>
@@ -24,7 +24,7 @@ export function Headers() {
   }
 
   return (
-    <FormItem name="headers" type="object" vertical>
+    <FormItem name="请求头" type="object" vertical>
       <Field<Record<string, IFlowValue | undefined> | undefined> name="headersValues">
         {({ field }) => (
           <InputsValues

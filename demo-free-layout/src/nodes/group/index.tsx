@@ -59,7 +59,7 @@ export const GroupNodeRegistry: FlowNodeRegistry = {
       },
       data: {
         color: 'Green',
-        title: `Group_${++index}`,
+        title: `分组 ${++index}`,
       },
     };
   },

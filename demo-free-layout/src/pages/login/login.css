@@ -78,15 +78,6 @@
   color: var(--ff-primary-hover);
 }
 
-.auth-demo {
-  margin: 20px 0 0;
-  padding-top: 16px;
-  border-top: 1px solid #edf0f5;
-  color: var(--ff-subtle);
-  font-size: 12px;
-  text-align: center;
-}
-
 @media (max-width: 480px) {
   .auth-page {
     padding: 16px;

@@ -45,16 +45,21 @@ export const ToolSection = styled.div`
   }
   pointer-events: auto;
 
+  .canvas-tool-group {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
   .gedit-flow-panel-layer-wrap-floating:has(.gedit-flow-panel-right-area .gedit-flow-panel-wrap) & {
     width: 100%;
     justify-content: flex-start;
     overflow-x: auto;
     padding: 4px 8px;
 
-    > :nth-child(-n + 14),
-    > :nth-child(10),
-    > :nth-child(11),
-    > :nth-child(16) {
+    .canvas-tool-group-view,
+    .canvas-tool-group-edit,
+    > .semi-divider:first-of-type {
       display: none !important;
     }
   }
@@ -65,11 +70,15 @@ export const ToolSection = styled.div`
     overflow-x: auto;
     padding: 4px 8px;
 
-    > :nth-child(-n + 14),
-    > :nth-child(10),
-    > :nth-child(11),
-    > :nth-child(16) {
+    .canvas-tool-group-view,
+    .canvas-tool-group-edit,
+    > .semi-divider {
       display: none !important;
+    }
+
+    .canvas-tool-group-primary {
+      width: 100%;
+      justify-content: center;
     }
   }
 `;

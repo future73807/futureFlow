@@ -9,14 +9,15 @@
 
 .canvas-header {
   display: flex;
-  min-height: 64px;
+  min-height: 68px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-bottom: 1px solid var(--ff-border);
   background: var(--ff-surface);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02), 0 8px 24px rgba(15, 23, 42, 0.035);
+  z-index: 30;
 }
 
 .canvas-header-left,
@@ -28,7 +29,21 @@
 .canvas-header-left {
   min-width: 0;
   flex: 1;
-  gap: 8px;
+  gap: 10px;
+}
+
+.canvas-back-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ff-border) !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+}
+
+.canvas-brand-mark {
+  display: inline-flex;
+  color: var(--ff-primary);
+  line-height: 0;
 }
 
 .canvas-name-group {
@@ -39,8 +54,9 @@
 
 .canvas-name-group > span {
   color: var(--ff-subtle);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .canvas-name-input {
@@ -71,6 +87,16 @@
   gap: 14px;
 }
 
+.canvas-autosave-badge {
+  padding: 4px 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .canvas-save-status {
   min-width: 160px;
   color: var(--ff-muted);
@@ -95,6 +121,22 @@
   overflow: hidden;
 }
 
+.canvas-editor-wrap::before {
+  position: absolute;
+  z-index: 1;
+  top: 14px;
+  left: 18px;
+  padding: 7px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #94a3b8;
+  content: '拖动画布 · 连接节点 · 点击节点进行配置';
+  font-size: 11px;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
 .canvas-loading {
   display: grid;
   height: 100%;
@@ -108,8 +150,14 @@
     padding: 8px 10px;
   }
 
-  .canvas-name-group > span,
-  .canvas-save-status {
+    .canvas-name-group > span,
+    .canvas-autosave-badge,
+    .canvas-save-status {
+    display: none;
+  }
+
+  .canvas-brand-mark,
+  .canvas-editor-wrap::before {
     display: none;
   }
 

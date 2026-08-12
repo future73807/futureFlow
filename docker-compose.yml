@@ -3,7 +3,9 @@
 # ============================================================
 # 使用方式:
 #   docker compose up -d postgres          # 仅启动 PostgreSQL
-#   docker compose up -d                   # 启动全部(含 Dify)
+#   docker compose up -d                   # 启动全部长期运行的基础服务(含 Dify)
+#   docker compose --profile bootstrap run --rm --no-TTY --interactive=false --no-deps dify-init
+#                                           # Dify 健康后同步执行一次初始化
 #   docker compose down                    # 停止全部
 #   docker compose logs -f dify-api        # 查看 Dify API 日志
 # ============================================================
@@ -17,18 +19,19 @@ services:
     container_name: futureflow-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-futureflow}
       POSTGRES_USER: ${POSTGRES_USER:-futureflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-futureflow123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请先运行 pnpm env:init 生成 POSTGRES_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-futureflow}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
 
   # ============================================================
   # Dify Redis: Dify 内部依赖
@@ -55,14 +58,86 @@ services:
     environment:
       POSTGRES_DB: dify
       POSTGRES_USER: dify
-      POSTGRES_PASSWORD: dify123456
+      POSTGRES_PASSWORD: ${DIFY_DB_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_DB_PASSWORD}
     volumes:
       - dify-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dify"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
+
+  # ============================================================
+  # Dify SSRF Proxy: HTTP 节点与 Sandbox 的受控出网代理
+  # 与 Dify 0.15.3 官方部署保持一致，不向宿主机暴露端口。
+  # ============================================================
+  ssrf_proxy:
+    image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
+    container_name: futureflow-dify-ssrf-proxy
+    restart: unless-stopped
+    volumes:
+      - ./infra/dify/ssrf_proxy/squid.conf.template:/etc/squid/squid.conf.template:ro
+      - ./infra/dify/ssrf_proxy/docker-entrypoint.sh:/docker-entrypoint-mount.sh:ro
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        cp /docker-entrypoint-mount.sh /docker-entrypoint.sh &&
+        sed -i 's/\r$$//' /docker-entrypoint.sh &&
+        chmod +x /docker-entrypoint.sh &&
+        /docker-entrypoint.sh
+    environment:
+      HTTP_PORT: ${DIFY_SSRF_HTTP_PORT:-3128}
+      COREDUMP_DIR: /var/spool/squid
+      # Only this exact host/port may bypass the private-destination deny-list.
+      # Native media endpoints still require a short-lived, run-scoped token.
+      MEDIA_GATEWAY_HOST: ${DIFY_MEDIA_GATEWAY_HOST:-host.docker.internal}
+      MEDIA_GATEWAY_PORT: ${DIFY_MEDIA_GATEWAY_PORT:-3001}
+      # Synthetic DNS egress is disabled by default. In environments that map
+      # trusted public APIs into 198.18/15, list only those exact domains.
+      SYNTHETIC_DNS_ALLOWED_DOMAINS: ${DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS:-.invalid}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "squid -k check"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dify-ssrf
+      - default
+
+  # ============================================================
+  # Dify Sandbox: Code 节点隔离执行环境（Dify 0.15.3 官方版本）
+  # 0.15.3 固定请求网络模式；所有 HTTP(S) 出网仍只能经过上面的 SSRF Proxy。
+  # ============================================================
+  sandbox:
+    image: langgenius/dify-sandbox:0.2.10
+    container_name: futureflow-dify-sandbox
+    restart: unless-stopped
+    depends_on:
+      ssrf_proxy:
+        condition: service_healthy
+    environment:
+      API_KEY: ${DIFY_SANDBOX_API_KEY:?请先运行 pnpm env:init 生成 DIFY_SANDBOX_API_KEY}
+      GIN_MODE: release
+      WORKER_TIMEOUT: ${DIFY_SANDBOX_WORKER_TIMEOUT:-15}
+      ENABLE_NETWORK: ${DIFY_SANDBOX_ENABLE_NETWORK:-true}
+      HTTP_PROXY: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      HTTPS_PROXY: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      SANDBOX_PORT: "8194"
+    volumes:
+      - dify-sandbox-dependencies:/dependencies
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8194/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dify-ssrf
 
   # ============================================================
   # Dify API: 核心服务(工作流引擎 + 模型代理)
@@ -76,16 +151,20 @@ services:
         condition: service_healthy
       dify-postgres:
         condition: service_healthy
+      sandbox:
+        condition: service_healthy
+      ssrf_proxy:
+        condition: service_healthy
     ports:
-      - "5001:5001"   # Dify API 端口(映射到 5001 避免与网关冲突)
+      - "127.0.0.1:${DIFY_API_PORT:-5001}:5001"   # 仅供宿主机本地管理
     environment:
       # --- 数据库(Dify 0.15.x 需要独立 DB_* 变量,SQLALCHEMY_DATABASE_URI 不生效) ---
       DB_USERNAME: dify
-      DB_PASSWORD: dify123456
+      DB_PASSWORD: ${DIFY_DB_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_DB_PASSWORD}
       DB_HOST: dify-postgres
       DB_PORT: "5432"
       DB_DATABASE: dify
-      SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
+      SQLALCHEMY_DATABASE_URI: postgresql://dify:${DIFY_DB_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_DB_PASSWORD}@dify-postgres:5432/dify
       # --- Redis ---
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
@@ -96,10 +175,20 @@ services:
       CELERY_BACKEND: redis
       # --- 模式 ---
       MODE: api
+      # --- Code / HTTP 节点运行依赖 ---
+      CODE_EXECUTION_ENDPOINT: http://sandbox:8194
+      CODE_EXECUTION_API_KEY: ${DIFY_SANDBOX_API_KEY:?请先运行 pnpm env:init 生成 DIFY_SANDBOX_API_KEY}
+      CODE_EXECUTION_CONNECT_TIMEOUT: ${DIFY_CODE_EXECUTION_CONNECT_TIMEOUT:-10}
+      CODE_EXECUTION_READ_TIMEOUT: ${DIFY_CODE_EXECUTION_READ_TIMEOUT:-60}
+      CODE_EXECUTION_WRITE_TIMEOUT: ${DIFY_CODE_EXECUTION_WRITE_TIMEOUT:-10}
+      SSRF_PROXY_HTTP_URL: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      SSRF_PROXY_HTTPS_URL: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      HTTP_REQUEST_NODE_MAX_BINARY_SIZE: ${DIFY_HTTP_MAX_BINARY_SIZE:-10485760}
+      HTTP_REQUEST_NODE_MAX_TEXT_SIZE: ${DIFY_HTTP_MAX_TEXT_SIZE:-1048576}
       # --- 启动时自动执行数据库迁移 ---
       MIGRATION_ENABLED: "true"
       # --- 安全 ---
-      SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
+      SECRET_KEY: ${DIFY_SECRET_KEY:?请先运行 pnpm env:init 生成 DIFY_SECRET_KEY}
       CONSOLE_API_URL: http://localhost:5001
       SERVICE_API_URL: http://localhost:5001
       APP_WEB_URL: http://localhost:5001
@@ -112,6 +201,9 @@ services:
       WEAVIATE_PORT: 8080
     volumes:
       - dify-storage:/app/api/storage
+    networks:
+      - default
+      - dify-ssrf
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
       interval: 30s
@@ -127,27 +219,45 @@ services:
     container_name: futureflow-dify-worker
     restart: unless-stopped
     depends_on:
+      # API 是唯一执行数据库迁移的进程。只有 API 完成迁移并可提供服务后，
+      # Worker 才能启动，避免全新卷上两个进程并发升级同一个 schema。
+      dify-api:
+        condition: service_healthy
       dify-redis:
         condition: service_healthy
       dify-postgres:
         condition: service_healthy
+      sandbox:
+        condition: service_healthy
+      ssrf_proxy:
+        condition: service_healthy
     environment:
       # --- 数据库(Dify 0.15.x 需要独立 DB_* 变量) ---
       DB_USERNAME: dify
-      DB_PASSWORD: dify123456
+      DB_PASSWORD: ${DIFY_DB_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_DB_PASSWORD}
       DB_HOST: dify-postgres
       DB_PORT: "5432"
       DB_DATABASE: dify
-      SQLALCHEMY_DATABASE_URI: postgresql://dify:dify123456@dify-postgres:5432/dify
+      SQLALCHEMY_DATABASE_URI: postgresql://dify:${DIFY_DB_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_DB_PASSWORD}@dify-postgres:5432/dify
       REDIS_HOST: dify-redis
       REDIS_PORT: 6379
       # Keep the API producer and Worker consumer on the same Redis broker.
       CELERY_BROKER_URL: redis://dify-redis:6379/1
       CELERY_BACKEND: redis
       MODE: worker
-      # --- 启动时自动执行数据库迁移 ---
-      MIGRATION_ENABLED: "true"
-      SECRET_KEY: sk-dify-futureflow-2026-very-long-secret-key
+      # --- Code / HTTP 节点运行依赖 ---
+      CODE_EXECUTION_ENDPOINT: http://sandbox:8194
+      CODE_EXECUTION_API_KEY: ${DIFY_SANDBOX_API_KEY:?请先运行 pnpm env:init 生成 DIFY_SANDBOX_API_KEY}
+      CODE_EXECUTION_CONNECT_TIMEOUT: ${DIFY_CODE_EXECUTION_CONNECT_TIMEOUT:-10}
+      CODE_EXECUTION_READ_TIMEOUT: ${DIFY_CODE_EXECUTION_READ_TIMEOUT:-60}
+      CODE_EXECUTION_WRITE_TIMEOUT: ${DIFY_CODE_EXECUTION_WRITE_TIMEOUT:-10}
+      SSRF_PROXY_HTTP_URL: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      SSRF_PROXY_HTTPS_URL: http://ssrf_proxy:${DIFY_SSRF_HTTP_PORT:-3128}
+      HTTP_REQUEST_NODE_MAX_BINARY_SIZE: ${DIFY_HTTP_MAX_BINARY_SIZE:-10485760}
+      HTTP_REQUEST_NODE_MAX_TEXT_SIZE: ${DIFY_HTTP_MAX_TEXT_SIZE:-1048576}
+      # 数据库迁移只由 dify-api 执行；Worker 必须等待 API healthy。
+      MIGRATION_ENABLED: "false"
+      SECRET_KEY: ${DIFY_SECRET_KEY:?请先运行 pnpm env:init 生成 DIFY_SECRET_KEY}
       STORAGE_TYPE: local
       STORAGE_LOCAL_PATH: /app/api/storage
       VECTOR_STORE: weaviate
@@ -155,6 +265,9 @@ services:
       WEAVIATE_PORT: 8080
     volumes:
       - dify-storage:/app/api/storage
+    networks:
+      - default
+      - dify-ssrf
 
   # ============================================================
   # Dify Web: 前端控制台(用于创建工作流应用、获取 API Key)
@@ -167,7 +280,7 @@ services:
       dify-api:
         condition: service_healthy
     ports:
-      - "8080:3000"   # Dify 控制台: http://localhost:8080
+      - "127.0.0.1:${DIFY_WEB_PORT:-8080}:3000"   # Dify 控制台仅绑定本机
 
   # ============================================================
   # Weaviate: 向量数据库(Dify 向量存储依赖)
@@ -192,6 +305,9 @@ services:
     image: node:20-alpine
     container_name: futureflow-dify-init
     restart: "no"
+    # 一次性任务不能跟随普通 `docker compose up -d` 异步启动。
+    # start-full-stack 会在 Dify API healthy 后显式、同步地运行它。
+    profiles: ["bootstrap"]
     depends_on:
       dify-api:
         condition: service_healthy
@@ -200,8 +316,8 @@ services:
     working_dir: /workspace
     environment:
       DIFY_API_BASE: http://dify-api:5001
-      LLM_API_KEY: ${LLM_API_KEY:-***REMOVED***}
-      LLM_API_HOST: ${LLM_API_HOST:-https://api.longcat.chat/openai}
+      DIFY_ADMIN_EMAIL: ${DIFY_ADMIN_EMAIL:-admin@futureflow.local}
+      DIFY_ADMIN_PASSWORD: ${DIFY_ADMIN_PASSWORD:?请先运行 pnpm env:init 生成 DIFY_ADMIN_PASSWORD}
     command: ["node", "scripts/init-dify.cjs"]
 
 volumes:
@@ -210,3 +326,10 @@ volumes:
   dify-postgres-data:
   dify-storage:
   dify-weaviate-data:
+  dify-sandbox-dependencies:
+
+networks:
+  # Sandbox 只能通过同时连接默认网络的 SSRF Proxy 出网。
+  dify-ssrf:
+    driver: bridge
+    internal: true

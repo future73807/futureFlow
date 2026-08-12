@@ -51,7 +51,7 @@ export const NodeStatusGroup: FC<NodeStatusGroupProps> = ({
         <span>{title}:</span>
         {!hasContent && (
           <Tag size="small" className={styles['node-status-group-tag']}>
-            null
+            无
           </Tag>
         )}
       </div>

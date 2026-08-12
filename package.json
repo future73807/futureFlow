@@ -20,12 +20,22 @@
     "build:gateway": "pnpm --filter futureflow-gateway build",
     "build:frontend": "pnpm --filter @flowgram.ai/demo-free-layout build:prod",
     "ts-check": "pnpm -r exec tsc --noEmit",
+    "test:archive": "node scripts/test-result-archive.cjs",
+    "test:media-credential-ui": "node scripts/test-media-credential-ui.cjs",
+    "test:batch-loop-runtime": "node scripts/test-batch-loop-runtime.cjs",
+    "test:condition-runtime": "node scripts/test-condition-runtime.cjs",
+    "test:http-runtime": "node scripts/test-http-runtime.cjs",
+    "test:media-dify-chain": "node scripts/test-media-dify-chain.cjs",
+    "test:fresh-volume": "node scripts/fresh-volume-e2e.cjs",
+    "test:api": "node scripts/api-test.cjs",
+    "test:full-chain": "node scripts/full-chain-test.cjs",
     "test:platform": "pnpm --filter futureflow-gateway test:smoke && pnpm --filter futureflow-gateway test:integration && pnpm --filter futureflow-gateway test:fuzz",
-    "verify": "pnpm run ts-check && pnpm run test:platform && pnpm run build:gateway && pnpm run build:frontend",
+    "verify": "pnpm run ts-check && pnpm run test:archive && pnpm run test:media-credential-ui && pnpm --filter futureflow-gateway test:batch-loop && pnpm run test:batch-loop-runtime && pnpm run test:condition-runtime && pnpm run test:http-runtime && pnpm run test:platform && pnpm run build:gateway && pnpm run build:frontend",
     "test:e2e": "node scripts/e2e-full-test.cjs"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "playwright-core": "1.62.1"
   },
   "packageManager": "pnpm@11.10.0",
   "engines": {

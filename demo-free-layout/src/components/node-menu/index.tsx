@@ -21,6 +21,7 @@ import { IconMore } from '@douyinfe/semi-icons';
 import { FlowNodeRegistry } from '../../typings';
 import { PasteShortcut } from '../../shortcuts/paste';
 import { CopyShortcut } from '../../shortcuts/copy';
+import { WorkflowNodeType } from '../../nodes';
 
 interface NodeMenuProps {
   node: WorkflowNodeEntity;
@@ -36,6 +37,7 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
   const selectService = useService(WorkflowSelectService);
   const dragService = useService(WorkflowDragService);
   const canMoveOut = nodeIntoContainerService.canMoveOutContainer(node);
+  const isBatchInnerNode = node.parent?.flowNodeType === WorkflowNodeType.Loop;
   const tools = usePlaygroundTools();
 
   const rerenderMenu = useCallback(() => {
@@ -117,8 +119,11 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       render={
         <Dropdown.Menu>
           <Dropdown.Item onClick={handleEditTitle}>编辑标题</Dropdown.Item>
-          {canMoveOut && <Dropdown.Item onClick={handleMoveOut}>移出容器</Dropdown.Item>}
-          <Dropdown.Item onClick={handleCopy} disabled={registry.meta!.copyDisable === true}>
+          {canMoveOut && !isBatchInnerNode && <Dropdown.Item onClick={handleMoveOut}>移出容器</Dropdown.Item>}
+          <Dropdown.Item
+            onClick={handleCopy}
+            disabled={isBatchInnerNode || registry.meta!.copyDisable === true}
+          >
             创建副本
           </Dropdown.Item>
           {registry.meta.isContainer && (
@@ -126,7 +131,7 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
           )}
           <Dropdown.Item
             onClick={handleDelete}
-            disabled={!!(registry.canDelete?.(clientContext, node) || registry.meta!.deleteDisable)}
+            disabled={isBatchInnerNode || !!(registry.canDelete?.(clientContext, node) || registry.meta!.deleteDisable)}
           >
             删除
           </Dropdown.Item>
@@ -134,10 +139,11 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       }
     >
       <IconButton
+        aria-label="节点操作"
         color="secondary"
         size="small"
         theme="borderless"
-        icon={<IconMore />}
+        icon={<IconMore aria-hidden="true" />}
         onClick={(e) => e.stopPropagation()}
       />
     </Dropdown>

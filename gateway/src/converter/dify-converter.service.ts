@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as YAML from 'yaml';
 import {
@@ -11,6 +12,27 @@ import {
   DifyVariable,
   DifyPromptItem,
 } from './types';
+import { validateWorkflowReferences } from './workflow-reference-validator';
+import {
+  assertSynchronousJavaScript,
+  buildOutputContractRuntime,
+  normalizeCodeOutputSchema,
+  uniqueJavaScriptIdentifier,
+} from './javascript-contract';
+import {
+  NATIVE_MEDIA_OUTPUTS,
+  isNativeMediaNode,
+  prepareNativeMediaNodes,
+  validateNativeMediaNode,
+} from './native-media-bridge';
+
+// Dify 0.15.x parses template selectors with these exact segment limits.
+// Enforcing them before import prevents a workflow from publishing with
+// literal, silently-unexpanded {{#...#}} references.
+const DIFY_NODE_ID = /^[a-zA-Z0-9_]{1,50}$/;
+const DIFY_SELECTOR_PROPERTY = /^[a-zA-Z_][a-zA-Z0-9_]{0,29}$/;
+const DIFY_MAX_SELECTOR_PROPERTY_SEGMENTS = 10;
+const FLOWGRAM_NODE_ID_MAX_LENGTH = 255;
 
 /**
  * DSL 转换器:FlowGram JSON → Dify DSL
@@ -52,35 +74,64 @@ export class DifyConverterService {
    * 将 FlowGram JSON 转换为 Dify DSL YAML 字符串
    */
   toDifyDSL(flowgram: FlowGramJSON): DifyDSL {
+    flowgram = this.stripCanvasDecorations(flowgram);
     this.validateFlowGram(flowgram);
+    validateWorkflowReferences(flowgram);
+    flowgram = prepareNativeMediaNodes(flowgram);
+    // The saved semantic media node expands into a trusted Gateway request and
+    // a parser node only after the user-authored graph has passed admission.
+    validateWorkflowReferences(flowgram);
+    flowgram = this.prepareVariableAssignments(flowgram);
+    validateWorkflowReferences(flowgram);
+    // Dify's graph accepts broader IDs, but its workflow template parser only
+    // interpolates node IDs matching [A-Za-z0-9_]{1,50}.  Old futureFlow
+    // drafts used nanoid's '-' character, so remap the fully prepared graph at
+    // the export boundary instead of forcing users to recreate those nodes.
+    // Keep this after native-media expansion: its invocation-only Start input
+    // names are derived from the saved (original) media node IDs.
+    flowgram = this.remapDifyNodeIds(flowgram);
+    this.assertDifyGraphNodeIds(flowgram);
+    validateWorkflowReferences(flowgram);
 
     const startNode = flowgram.nodes.find((n) => n.type === 'start');
     const endNode = flowgram.nodes.find((n) => n.type === 'end');
 
     if (!startNode) {
-      throw new BadRequestException('工作流缺少 Start 节点');
+      throw new BadRequestException('工作流缺少开始节点');
     }
 
-    // 转换所有节点
-    const difyNodes: DifyNode[] = flowgram.nodes.map((node) =>
-      this.convertNode(node, startNode, flowgram),
+    // Dify 的 iteration 子节点与父节点同处 graph.nodes，需要把 FlowGram
+    // 容器子画布展平；block-end 只用于本地运行时，不导出到 Dify。
+    const difyNodes: DifyNode[] = flowgram.nodes.flatMap((node) =>
+      node.type === 'loop'
+        ? this.convertBatchLoopNodes(node, flowgram)
+        : [this.convertNode(node, startNode, flowgram)],
     );
 
     // 转换所有边
-    const difyEdges: DifyEdge[] = flowgram.edges.map((edge) =>
-      this.convertEdge(edge, flowgram.nodes),
-    );
+    const difyEdges: DifyEdge[] = [
+      ...flowgram.edges.map((edge) => this.convertEdge(edge, flowgram.nodes)),
+      ...flowgram.nodes
+        .filter((node) => node.type === 'loop')
+        .flatMap((node) => this.convertBatchLoopEdges(node)),
+    ];
 
     // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
     if (!endNode) {
-      const executableNodes = flowgram.nodes.filter(
-        (n) => ['llm', 'http', 'code'].includes(n.type),
+      const executableNodes = flowgram.nodes.filter((n) =>
+        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(n.type),
       );
       if (executableNodes.length > 0) {
         const lastNode = executableNodes[executableNodes.length - 1];
-        const outputKey = lastNode.type === 'llm' ? 'text' : 'result';
         const endId = 'end_auto';
-        difyNodes.push(this.createEndNode(endId, lastNode.id, 1200, 0, outputKey));
+        difyNodes.push(
+          this.createEndNode(
+            endId,
+            1200,
+            0,
+            this.resolveAutoEndOutputs(lastNode, flowgram.nodes),
+          ),
+        );
         difyEdges.push(
           this.createEdge(lastNode.id, endId, lastNode.type, 'end'),
         );
@@ -125,7 +176,26 @@ export class DifyConverterService {
   /** 转换为 YAML 字符串(用于 Dify Console API 导入) */
   toDifyDSLYaml(flowgram: FlowGramJSON): string {
     const dsl = this.toDifyDSL(flowgram);
-    return YAML.stringify(dsl, { indentSeq: false });
+    const document = new YAML.Document(dsl);
+
+    // Dify 0.15.3 uses PyYAML to import the DSL. In YAML 1.1 an unquoted
+    // standalone "=" is interpreted as the !!value tag rather than a string,
+    // even though yaml@2 emits it as a plain scalar by default. Quote every
+    // comparison operator explicitly so numeric equality conditions remain
+    // importable without changing the more readable block style of code nodes.
+    YAML.visit(document, {
+      Pair(_key, pair) {
+        if (
+          YAML.isScalar(pair.key)
+          && pair.key.value === 'comparison_operator'
+          && YAML.isScalar(pair.value)
+        ) {
+          pair.value.type = 'QUOTE_DOUBLE';
+        }
+      },
+    });
+
+    return document.toString({ indentSeq: false });
   }
 
   /** 校验 FlowGram JSON 基本结构 */
@@ -133,8 +203,12 @@ export class DifyConverterService {
     if (!json || !Array.isArray(json.nodes) || !Array.isArray(json.edges)) {
       throw new BadRequestException('FlowGram JSON 必须包含 nodes 和 edges 数组');
     }
+    json = this.stripCanvasDecorations(json);
     if (json.nodes.length === 0) {
       throw new BadRequestException('工作流至少需要一个节点');
+    }
+    if (json.nodes.filter((node) => node?.type === 'loop').length > 1) {
+      throw new BadRequestException('首期数组批处理每个工作流最多只能使用一个节点');
     }
 
     const nodeIds = new Set<string>();
@@ -142,6 +216,11 @@ export class DifyConverterService {
     for (const node of json.nodes) {
       if (!node || typeof node.id !== 'string' || !node.id.trim()) {
         throw new BadRequestException('每个节点都必须包含有效的 id');
+      }
+      if (node.id.length > FLOWGRAM_NODE_ID_MAX_LENGTH) {
+        throw new BadRequestException(
+          `节点 id 长度不能超过 ${FLOWGRAM_NODE_ID_MAX_LENGTH} 位`,
+        );
       }
       if (nodeIds.has(node.id)) {
         throw new BadRequestException(`节点 id 重复: ${node.id}`);
@@ -157,11 +236,36 @@ export class DifyConverterService {
         throw new BadRequestException(`节点 ${node.id} 缺少 type 或 data`);
       }
       if (node.type === 'start') startNodeIds.push(node.id);
-      if (node.type === 'loop') {
-        throw new BadRequestException('当前版本不支持循环子画布；请改用条件分支，或等待 Iteration 节点上线');
+      if (node.type === 'loop') this.validateBatchLoopNode(node, json.nodes);
+      if (node.type !== 'loop' && (node.blocks !== undefined || node.edges !== undefined)) {
+        throw new BadRequestException(`节点 ${node.id} 不能包含子画布`);
+      }
+      if (node.type === 'variable') this.validateVariableNode(node, json.nodes);
+      if (node.type === 'break' || node.type === 'continue') {
+        throw new BadRequestException(`当前版本发布暂不支持 ${node.type} 节点`);
       }
       if (node.type === 'condition' || node.type === 'multi-condition') {
-        this.validateConditionNode(node);
+        this.validateConditionNode(node, json.nodes);
+      }
+      if (node.type === 'http') this.validateHttpNode(node, json.nodes);
+      if (node.type === 'code') this.validateCodeNode(node);
+      if (['text', 'image', 'video'].includes(node.type)) this.validateContentNode(node);
+    }
+
+    // Dify 会把 iteration 子节点展平到 graph.nodes；顶层与全部子节点 ID
+    // 因此必须全局唯一，避免导入后选择器指向错误节点。
+    const allNodeIds = new Set(nodeIds);
+    for (const node of json.nodes.filter((candidate) => candidate.type === 'loop')) {
+      for (const block of node.blocks || []) {
+        if (block.id.length > FLOWGRAM_NODE_ID_MAX_LENGTH) {
+          throw new BadRequestException(
+            `节点 id 长度不能超过 ${FLOWGRAM_NODE_ID_MAX_LENGTH} 位`,
+          );
+        }
+        if (allNodeIds.has(block.id)) {
+          throw new BadRequestException(`节点 id 重复: ${block.id}`);
+        }
+        allNodeIds.add(block.id);
       }
     }
 
@@ -182,7 +286,7 @@ export class DifyConverterService {
     }
 
     if (startNodeIds.length !== 1) {
-      throw new BadRequestException('工作流必须且只能包含一个 Start 节点');
+      throw new BadRequestException('工作流必须且只能包含一个开始节点');
     }
 
     const edgeIds = new Set<string>();
@@ -197,7 +301,7 @@ export class DifyConverterService {
         throw new BadRequestException('工作流不能包含自环连线');
       }
       if (edge.targetNodeID === startNodeIds[0]) {
-        throw new BadRequestException('Start 节点不能包含入口连线');
+        throw new BadRequestException('开始节点不能包含入口连线');
       }
       const edgeId = [
         edge.sourceNodeID,
@@ -245,16 +349,604 @@ export class DifyConverterService {
     }
     const orphan = [...nodeIds].find((nodeId) => !reachable.has(nodeId));
     if (orphan) {
-      throw new BadRequestException(`节点 ${orphan} 未连接到 Start 节点`);
+      throw new BadRequestException(`节点 ${orphan} 未连接到开始节点`);
     }
-    const executableNodes = json.nodes.filter(
-      (n) => ['llm', 'http', 'code'].includes(n.type),
+    for (const loop of json.nodes.filter((candidate) => candidate.type === 'loop')) {
+      const selector = this.getBatchLoopSelector(loop);
+      if (!this.isTopLevelReachable(selector[0], loop.id, adjacency)) {
+        throw new BadRequestException(`数组批处理节点 ${loop.id} 只能引用它上游的数组变量`);
+      }
+      if (
+        selector[0] !== startNodeIds[0]
+        && this.isTopLevelReachable(startNodeIds[0], loop.id, adjacency, selector[0])
+      ) {
+        throw new BadRequestException(
+          `数组批处理节点 ${loop.id} 的输入数组必须来自所有执行路径都会经过的上游节点`,
+        );
+      }
+      this.validateBatchLoopInnerReferences(loop);
+    }
+    const executableNodes = json.nodes.filter((n) =>
+      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(n.type),
     );
     if (executableNodes.length === 0) {
       throw new BadRequestException(
-        '工作流至少需要一个可执行节点(llm/http/code)',
+        '工作流至少需要一个可执行节点（大语言模型、API、代码、变量或内容处理）',
       );
     }
+  }
+
+  /** Comment/Group 仅用于画布展示，不应进入 Dify 图或执行图校验。 */
+  private stripCanvasDecorations(flowgram: FlowGramJSON): FlowGramJSON {
+    if (!flowgram || !Array.isArray(flowgram.nodes) || !Array.isArray(flowgram.edges)) {
+      return flowgram;
+    }
+    const decorationIds = new Set(
+      flowgram.nodes
+        .filter((node) => node?.type === 'comment' || node?.type === 'group')
+        .map((node) => node.id),
+    );
+    if (decorationIds.size === 0) return flowgram;
+    return {
+      ...flowgram,
+      nodes: flowgram.nodes.filter((node) => !decorationIds.has(node.id)),
+      edges: flowgram.edges.filter(
+        (edge) =>
+          !decorationIds.has(edge.sourceNodeID) &&
+          !decorationIds.has(edge.targetNodeID),
+      ),
+    };
+  }
+
+  /**
+   * Remap legacy canvas IDs only at the Dify export boundary.  Dify's graph
+   * engine accepts arbitrary non-empty IDs, but references embedded in prompt
+   * and HTTP templates are parsed with the stricter DIFY_NODE_ID grammar.
+   *
+   * The hash-based name is deterministic across publishes.  A salted retry
+   * makes the transformation collision-safe even if a user-created safe ID
+   * happens to equal the first generated candidate.  Every graph reference is
+   * rewritten on a clone so the saved canvas and local runtime keep their
+   * original IDs.
+   */
+  private remapDifyNodeIds(flowgram: FlowGramJSON): FlowGramJSON {
+    const allNodes: FlowNodeJSON[] = [];
+    const collectNodes = (nodes: FlowNodeJSON[]) => {
+      for (const node of nodes) {
+        allNodes.push(node);
+        if (Array.isArray(node.blocks)) collectNodes(node.blocks);
+      }
+    };
+    collectNodes(flowgram.nodes);
+
+    const unsafeIds = Array.from(new Set(
+      allNodes
+        .map((node) => node.id)
+        .filter((id): id is string => typeof id === 'string' && !DIFY_NODE_ID.test(id)),
+    )).sort();
+    if (unsafeIds.length === 0) return flowgram;
+
+    const usedIds = new Set(
+      allNodes
+        .map((node) => node.id)
+        .filter((id): id is string => typeof id === 'string' && DIFY_NODE_ID.test(id)),
+    );
+    const idMap = new Map<string, string>();
+    for (const originalId of unsafeIds) {
+      let salt = 0;
+      let candidate = '';
+      do {
+        const digest = createHash('sha256')
+          .update(`${originalId}\u0000${salt}`, 'utf8')
+          .digest('hex')
+          .slice(0, 40);
+        candidate = `legacy_${digest}`;
+        salt += 1;
+      } while (usedIds.has(candidate));
+      idMap.set(originalId, candidate);
+      usedIds.add(candidate);
+    }
+
+    const loopLocalMaps = new Map<string, Map<string, string>>();
+    for (const loop of allNodes.filter((node) => node.type === 'loop')) {
+      const mappedLoopId = idMap.get(loop.id);
+      if (mappedLoopId) {
+        loopLocalMaps.set(
+          loop.id,
+          new Map([[`${loop.id}_locals`, `${mappedLoopId}_locals`]]),
+        );
+      }
+    }
+    const remapSelectorSource = (
+      source: unknown,
+      localMap?: Map<string, string>,
+    ): unknown => typeof source === 'string'
+      ? localMap?.get(source) || idMap.get(source) || source
+      : source;
+
+    const rewriteTemplate = (
+      template: string,
+      localMap?: Map<string, string>,
+    ): string => {
+      const selectorSourceMap = new Map([...idMap, ...(localMap || [])]);
+      const selectorSources = Array.from(selectorSourceMap.keys())
+        .sort((left, right) => right.length - left.length);
+      return template.replace(
+        /\{\{(#?)([^{}#]+)(#?)\}\}/g,
+        (match, openingHash: string, inner: string, closingHash: string) => {
+          if ((openingHash === '#') !== (closingHash === '#')) return match;
+          const selector = inner.trim();
+          const matchingSource = selectorSources
+            .find((source) => selector.startsWith(`${source}.`));
+          if (!matchingSource) return match;
+          const mappedSource = selectorSourceMap.get(matchingSource)!;
+          const rewritten = `${mappedSource}${selector.slice(matchingSource.length)}`;
+          return openingHash === '#'
+            ? `{{#${rewritten}#}}`
+            : `{{${rewritten}}}`;
+        },
+      );
+    };
+
+    const cloneJsonValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(cloneJsonValue);
+      if (!value || typeof value !== 'object') return value;
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+          key,
+          cloneJsonValue(child),
+        ]),
+      );
+    };
+
+    const rewriteEmbeddedReferences = (
+      value: unknown,
+      localMap?: Map<string, string>,
+      allowBareTemplates = true,
+    ): unknown => {
+      if (typeof value === 'string') {
+        return allowBareTemplates ? rewriteTemplate(value, localMap) : value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((child) =>
+          rewriteEmbeddedReferences(child, localMap, allowBareTemplates),
+        );
+      }
+      if (!value || typeof value !== 'object') return value;
+
+      const source = value as Record<string, unknown>;
+      // Constants, JSON schemas, scripts and display-only fields are explicitly
+      // excluded by the reference validator and must keep literal braces.
+      if (source.type === 'constant') return cloneJsonValue(source);
+      if (source.type === 'ref' && Array.isArray(source.content)) {
+        const rewritten = cloneJsonValue(source) as Record<string, unknown>;
+        rewritten.content = source.content.map((part, index) =>
+          index === 0
+            ? remapSelectorSource(part, localMap)
+            : cloneJsonValue(part),
+        );
+        return rewritten;
+      }
+      if (
+        (source.type === 'template' || source.type === 'expression')
+        && typeof source.content === 'string'
+      ) {
+        const rewritten = cloneJsonValue(source) as Record<string, unknown>;
+        rewritten.content = rewriteTemplate(source.content, localMap);
+        return rewritten;
+      }
+
+      return Object.fromEntries(
+        Object.entries(source).map(([key, child]) => {
+          if (
+            ['inputs', 'outputs', 'script', 'blocks', 'title', 'description', 'desc']
+              .includes(key)
+          ) {
+            return [key, cloneJsonValue(child)];
+          }
+          return [
+            key,
+            rewriteEmbeddedReferences(
+              child,
+              localMap,
+              allowBareTemplates && key !== 'loopOutputs',
+            ),
+          ];
+        }),
+      );
+    };
+
+    const rewriteEdge = (edge: FlowGramJSON['edges'][number]) => ({
+      ...edge,
+      sourceNodeID: idMap.get(edge.sourceNodeID) || edge.sourceNodeID,
+      targetNodeID: idMap.get(edge.targetNodeID) || edge.targetNodeID,
+    });
+    const rewriteNode = (
+      node: FlowNodeJSON,
+      localMap?: Map<string, string>,
+    ): FlowNodeJSON => ({
+      ...node,
+      id: idMap.get(node.id) || node.id,
+      data: rewriteEmbeddedReferences(node.data, localMap) as FlowNodeJSON['data'],
+      ...(Array.isArray(node.blocks)
+        ? {
+            blocks: node.blocks.map((block) =>
+              rewriteNode(block, loopLocalMaps.get(node.id)),
+            ),
+          }
+        : {}),
+      ...(Array.isArray(node.edges)
+        ? { edges: node.edges.map(rewriteEdge) }
+        : {}),
+    });
+
+    return {
+      ...flowgram,
+      nodes: flowgram.nodes.map((node) => rewriteNode(node)),
+      edges: flowgram.edges.map(rewriteEdge),
+    };
+  }
+
+  private assertDifyGraphNodeIds(flowgram: FlowGramJSON): void {
+    const assertNodes = (nodes: FlowNodeJSON[]) => {
+      for (const node of nodes) {
+        this.assertDifyNodeId(node.id);
+        if (Array.isArray(node.blocks)) assertNodes(node.blocks);
+      }
+    };
+    assertNodes(flowgram.nodes);
+  }
+
+  /**
+   * FlowGram 的 assign 操作会原地更新已有变量，而 Dify 0.15.3 的稳定 DSL
+   * 没有可依赖的同等节点。发布前把赋值结果转成变量节点的内部输出，并将
+   * 后续引用静态改写为该输出。只接受赋值节点支配使用节点的图，避免条件
+   * 分支中某些路径没有执行赋值却仍引用其输出。
+   */
+  private prepareVariableAssignments(flowgram: FlowGramJSON): FlowGramJSON {
+    const assignmentNodes = flowgram.nodes.filter((node) =>
+      node.type === 'variable' && this.getVariableRows(node).some((row) => row.operator === 'assign'),
+    );
+    if (assignmentNodes.length === 0) return flowgram;
+
+    const prepared = JSON.parse(JSON.stringify(flowgram)) as FlowGramJSON;
+    const adjacency = new Map(prepared.nodes.map((node) => [node.id, [] as string[]]));
+    for (const edge of prepared.edges) adjacency.get(edge.sourceNodeID)?.push(edge.targetNodeID);
+
+    const reachability = new Map<string, boolean>();
+    const isReachable = (source: string, target: string, skipped?: string): boolean => {
+      if (source === skipped || target === skipped) return false;
+      const key = skipped
+        ? `${source}\u0000${target}\u0000${skipped}`
+        : `${source}\u0000${target}`;
+      const cached = reachability.get(key);
+      if (cached !== undefined) return cached;
+      const seen = new Set<string>([source]);
+      const pending = [source];
+      while (pending.length > 0) {
+        const current = pending.shift()!;
+        for (const next of adjacency.get(current) || []) {
+          if (next === skipped || seen.has(next)) continue;
+          if (next === target) {
+            reachability.set(key, true);
+            return true;
+          }
+          seen.add(next);
+          pending.push(next);
+        }
+      }
+      reachability.set(key, false);
+      return false;
+    };
+
+    const start = prepared.nodes.find((node) => node.type === 'start')!;
+    const dominates = (dominator: string, consumer: string): boolean =>
+      !isReachable(start.id, consumer, dominator);
+    const assignments: Array<{
+      nodeId: string;
+      target: string[];
+      outputName: string;
+    }> = [];
+
+    for (const node of prepared.nodes.filter((candidate) => candidate.type === 'variable')) {
+      this.getVariableRows(node).forEach((row, index) => {
+        if (row.operator !== 'assign') return;
+        const target = (row.left?.content as unknown[]).map(String);
+        const source = prepared.nodes.find((candidate) => candidate.id === target[0]);
+        if (!source || !isReachable(source.id, node.id) || !dominates(source.id, node.id)) {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 的目标 ${target.join('.')} 必须来自所有执行路径都会经过的上游节点`,
+          );
+        }
+        assignments.push({
+          nodeId: node.id,
+          target,
+          outputName: this.variableRowOutputName(row, index),
+        });
+      });
+    }
+
+    const rewriteSelector = (selector: string[], consumerId: string): string[] => {
+      const candidates = assignments.filter(
+        (assignment) =>
+          assignment.target.every((part, index) => selector[index] === part) &&
+          isReachable(assignment.nodeId, consumerId),
+      );
+      if (candidates.length === 0) return selector;
+      const latest = candidates.filter(
+        (candidate) =>
+          !candidates.some(
+            (other) => other !== candidate && isReachable(candidate.nodeId, other.nodeId),
+          ),
+      );
+      if (latest.length !== 1 || !dominates(latest[0].nodeId, consumerId)) {
+        throw new BadRequestException(
+          `变量 ${selector.slice(0, 2).join('.')} 在分支汇合处的赋值不明确；请在汇合后重新设置变量`,
+        );
+      }
+      const selected = latest[0];
+      return [
+        selected.nodeId,
+        selected.outputName,
+        ...selector.slice(selected.target.length),
+      ];
+    };
+
+    const rewriteFlowValues = (value: unknown, consumerId: string): unknown => {
+      if (Array.isArray(value)) {
+        return value.map((entry) => rewriteFlowValues(entry, consumerId));
+      }
+      if (!value || typeof value !== 'object') return value;
+      const record = value as Record<string, any>;
+      if (record.type === 'ref' && Array.isArray(record.content)) {
+        return {
+          ...record,
+          content: rewriteSelector(record.content.map(String), consumerId),
+        };
+      }
+      if (
+        (record.type === 'template' || record.type === 'expression') &&
+        typeof record.content === 'string'
+      ) {
+        return {
+          ...record,
+          content: record.content.replace(
+            /\{\{#?([^{}#]+)#?\}\}/g,
+            (match: string, inner: string) => {
+              const selector = inner.trim().split('.').filter(Boolean);
+              if (selector.length < 2) return match;
+              return `{{${rewriteSelector(selector, consumerId).join('.')}}}`;
+            },
+          ),
+        };
+      }
+      return Object.fromEntries(
+        Object.entries(record).map(([key, child]) => [
+          key,
+          rewriteFlowValues(child, consumerId),
+        ]),
+      );
+    };
+
+    for (const node of prepared.nodes) {
+      if (node.type !== 'variable') {
+        node.data = rewriteFlowValues(node.data, node.id) as FlowNodeJSON['data'];
+        continue;
+      }
+      const rows = this.getVariableRows(node);
+      const otherData = Object.fromEntries(
+        Object.entries(node.data).filter(([key]) => key !== 'assign'),
+      );
+      node.data = {
+        ...(rewriteFlowValues(otherData, node.id) as FlowNodeJSON['data']),
+        assign: rows.map((row) => ({
+          ...row,
+          left: row.left,
+          right: rewriteFlowValues(row.right, node.id),
+        })),
+      };
+    }
+
+    return prepared;
+  }
+
+  /**
+   * FlowGram 容器保存 block-start → code → block-end；Dify 0.15.3 则要求
+   * iteration 父节点、iteration-start 虚拟节点和一个扁平化的内部 code。
+   */
+  private convertBatchLoopNodes(node: FlowNodeJSON, flowgram: FlowGramJSON): DifyNode[] {
+    const position = node.meta?.position || { x: 0, y: 0 };
+    const [blockStart, codeNode] = node.blocks!;
+    const codeOutputs = (codeNode.data.outputs?.properties || {}) as Record<string, any>;
+    const codeOutputName = Object.keys(codeOutputs)[0];
+    const codeOutputType = String(codeOutputs[codeOutputName]?.type || 'string').toLowerCase();
+    const outputType = codeOutputType === 'string' ? 'array[string]' : 'array[number]';
+    const iteratorSelector = this.normalizeDifySelector(
+      this.getBatchLoopSelector(node),
+      flowgram.nodes,
+    );
+
+    const parent: DifyNode = {
+      id: node.id,
+      type: 'custom',
+      position,
+      positionAbsolute: { ...position },
+      sourcePosition: 'right',
+      targetPosition: 'left',
+      width: 620,
+      height: 240,
+      selected: false,
+      zIndex: 1,
+      data: {
+        type: 'iteration',
+        title: node.data.title || '数组批处理',
+        desc: '串行处理字符串或数字数组，最多 20 项',
+        selected: false,
+        iterator_selector: iteratorSelector,
+        output_selector: [codeNode.id, codeOutputName],
+        output_type: outputType,
+        start_node_id: blockStart.id,
+        startNodeType: 'code',
+        is_parallel: false,
+        parallel_nums: 1,
+        error_handle_mode: 'terminated',
+        width: 620,
+        height: 240,
+      },
+    };
+
+    const iterationStart: DifyNode = {
+      id: blockStart.id,
+      type: 'custom-iteration-start',
+      position: { x: 72, y: 96 },
+      positionAbsolute: { x: position.x + 72, y: position.y + 96 },
+      sourcePosition: 'right',
+      targetPosition: 'left',
+      width: 44,
+      height: 48,
+      parentId: node.id,
+      extent: 'parent',
+      selected: false,
+      draggable: false,
+      selectable: false,
+      zIndex: 1002,
+      data: {
+        type: 'iteration-start',
+        title: '批处理开始',
+        desc: '',
+        selected: false,
+        isInIteration: true,
+        iteration_id: node.id,
+      },
+    };
+
+    const variables: Array<{ variable: string; value_selector: string[] }> = [];
+    const paramsEntries = Object.entries(codeNode.data.inputsValues || {}).map(([key, value]) => {
+      const expression = this.compileFlowValueExpression(
+        value,
+        variables,
+        key,
+        flowgram.nodes,
+      );
+      return `${JSON.stringify(key)}: ${expression}`;
+    });
+    for (const variable of variables) {
+      if (variable.value_selector[0] === `${node.id}_locals`) {
+        variable.value_selector = [node.id, variable.value_selector[1]];
+      }
+    }
+    const guardVariable = '__ff_iteration_index';
+    variables.push({ variable: guardVariable, value_selector: [node.id, 'index'] });
+
+    const sourceCode = String(codeNode.data.script?.content || '');
+    const analysis = assertSynchronousJavaScript(sourceCode, `代码节点 ${codeNode.id}`);
+    const identifiers = new Set(analysis.identifiers);
+    const originalMainBinding = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowOriginalBatchMain',
+    );
+    const userMainName = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowBatchMain',
+    );
+    const rawResultName = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowBatchResult',
+    );
+    // 保持既有批处理 DSL 的局部变量名，便于版本回归比较；它位于适配器
+    // 函数作用域，不会与用户脚本的顶层声明冲突。
+    const valueName = '__ffValue';
+    const outputContract = buildOutputContractRuntime(
+      identifiers,
+      normalizeCodeOutputSchema(codeNode.data.outputs, `代码节点 ${codeNode.id}`),
+      `代码节点 ${codeNode.id}`,
+    );
+    const normalizeOutput = codeOutputType === 'boolean'
+      ? `Number(Boolean(${valueName}))`
+      : valueName;
+    const asyncError = JSON.stringify(
+      `数组批处理节点 ${node.id} 的代码仅支持同步执行，不能返回 Promise/thenable`,
+    );
+    const code = `${sourceCode}
+${outputContract.declarations}
+
+const ${originalMainBinding} = main;
+function ${userMainName}(args) {
+  return ${originalMainBinding}(args);
+}
+
+main = function(args) {
+  const __ffIndex = Number(args[${JSON.stringify(guardVariable)}]);
+  if (!Number.isInteger(__ffIndex) || __ffIndex < 0 || __ffIndex >= 20) {
+    throw new Error('数组批处理最多支持 20 项，输入不会被截断');
+  }
+  const params = { ${paramsEntries.join(', ')} };
+  const ${rawResultName} = ${userMainName}({ params });
+  if (
+    ${rawResultName} !== null
+    && (typeof ${rawResultName} === 'object' || typeof ${rawResultName} === 'function')
+    && typeof ${rawResultName}.then === 'function'
+  ) {
+    throw new Error(${asyncError});
+  }
+  ${outputContract.validateExpression(rawResultName)};
+  const ${valueName} = ${rawResultName}[${JSON.stringify(codeOutputName)}];
+  return { ${JSON.stringify(codeOutputName)}: ${normalizeOutput} };
+};`;
+
+    const codePosition = codeNode.meta?.position || { x: 180, y: 0 };
+    const innerCode: DifyNode = {
+      id: codeNode.id,
+      type: 'custom',
+      position: { x: Math.max(160, codePosition.x), y: 84 },
+      positionAbsolute: {
+        x: position.x + Math.max(160, codePosition.x),
+        y: position.y + 84,
+      },
+      sourcePosition: 'right',
+      targetPosition: 'left',
+      width: 300,
+      height: 90,
+      parentId: node.id,
+      extent: 'parent',
+      selected: false,
+      zIndex: 1002,
+      data: {
+        type: 'code',
+        title: codeNode.data.title || '逐项处理',
+        desc: '',
+        selected: false,
+        isInIteration: true,
+        iteration_id: node.id,
+        code_language: 'javascript',
+        code,
+        variables,
+        outputs: {
+          [codeOutputName]: this.toDifyCodeOutputSchema(codeOutputs[codeOutputName]),
+        },
+      },
+    };
+
+    return [parent, iterationStart, innerCode];
+  }
+
+  private convertBatchLoopEdges(node: FlowNodeJSON): DifyEdge[] {
+    const [blockStart, codeNode] = node.blocks!;
+    return [{
+      id: `${encodeURIComponent(blockStart.id)}-source-${encodeURIComponent(codeNode.id)}-target`,
+      source: blockStart.id,
+      sourceHandle: 'source',
+      target: codeNode.id,
+      targetHandle: 'target',
+      type: 'custom',
+      zIndex: 1002,
+      data: {
+        isInIteration: true,
+        iteration_id: node.id,
+        sourceType: 'iteration-start',
+        targetType: 'code',
+      },
+    }];
   }
 
   /** 转换单个节点 */
@@ -279,7 +971,7 @@ export class DifyConverterService {
       case 'start':
         return { ...base, height: 168, data: this.convertStartNode(node) };
       case 'llm':
-        return { ...base, height: 98, data: this.convertLLMNode(node) };
+        return { ...base, height: 98, data: this.convertLLMNode(node, flowgram.nodes) };
       case 'end':
         return {
           ...base,
@@ -287,15 +979,21 @@ export class DifyConverterService {
           data: this.convertEndNode(node, flowgram),
         };
       case 'http':
-        return { ...base, height: 120, data: this.convertHttpNode(node) };
+        return { ...base, height: 120, data: this.convertHttpNode(node, flowgram.nodes) };
       case 'code':
-        return { ...base, height: 120, data: this.convertCodeNode(node) };
+        return { ...base, height: 120, data: this.convertCodeNode(node, flowgram.nodes) };
+      case 'variable':
+        return { ...base, height: 120, data: this.convertVariableNode(node, flowgram.nodes) };
+      case 'text':
+      case 'image':
+      case 'video':
+        return { ...base, height: 120, data: this.convertContentNode(node, flowgram.nodes) };
       case 'condition':
       case 'multi-condition':
-        return { ...base, height: 180, data: this.convertConditionNode(node) };
+        return { ...base, height: 180, data: this.convertConditionNode(node, flowgram.nodes) };
       default:
         throw new BadRequestException(
-          `暂不支持的节点类型: ${node.type}(当前支持 start/llm/end/http/code)`,
+          `暂不支持的节点类型: ${node.type}`,
         );
     }
   }
@@ -307,16 +1005,35 @@ export class DifyConverterService {
       string,
       any
     >;
-    const variables: DifyVariable[] = Object.entries(properties).map(
-      ([key, schema]) => ({
-        variable: key,
-        label: key,
-        type: schema.type === 'number' ? 'number' : 'paragraph',
-        required: true,
-        max_length: schema.type === 'number' ? 48 : 50000,
-        options: [],
-      }),
+    const outputSchema = node.data.outputs as any;
+    const required = new Set<string>(
+      Array.isArray(outputSchema?.required)
+        ? outputSchema.required.map(String)
+        : [],
     );
+    const variables: DifyVariable[] = Object.entries(properties).map(([key, schema]) => {
+      this.assertDifySelectorProperty(key, `开始节点输入 ${key}`);
+      const schemaType = String(schema?.type || 'string').toLowerCase();
+      if (schemaType === 'boolean') {
+        throw new BadRequestException(
+          `开始节点输入 ${key} 使用了布尔值；当前 Dify 0.15.3 没有布尔输入类型，请改用整数 1/0 或字符串`,
+        );
+      }
+      if (!['string', 'number', 'integer'].includes(schemaType)) {
+        throw new BadRequestException(
+          `开始节点输入 ${key} 暂不支持 ${schemaType} 类型，仅支持字符串、数字或整数`,
+        );
+      }
+      const isNumber = schemaType === 'number' || schemaType === 'integer';
+      return {
+        variable: key,
+        label: schema?.title ? String(schema.title) : key,
+        type: isNumber ? 'number' : 'paragraph',
+        required: required.has(key),
+        max_length: isNumber ? 48 : 50000,
+        options: [],
+      };
+    });
 
     return {
       type: 'start',
@@ -328,15 +1045,15 @@ export class DifyConverterService {
   }
 
   /** 转换 LLM 节点 */
-  private convertLLMNode(node: FlowNodeJSON): any {
+  private convertLLMNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
     const inputsValues = node.data.inputsValues || {};
 
     const modelName = this.getInputValue(inputsValues.modelName, 'gpt-3.5-turbo');
     const temperature = parseFloat(
       String(this.getInputValue(inputsValues.temperature, 0.5)),
     );
-    const systemPrompt = this.getInputValue(inputsValues.systemPrompt, '');
-    const userPrompt = this.getInputValue(inputsValues.prompt, '');
+    const systemPrompt = this.flowValueToDifyTemplate(inputsValues.systemPrompt, nodes);
+    const userPrompt = this.flowValueToDifyTemplate(inputsValues.prompt, nodes);
 
     const provider = this.inferProvider(String(modelName));
 
@@ -347,13 +1064,13 @@ export class DifyConverterService {
       promptTemplate.push({
         id: uuidv4(),
         role: 'system',
-        text: this.convertVariableRefs(String(systemPrompt)),
+        text: systemPrompt,
       });
     }
     promptTemplate.push({
       id: uuidv4(),
       role: 'user',
-      text: this.convertVariableRefs(String(userPrompt)),
+      text: userPrompt,
     });
 
     return {
@@ -383,64 +1100,76 @@ export class DifyConverterService {
 
   /** 转换 End 节点 */
   private convertEndNode(node: FlowNodeJSON, flowgram: FlowGramJSON): any {
-    {
-      const incoming = flowgram.edges.filter(
-        (edge) => edge.targetNodeID === node.id,
+    const incoming = flowgram.edges.filter(
+      (edge) => edge.targetNodeID === node.id,
+    );
+    if (incoming.length !== 1) {
+      throw new BadRequestException(
+        incoming.length === 0
+          ? `End 节点 ${node.id} 必须连接一个上游执行节点`
+          : `End 节点 ${node.id} 不能合并多个分支输出；请为每个分支分别连接 End 节点`,
       );
-      if (incoming.length !== 1) {
-        throw new BadRequestException(
-          incoming.length === 0
-            ? `End 节点 ${node.id} 必须连接一个上游执行节点`
-            : `End 节点 ${node.id} 不能合并多个分支输出；请为每个分支分别连接 End 节点`,
-        );
-      }
+    }
 
-      const sourceNode = flowgram.nodes.find(
-        (candidate) => candidate.id === incoming[0].sourceNodeID,
+    const sourceNode = flowgram.nodes.find(
+      (candidate) => candidate.id === incoming[0].sourceNodeID,
+    );
+    if (
+      !sourceNode ||
+      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(sourceNode.type)
+    ) {
+      throw new BadRequestException(
+        `结束节点 ${node.id} 仅能连接可输出结果的执行节点`,
       );
-      if (!sourceNode || !['llm', 'http', 'code'].includes(sourceNode.type)) {
-        throw new BadRequestException(
-          `End 节点 ${node.id} 仅能连接 LLM、HTTP 或代码节点`,
-        );
-      }
-
-      const outputs =
-        (node.data.outputs?.properties as Record<string, any>) || {};
-      const outputNames = Object.keys(outputs);
-      if (outputNames.length === 0) outputNames.push('result');
-
-      return {
-        type: 'end',
-        title: node.data.title || '结束',
-        desc: '',
-        selected: false,
-        outputs: outputNames.map((variable) => ({
-          variable,
-          value_selector: [
-            sourceNode.id,
-            this.resolveEndOutputKey(sourceNode, variable, outputNames.length),
-          ],
-        })),
-      };
     }
-    // FlowGram 的 end 节点 outputs 中定义了输出
-    // 需要找到上游 LLM 节点的输出作为 value_selector
-    const outputs =
-      (node.data.outputs?.properties as Record<string, any>) || {};
-    const outputList = Object.keys(outputs).map((key) => ({
-      variable: key,
-      // 默认引用最近的上游 LLM 节点的 text 输出
-      // value_selector 将在 convertEdge 阶段被修正,这里先留空
-      value_selector: [], // 稍后由 linkEndNodeOutputs 填充
-    }));
 
-    // 如果没有定义输出,默认输出 result
-    if (outputList.length === 0) {
-      outputList.push({
-        variable: 'result',
-        value_selector: [],
-      });
-    }
+    // 真实画布的 End 节点通过 inputsValues 保存每个返回值的来源。
+    // 必须优先使用这些引用；仅对不含 inputsValues 的旧草稿执行单上游推断。
+    const explicitInputs = Object.entries(node.data.inputsValues || {});
+    const outputList = explicitInputs.length > 0
+      ? explicitInputs.map(([variable, value]) => {
+          if (
+            !value ||
+            value.type !== 'ref' ||
+            !Array.isArray(value.content) ||
+            value.content.length < 2
+          ) {
+            throw new BadRequestException(
+              `End 节点 ${node.id} 的输出 ${variable} 必须引用一个上游节点变量`,
+            );
+          }
+          const valueSelector = this.normalizeDifySelector(
+            value.content.map(String),
+            flowgram.nodes,
+          );
+          const referencedNode = flowgram.nodes.find(
+            (candidate) => candidate.id === valueSelector[0],
+          );
+          if (!referencedNode || referencedNode.type === 'end') {
+            throw new BadRequestException(
+              `End 节点 ${node.id} 的输出 ${variable} 引用了不存在或无效的节点`,
+            );
+          }
+          return {
+            variable,
+            value_selector: valueSelector,
+          };
+        })
+      : (() => {
+          const declaredOutputs =
+            (node.data.outputs?.properties as Record<string, any>) ||
+            (node.data.inputs?.properties as Record<string, any>) ||
+            {};
+          const outputNames = Object.keys(declaredOutputs);
+          if (outputNames.length === 0) outputNames.push('result');
+          return outputNames.map((variable) => ({
+            variable,
+            value_selector: [
+              sourceNode.id,
+              this.resolveEndOutputKey(sourceNode, variable, outputNames.length),
+            ],
+          }));
+        })();
 
     return {
       type: 'end',
@@ -463,11 +1192,25 @@ export class DifyConverterService {
     outputCount: number,
   ): string {
     if (sourceNode.type === 'llm') return 'text';
-    if (sourceNode.type === 'http') return 'body';
+    if (sourceNode.type === 'http') {
+      if (endOutputName === 'statusCode') return 'status_code';
+      if (endOutputName === 'headers') return 'headers';
+      return 'body';
+    }
+    if (sourceNode.type === 'text') return 'text';
+    if (sourceNode.type === 'loop') return 'output';
+    if (sourceNode.type === 'image' || sourceNode.type === 'video') {
+      const contentOutputs = Object.keys(
+        (sourceNode.data.outputs?.properties as Record<string, any>) || {},
+      );
+      if (contentOutputs.includes(endOutputName)) return endOutputName;
+      if (outputCount === 1 && endOutputName === 'result') return 'url';
+      throw new BadRequestException(
+        `End 节点输出 ${endOutputName} 无法对应内容节点 ${sourceNode.id} 的变量`,
+      );
+    }
 
-    const codeOutputs = Object.keys(
-      (sourceNode.data.outputs?.properties as Record<string, any>) || {},
-    );
+    const codeOutputs = this.getNodeOutputNames(sourceNode);
     if (codeOutputs.includes(endOutputName)) return endOutputName;
     if (codeOutputs.length === 1) return codeOutputs[0];
     if (codeOutputs.length === 0 && outputCount === 1) return 'result';
@@ -478,15 +1221,43 @@ export class DifyConverterService {
   }
 
   /** 转换 HTTP 请求节点 */
-  private convertHttpNode(node: FlowNodeJSON): any {
+  private convertHttpNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
     const inputsValues = node.data.inputsValues || {};
-
+    const api = node.data.api || {};
     const method = String(
-      this.getInputValue(inputsValues.method, 'get'),
+      api.method || this.getInputValue(inputsValues.method, 'GET'),
     ).toLowerCase();
-    const url = String(this.getInputValue(inputsValues.url, ''));
-    const headers = String(this.getInputValue(inputsValues.headers, ''));
-    const body = String(this.getInputValue(inputsValues.body, ''));
+    const url = this.flowValueToDifyTemplate(api.url || inputsValues.url, nodes);
+
+    const headerLines: string[] = [];
+    const legacyHeaders = this.flowValueToDifyTemplate(inputsValues.headers, nodes);
+    if (legacyHeaders) {
+      headerLines.push(legacyHeaders);
+    }
+    // Dify 0.15.3 parses HTTP headers as RFC-style `Name: Value` lines.
+    // A missing space after the colon is accepted by some fields but can drop
+    // templated custom headers entirely (including an idempotency key).
+    headerLines.push(...this.flowMapToLines(node.data.headersValues, nodes, ': '));
+    const authorization = this.authorizationToDifyConfig(node.data.authorization, nodes);
+
+    const paramLines = this.flowMapToLines(node.data.paramsValues, nodes);
+    const bodyConfig = node.data.body || {};
+    const legacyBody = this.getInputValue(inputsValues.body, '');
+    const methodAllowsBody = method !== 'get' && method !== 'head';
+    const legacyBodyValue = methodAllowsBody && legacyBody
+      ? this.flowValueToDifyTemplate(inputsValues.body, nodes)
+      : '';
+    const bodyType = methodAllowsBody
+      ? bodyConfig.bodyType || (legacyBody ? 'raw-text' : 'none')
+      : 'none';
+    const bodyValue = bodyType === 'JSON'
+      ? this.flowValueToDifyTemplate(bodyConfig.json, nodes) || legacyBodyValue
+      : bodyType === 'raw-text'
+        ? this.flowValueToDifyTemplate(bodyConfig.rawText ?? bodyConfig.json, nodes) || legacyBodyValue
+        : '';
+    const timeoutMs = Number(node.data.timeout?.timeout || 30000);
+    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+    const retryTimes = Math.max(0, Math.min(10, Number(node.data.timeout?.retryTimes || 0)));
 
     return {
       type: 'http-request',
@@ -494,34 +1265,92 @@ export class DifyConverterService {
       desc: '',
       selected: false,
       method,
-      url: this.convertVariableRefs(url),
-      authorization: { type: 'no-auth' },
-      headers: this.convertVariableRefs(headers),
-      params: '',
-      body: body
+      url,
+      authorization,
+      headers: headerLines.filter(Boolean).join('\n'),
+      params: paramLines.join('\n'),
+      body: bodyValue
         ? {
-            type: 'raw-text',
+            type: bodyType === 'JSON' ? 'json' : 'raw-text',
             data: [
               {
                 key: '',
                 type: 'text',
-                value: this.convertVariableRefs(body),
+                value: bodyValue,
               },
             ],
           }
         : { type: 'none', data: [] },
-      timeout: { connect: 30, read: 30, write: 30 },
+      timeout: {
+        connect: timeoutSeconds,
+        read: timeoutSeconds,
+        write: timeoutSeconds,
+      },
+      retry_config: {
+        retry_enabled: retryTimes > 0,
+        max_retries: retryTimes,
+        retry_interval: 100,
+      },
     };
   }
 
   /** 转换代码执行节点 */
-  private convertCodeNode(node: FlowNodeJSON): any {
+  private convertCodeNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
     const inputsValues = node.data.inputsValues || {};
-
     const codeLanguage = String(
-      this.getInputValue(inputsValues.codeLanguage, 'python3'),
+      node.data.script?.language || this.getInputValue(inputsValues.codeLanguage, 'javascript'),
     );
-    const code = String(this.getInputValue(inputsValues.code, ''));
+    const sourceCode = String(
+      node.data.script?.content || this.getInputValue(inputsValues.code, ''),
+    );
+    const variables: Array<{ variable: string; value_selector: string[] }> = [];
+    const paramsEntries = Object.entries(inputsValues).map(([key, value]) => {
+      const expression = this.compileFlowValueExpression(value, variables, key, nodes);
+      return `${JSON.stringify(key)}: ${expression}`;
+    });
+    const analysis = assertSynchronousJavaScript(sourceCode, `代码节点 ${node.id}`);
+    const identifiers = new Set(analysis.identifiers);
+    const originalMainBinding = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowOriginalUserMain',
+    );
+    const userMainName = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowUserMain',
+    );
+    const rawResultName = uniqueJavaScriptIdentifier(
+      identifiers,
+      '__futureFlowUserResult',
+    );
+    const outputContract = buildOutputContractRuntime(
+      identifiers,
+      normalizeCodeOutputSchema(node.data.outputs, `代码节点 ${node.id}`),
+      `代码节点 ${node.id}`,
+    );
+    const asyncError = JSON.stringify(
+      `代码节点 ${node.id} 仅支持同步执行，不能返回 Promise/thenable`,
+    );
+    const code = `${sourceCode}
+${outputContract.declarations}
+
+const ${originalMainBinding} = main;
+function ${userMainName}(args) {
+  return ${originalMainBinding}(args);
+}
+
+main = function(args) {
+  const params = { ${paramsEntries.join(', ')} };
+  const ${rawResultName} = ${userMainName}({ params });
+  if (
+    ${rawResultName} !== null
+    && (typeof ${rawResultName} === 'object' || typeof ${rawResultName} === 'function')
+    && typeof ${rawResultName}.then === 'function'
+  ) {
+    throw new Error(${asyncError});
+  }
+  ${outputContract.validateExpression(rawResultName)};
+  return ${rawResultName};
+};`;
 
     // 从 outputs.properties 提取输出变量定义
     const outputsProps =
@@ -531,7 +1360,7 @@ export class DifyConverterService {
     const outputs = Object.fromEntries(
       outputNames.map((key) => [
         key,
-        { type: this.toDifyCodeOutputType(outputsProps[key]?.type) },
+        this.toDifyCodeOutputSchema(outputsProps[key]),
       ]),
     );
 
@@ -540,38 +1369,997 @@ export class DifyConverterService {
       title: node.data.title || '代码执行',
       desc: '',
       selected: false,
-      code_language:
-        codeLanguage === 'javascript' ? 'javascript' : 'python3',
-      code: this.convertVariableRefs(code),
-      variables: [],
+      code_language: codeLanguage === 'javascript' ? 'javascript' : 'python3',
+      code,
+      variables,
       outputs,
     };
   }
 
-  private toDifyCodeOutputType(type: unknown): string {
-    switch (String(type || 'string').toLowerCase()) {
-      case 'number':
-        return 'number';
-      case 'object':
-        return 'object';
-      case 'array[string]':
-      case 'string[]':
-        return 'array[string]';
-      case 'array[number]':
-      case 'number[]':
-        return 'array[number]';
-      case 'array[object]':
-      case 'object[]':
-        return 'array[object]';
-      default:
-        // Dify 0.15 has no boolean Code-node output type. Strings preserve
-        // the value safely and keep the generated DSL importable.
-        return 'string';
+  /** 变量节点编译为 Dify 0.15.3 稳定支持的 JavaScript Code 节点。 */
+  private convertVariableNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
+    const rows = this.getVariableRows(node);
+    const variables: Array<{ variable: string; value_selector: string[] }> = [];
+    const existingOutputs =
+      (node.data.outputs?.properties as Record<string, any>) || {};
+    const outputs: Record<string, { type: string; children: Record<string, any> | null }> = {};
+    const returnEntries = rows.map((row, index) => {
+      const outputName = this.variableRowOutputName(row, index);
+      const targetSelector = row.operator === 'assign'
+        ? (row.left.content as unknown[]).map(String)
+        : undefined;
+      const fallbackSchema = targetSelector
+        ? this.resolveSelectorSchema(targetSelector, nodes)
+        : existingOutputs[outputName];
+      const outputSchema = existingOutputs[outputName]
+        || fallbackSchema
+        || this.resolveFlowValueSchema(row.right, nodes);
+      outputs[outputName] = this.toDifyCodeOutputSchema(outputSchema);
+      const expression = this.compileFlowValueExpression(
+        row.right as FlowInputValue,
+        variables,
+        outputName,
+        nodes,
+      );
+      return `${JSON.stringify(outputName)}: ${expression}`;
+    });
+
+    return {
+      type: 'code',
+      title: node.data.title || '变量赋值',
+      desc: '',
+      selected: false,
+      code_language: 'javascript',
+      code: `function main(args) {\n  return { ${returnEntries.join(', ')} };\n}`,
+      variables,
+      outputs,
+    };
+  }
+
+  /** 文本/图片/视频节点在 Dify 中编译为轻量 JavaScript 代码节点。 */
+  private convertContentNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
+    const inputsValues = node.data.inputsValues || {};
+    const variables: Array<{ variable: string; value_selector: string[] }> = [];
+    const expression = (key: string) =>
+      this.compileFlowValueExpression(inputsValues[key], variables, key, nodes);
+    const returned = node.type === 'text'
+      ? `{ text: String(${expression('text')} ?? '') }`
+      : node.type === 'image'
+        ? `{
+    url: String(${expression('url')} ?? ''),
+    caption: String(${expression('caption')} ?? ''),
+    mediaType: 'image'
+  }`
+        : `{
+    url: String(${expression('url')} ?? ''),
+    poster: String(${expression('poster')} ?? ''),
+    caption: String(${expression('caption')} ?? ''),
+    mediaType: 'video'
+  }`;
+
+    const outputKeys = node.type === 'text'
+      ? ['text']
+      : node.type === 'image'
+        ? ['url', 'caption', 'mediaType']
+        : ['url', 'poster', 'caption', 'mediaType'];
+
+    return {
+      type: 'code',
+      title: node.data.title || this.contentNodeTitle(node.type),
+      desc: '',
+      selected: false,
+      code_language: 'javascript',
+      code: `function main(args) {
+  return ${returned};
+}`,
+      variables,
+      outputs: Object.fromEntries(outputKeys.map((key) => [key, { type: 'string' }])),
+    };
+  }
+
+  private validateHttpNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]) {
+    const candidate = node.data.api?.url || node.data.inputsValues?.url;
+    // Structural validation runs before legacy node IDs are remapped.  Parse
+    // references here without applying Dify's template-ID grammar; the final
+    // export performs that check after the deterministic remap.
+    const url = this.flowValueToDifyTemplate(candidate, nodes, false).trim();
+    if (!url) throw new BadRequestException(`API 节点 ${node.id} 的请求地址不能为空`);
+    if (!/^https?:\/\//i.test(url) && !url.includes('{{#')) {
+      throw new BadRequestException(`API 节点 ${node.id} 仅支持 HTTP 或 HTTPS 地址`);
+    }
+    if (!url.includes('{{#')) {
+      try {
+        const hostname = new URL(url).hostname;
+        if (this.isBlockedHttpHostname(hostname)) {
+          throw new BadRequestException(`API 节点 ${node.id} 不能访问本机、私网或云元数据地址`);
+        }
+      } catch (error) {
+        if (error instanceof BadRequestException) throw error;
+        throw new BadRequestException(`API 节点 ${node.id} 的请求地址格式无效`);
+      }
+    }
+    const method = String(
+      node.data.api?.method ||
+      this.getInputValue(node.data.inputsValues?.method, 'GET'),
+    ).toUpperCase();
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].includes(method)) {
+      throw new BadRequestException(`API 节点 ${node.id} 使用了不支持的请求方法`);
+    }
+
+    for (const headerName of Object.keys(node.data.headersValues || {})) {
+      if (!this.isValidHttpHeaderName(headerName)) {
+        throw new BadRequestException(
+          `API 节点 ${node.id} 的自定义请求头名称不能为空或包含非法字符`,
+        );
+      }
+    }
+    for (const paramName of Object.keys(node.data.paramsValues || {})) {
+      if (!paramName || /\s/u.test(paramName)) {
+        throw new BadRequestException(
+          `API 节点 ${node.id} 的查询参数名称不能为空，也不能包含空白或换行符`,
+        );
+      }
+    }
+
+    const authorization = node.data.authorization || { type: 'none' };
+    if (authorization.type === 'bearer') {
+      if (!this.isNonEmptyFlowValue(authorization.token)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的 Bearer 令牌不能为空`);
+      }
+    } else if (authorization.type === 'api-key') {
+      if (authorization.headerName?.type !== 'constant') {
+        throw new BadRequestException(`API 节点 ${node.id} 的 API 密钥请求头名称必须使用常量`);
+      }
+      const headerName = String(authorization.headerName.content ?? '');
+      if (!this.isValidHttpHeaderName(headerName)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的 API 密钥请求头名称格式无效`);
+      }
+      if (!this.isNonEmptyFlowValue(authorization.apiKey)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的 API 密钥不能为空`);
+      }
+    } else if (authorization.type === 'basic') {
+      if (!this.isNonEmptyConstant(authorization.username)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的 Basic 用户名必须使用非空常量`);
+      }
+      if (!this.isNonEmptyConstant(authorization.password)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的 Basic 密码必须使用非空常量`);
+      }
+    } else if (authorization.type !== 'none') {
+      throw new BadRequestException(`API 节点 ${node.id} 的身份认证类型无效`);
+    }
+
+    const timeout = node.data.timeout || {};
+    if (
+      timeout.timeout !== undefined &&
+      (
+        typeof timeout.timeout !== 'number' ||
+        !Number.isInteger(timeout.timeout) ||
+        timeout.timeout < 1 ||
+        timeout.timeout > 120000
+      )
+    ) {
+      throw new BadRequestException(`API 节点 ${node.id} 的超时时间必须是 1 到 120000 之间的整数`);
+    }
+    if (
+      timeout.retryTimes !== undefined &&
+      (
+        typeof timeout.retryTimes !== 'number' ||
+        !Number.isInteger(timeout.retryTimes) ||
+        timeout.retryTimes < 0 ||
+        timeout.retryTimes > 10
+      )
+    ) {
+      throw new BadRequestException(`API 节点 ${node.id} 的重试次数必须是 0 到 10 之间的整数`);
+    }
+
+    if (method !== 'GET' && method !== 'HEAD') {
+      const body = node.data.body || {};
+      const bodyType = body.bodyType || 'none';
+      if (!['none', 'JSON', 'raw-text'].includes(bodyType)) {
+        throw new BadRequestException(`API 节点 ${node.id} 的请求体类型无效`);
+      }
+      if (bodyType === 'JSON' && !this.isNonEmptyFlowValue(body.json)) {
+        throw new BadRequestException(`API 节点 ${node.id} 选择 JSON 请求体后内容不能为空`);
+      }
+      if (
+        bodyType === 'raw-text' &&
+        !this.isNonEmptyFlowValue(body.rawText ?? body.json)
+      ) {
+        throw new BadRequestException(`API 节点 ${node.id} 选择纯文本请求体后内容不能为空`);
+      }
     }
   }
 
+  private isValidHttpHeaderName(value: string): boolean {
+    return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(value);
+  }
+
+  private isNonEmptyFlowValue(value: any): boolean {
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (!value || typeof value !== 'object') return false;
+    if (value.type === 'ref') {
+      return Array.isArray(value.content) &&
+        value.content.length >= 2 &&
+        value.content.every((segment: unknown) => String(segment).trim().length > 0);
+    }
+    if (value.content === undefined || value.content === null) return false;
+    return String(value.content).trim().length > 0;
+  }
+
+  private isNonEmptyConstant(value: any): boolean {
+    return value?.type === 'constant' && this.isNonEmptyFlowValue(value);
+  }
+
+  /** 快速拒绝显式私网目标；域名解析后的最终拦截由 Squid `dst` ACL 执行。 */
+  private isBlockedHttpHostname(hostname: string): boolean {
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    if (
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal')
+    ) {
+      return true;
+    }
+
+    const octets = host.split('.').map(Number);
+    if (octets.length === 4 && octets.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
+      const [a, b] = octets;
+      return a === 0 ||
+        a === 10 ||
+        a === 127 ||
+        (a === 100 && b >= 64 && b <= 127) ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && (b === 0 || b === 168)) ||
+        (a === 198 && (b === 18 || b === 19)) ||
+        a >= 224;
+    }
+
+    if (host.includes(':')) {
+      return host === '::' ||
+        host === '::1' ||
+        host.startsWith('::ffff:') ||
+        /^f[cd]/.test(host) ||
+        /^fe[89ab]/.test(host);
+    }
+    return false;
+  }
+
+  /** 数组批处理首期仅接受一个固定的同步 JavaScript 子画布。 */
+  private validateBatchLoopNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]) {
+    if (!Array.isArray(node.blocks) || node.blocks.length !== 3) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 的子画布必须固定为“块开始 → 同步 JavaScript → 块结束”`,
+      );
+    }
+    if (!Array.isArray(node.edges) || node.edges.length !== 2) {
+      throw new BadRequestException(`数组批处理节点 ${node.id} 的内部连线必须且只能有两条`);
+    }
+
+    for (const block of node.blocks) {
+      if (
+        !block
+        || typeof block.id !== 'string'
+        || !block.id.trim()
+        || typeof block.type !== 'string'
+        || !block.data
+        || typeof block.data !== 'object'
+        || Array.isArray(block.data)
+      ) {
+        throw new BadRequestException(`数组批处理节点 ${node.id} 包含无效的子节点`);
+      }
+    }
+
+    const [blockStart, codeNode, blockEnd] = node.blocks;
+    if (
+      blockStart.type !== 'block-start'
+      || codeNode.type !== 'code'
+      || blockEnd.type !== 'block-end'
+    ) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 仅允许一个同步 JavaScript 代码节点`,
+      );
+    }
+    for (const block of node.blocks) {
+      if (block.blocks !== undefined || block.edges !== undefined) {
+        throw new BadRequestException(`数组批处理节点 ${node.id} 不支持嵌套子画布`);
+      }
+    }
+
+    const expectedEdges = new Set([
+      `${blockStart.id}\u0000${codeNode.id}`,
+      `${codeNode.id}\u0000${blockEnd.id}`,
+    ]);
+    const actualEdges = new Set<string>();
+    for (const edge of node.edges) {
+      const key = `${edge.sourceNodeID}\u0000${edge.targetNodeID}`;
+      if (
+        !expectedEdges.has(key)
+        || edge.sourcePortID
+        || edge.targetPortID
+        || actualEdges.has(key)
+      ) {
+        throw new BadRequestException(
+          `数组批处理节点 ${node.id} 的内部连线必须固定为“块开始 → 代码 → 块结束”`,
+        );
+      }
+      actualEdges.add(key);
+    }
+    if (actualEdges.size !== expectedEdges.size) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 的内部连线必须固定为“块开始 → 代码 → 块结束”`,
+      );
+    }
+
+    this.validateCodeNode(codeNode);
+
+    const codeOutputs = (codeNode.data.outputs?.properties || {}) as Record<string, any>;
+    const codeOutputNames = Object.keys(codeOutputs);
+    if (codeOutputNames.length !== 1) {
+      throw new BadRequestException(`数组批处理节点 ${node.id} 的代码必须且只能声明一个输出`);
+    }
+    const scalarType = String(codeOutputs[codeOutputNames[0]]?.type || '').toLowerCase();
+    if (!['string', 'number', 'integer', 'boolean'].includes(scalarType)) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 的逐项输出仅支持字符串或数字（布尔值按数字 1/0 兼容）`,
+      );
+    }
+
+    const selector = this.getBatchLoopSelector(node);
+    const source = nodes.find((candidate) => candidate.id === selector[0]);
+    if (!source || source.type === 'end' || !this.getNodeOutputNames(source).includes(selector[1])) {
+      throw new BadRequestException(`数组批处理节点 ${node.id} 引用了不存在的数组变量`);
+    }
+    const inputSchema = this.resolveSelectorSchema(selector, nodes);
+    const inputItemType = String(inputSchema?.items?.type || '').toLowerCase();
+    if (inputSchema?.type !== 'array' || !['string', 'number', 'integer'].includes(inputItemType)) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 的输入仅支持字符串数组或数字数组`,
+      );
+    }
+
+    const loopOutputs = Object.entries(node.data.loopOutputs || {}) as Array<[
+      string,
+      FlowInputValue | undefined,
+    ]>;
+    if (loopOutputs.length !== 1) {
+      throw new BadRequestException(`数组批处理节点 ${node.id} 必须且只能设置一个输出`);
+    }
+    const [loopOutputName, loopOutput] = loopOutputs[0];
+    if (
+      !loopOutputName
+      || !loopOutput
+      || loopOutput.type !== 'ref'
+      || !Array.isArray(loopOutput.content)
+      || loopOutput.content.length !== 2
+      || String(loopOutput.content[0]) !== codeNode.id
+      || String(loopOutput.content[1]) !== codeOutputNames[0]
+    ) {
+      throw new BadRequestException(
+        `数组批处理节点 ${node.id} 的输出必须引用子画布代码节点的唯一输出`,
+      );
+    }
+
+    const declaredOutputs = (node.data.outputs?.properties || {}) as Record<string, any>;
+    if (Object.keys(declaredOutputs).length > 0) {
+      const expectedItemType = scalarType === 'string' ? 'string' : 'number';
+      const declaredItemType = String(
+        declaredOutputs[loopOutputName]?.items?.type || '',
+      ).toLowerCase();
+      const normalizedDeclaredItemType = ['number', 'integer', 'boolean'].includes(declaredItemType)
+        ? 'number'
+        : declaredItemType;
+      if (
+        Object.keys(declaredOutputs).length !== 1
+        || !declaredOutputs[loopOutputName]
+        || declaredOutputs[loopOutputName].type !== 'array'
+        || normalizedDeclaredItemType !== expectedItemType
+      ) {
+        throw new BadRequestException(`数组批处理节点 ${node.id} 的输出声明与批处理结果不一致`);
+      }
+    }
+  }
+
+  private getBatchLoopSelector(node: FlowNodeJSON): string[] {
+    const loopFor = node.data.loopFor;
+    if (
+      !loopFor
+      || loopFor.type !== 'ref'
+      || !Array.isArray(loopFor.content)
+      || loopFor.content.length !== 2
+    ) {
+      throw new BadRequestException(`数组批处理节点 ${node.id} 必须选择一个上游数组变量`);
+    }
+    return loopFor.content.map(String);
+  }
+
+  private isTopLevelReachable(
+    sourceId: string,
+    targetId: string,
+    adjacency: Map<string, string[]>,
+    skippedId?: string,
+  ): boolean {
+    if (
+      sourceId === targetId
+      || sourceId === skippedId
+      || targetId === skippedId
+      || !adjacency.has(sourceId)
+    ) return false;
+    const seen = new Set<string>([sourceId]);
+    const pending = [sourceId];
+    while (pending.length > 0) {
+      const current = pending.shift()!;
+      for (const next of adjacency.get(current) || []) {
+        if (next === skippedId) continue;
+        if (next === targetId) return true;
+        if (!seen.has(next)) {
+          seen.add(next);
+          pending.push(next);
+        }
+      }
+    }
+    return false;
+  }
+
+  private getFlowValueSelectors(value: unknown): string[][] {
+    if (!value || typeof value !== 'object') return [];
+    const record = value as Record<string, any>;
+    if (record.type === 'ref' && Array.isArray(record.content)) {
+      return [record.content.map(String)];
+    }
+    if (
+      (record.type === 'template' || record.type === 'expression')
+      && typeof record.content === 'string'
+    ) {
+      return [...record.content.matchAll(/\{\{#?([^{}#]+)#?\}\}/g)]
+        .map((match) => match[1].trim().split('.').filter(Boolean));
+    }
+    return [];
+  }
+
+  private validateBatchLoopInnerReferences(loop: FlowNodeJSON) {
+    const codeNode = loop.blocks![1];
+    for (const value of Object.values(codeNode.data.inputsValues || {})) {
+      for (const selector of this.getFlowValueSelectors(value)) {
+        if (selector[0] === `${loop.id}_locals`) {
+          if (selector.length !== 2 || !['item', 'index'].includes(selector[1])) {
+            throw new BadRequestException(
+              `数组批处理节点 ${loop.id} 的代码只能引用当前项 item 或序号 index`,
+            );
+          }
+          continue;
+        }
+        throw new BadRequestException(
+          `数组批处理节点 ${loop.id} 的逐项代码只能引用当前项 item 或序号 index`,
+        );
+      }
+    }
+  }
+
+  private validateCodeNode(node: FlowNodeJSON) {
+    const inputsValues = node.data.inputsValues || {};
+    const language = String(
+      node.data.script?.language || this.getInputValue(inputsValues.codeLanguage, 'javascript'),
+    );
+    const code = String(node.data.script?.content || this.getInputValue(inputsValues.code, ''));
+    if (language !== 'javascript') {
+      throw new BadRequestException(`代码节点 ${node.id} 当前仅支持 JavaScript`);
+    }
+    if (!code.trim()) throw new BadRequestException(`代码节点 ${node.id} 的脚本不能为空`);
+    try {
+      assertSynchronousJavaScript(code, `代码节点 ${node.id}`);
+      normalizeCodeOutputSchema(node.data.outputs, `代码节点 ${node.id}`);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  private validateVariableNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]) {
+    const rows = this.getVariableRows(node);
+    if (rows.length === 0) {
+      throw new BadRequestException(`变量节点 ${node.id} 至少需要设置一个变量`);
+    }
+
+    const outputNames = new Set<string>();
+    const assignedTargets = new Set<string>();
+    rows.forEach((row, index) => {
+      const outputName = this.variableRowOutputName(row, index);
+      if (row.operator === 'declare') {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(outputName)) {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 的变量名“${outputName || '空'}”格式无效；需以字母或下划线开头`,
+          );
+        }
+      } else if (row.operator === 'assign') {
+        const target = row.left?.content;
+        if (
+          row.left?.type !== 'ref'
+          || !Array.isArray(target)
+          || target.length !== 2
+          || target.some((part: unknown) => !String(part))
+        ) {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 的赋值目标必须是一个顶层流程变量`,
+          );
+        }
+        const normalizedTarget = target.map(String);
+        if (normalizedTarget[0] === 'global') {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 暂不支持修改 global 全局变量`,
+          );
+        }
+        const source = nodes.find((candidate) => candidate.id === normalizedTarget[0]);
+        if (!source || source.type === 'end') {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 的赋值目标引用了不存在或无效的节点`,
+          );
+        }
+        if (!this.getNodeOutputNames(source).includes(normalizedTarget[1])) {
+          throw new BadRequestException(
+            `变量节点 ${node.id} 的赋值目标 ${normalizedTarget.join('.')} 不存在`,
+          );
+        }
+        const targetKey = normalizedTarget.join('\u0000');
+        if (assignedTargets.has(targetKey)) {
+          throw new BadRequestException(`变量节点 ${node.id} 不能重复修改同一个变量`);
+        }
+        assignedTargets.add(targetKey);
+      } else {
+        throw new BadRequestException(`变量节点 ${node.id} 包含不支持的操作`);
+      }
+
+      if (outputNames.has(outputName)) {
+        throw new BadRequestException(`变量节点 ${node.id} 包含重复的变量名称`);
+      }
+      outputNames.add(outputName);
+
+      const right = row.right;
+      if (!right || !['constant', 'ref', 'template'].includes(right.type)) {
+        throw new BadRequestException(`变量节点 ${node.id} 的变量值不能为空或类型不受支持`);
+      }
+      if (right.type === 'constant' && !Object.prototype.hasOwnProperty.call(right, 'content')) {
+        throw new BadRequestException(`变量节点 ${node.id} 的变量值不能为空`);
+      }
+      if (right.type === 'ref') {
+        const selector = right.content;
+        if (!Array.isArray(selector) || selector.length < 2) {
+          throw new BadRequestException(`变量节点 ${node.id} 的变量引用格式无效`);
+        }
+        this.normalizeDifySelector(selector.map(String), nodes);
+      }
+      if (right.type === 'template' && typeof right.content !== 'string') {
+        throw new BadRequestException(`变量节点 ${node.id} 的模板值格式无效`);
+      }
+    });
+  }
+
+  private getVariableRows(node: FlowNodeJSON): any[] {
+    return Array.isArray(node.data.assign) ? node.data.assign : [];
+  }
+
+  private variableRowOutputName(row: any, index: number): string {
+    return row.operator === 'declare'
+      ? String(row.left || '')
+      : `assigned_${index + 1}`;
+  }
+
+  private getNodeOutputNames(node: FlowNodeJSON): string[] {
+    if (isNativeMediaNode(node)) return Object.keys(NATIVE_MEDIA_OUTPUTS);
+    const declared = Object.keys(
+      (node.data.outputs?.properties as Record<string, any>) || {},
+    );
+    if (node.type === 'variable') {
+      const variableOutputs = this.getVariableRows(node).map((row, index) =>
+        this.variableRowOutputName(row, index),
+      );
+      return [...new Set([...declared, ...variableOutputs])];
+    }
+    if (node.type === 'loop') {
+      const loopOutputs = Object.keys(node.data.loopOutputs || {});
+      return [...new Set([...declared, ...loopOutputs])];
+    }
+    if (declared.length > 0) return declared;
+    if (node.type === 'llm') return ['result', 'text'];
+    if (node.type === 'http') return ['body', 'statusCode', 'status_code', 'headers'];
+    if (node.type === 'text') return ['text'];
+    if (node.type === 'image') return ['url', 'caption', 'mediaType'];
+    if (node.type === 'video') return ['url', 'poster', 'caption', 'mediaType'];
+    if (node.type === 'code') return ['result'];
+    return [];
+  }
+
+  private resolveFlowValueSchema(
+    value: any,
+    nodes: FlowNodeJSON[],
+    seen: Set<string> = new Set(),
+  ): any {
+    if (value?.schema?.type) return value.schema;
+    if (value?.type === 'ref' && Array.isArray(value.content)) {
+      return this.resolveSelectorSchema(value.content.map(String), nodes, seen);
+    }
+    if (value?.type === 'template' || value?.type === 'expression') {
+      return { type: 'string' };
+    }
+    if (value?.type === 'constant') return this.inferJsonSchema(value.content);
+    return { type: 'string' };
+  }
+
+  private resolveSelectorSchema(
+    selector: string[],
+    nodes: FlowNodeJSON[],
+    seen: Set<string> = new Set(),
+  ): any {
+    if (selector.length < 2) return { type: 'string' };
+    const cacheKey = selector.join('\u0000');
+    if (seen.has(cacheKey)) return { type: 'string' };
+    const nextSeen = new Set(seen).add(cacheKey);
+    const source = nodes.find((node) => node.id === selector[0]);
+    if (!source) return { type: 'string' };
+
+    let schema = (source.data.outputs?.properties as Record<string, any> | undefined)?.[
+      selector[1]
+    ];
+    if (!schema && source.type === 'variable') {
+      const row = this.getVariableRows(source).find(
+        (candidate, index) => this.variableRowOutputName(candidate, index) === selector[1],
+      );
+      if (row) {
+        const fallback = row.operator === 'assign'
+          ? this.resolveSelectorSchema(row.left.content.map(String), nodes, nextSeen)
+          : undefined;
+        schema = fallback || this.resolveFlowValueSchema(row.right, nodes, nextSeen);
+      }
+    }
+    if (!schema && source.type === 'loop') {
+      const loopOutput = Object.entries(source.data.loopOutputs || {})
+        .find(([name]) => name === selector[1])?.[1] as any;
+      const codeNode = source.blocks?.find((block) => block.type === 'code');
+      if (
+        loopOutput?.type === 'ref'
+        && Array.isArray(loopOutput.content)
+        && codeNode
+      ) {
+        const scalar = (codeNode.data.outputs?.properties as Record<string, any> | undefined)?.[
+          String(loopOutput.content[1])
+        ];
+        if (scalar) {
+          schema = {
+            type: 'array',
+            items: String(scalar.type).toLowerCase() === 'boolean'
+              ? { ...scalar, type: 'number' }
+              : scalar,
+          };
+        }
+      }
+    }
+    if (!schema) {
+      if (source.type === 'llm' && ['text', 'result'].includes(selector[1])) {
+        schema = { type: 'string' };
+      } else if (source.type === 'http') {
+        schema = { type: selector[1] === 'statusCode' || selector[1] === 'status_code' ? 'integer' : 'string' };
+      } else if (source.type === 'text') {
+        schema = { type: 'string' };
+      } else if (source.type === 'image' || source.type === 'video') {
+        schema = { type: 'string' };
+      }
+    }
+
+    for (const segment of selector.slice(2)) {
+      schema = schema?.type === 'array'
+        ? schema.items
+        : schema?.properties?.[segment];
+      if (!schema) return { type: 'string' };
+    }
+    return schema || { type: 'string' };
+  }
+
+  private inferJsonSchema(value: unknown): any {
+    if (Array.isArray(value)) {
+      return {
+        type: 'array',
+        items: value.length > 0 ? this.inferJsonSchema(value[0]) : { type: 'string' },
+      };
+    }
+    if (value !== null && typeof value === 'object') {
+      return {
+        type: 'object',
+        properties: Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+            key,
+            this.inferJsonSchema(child),
+          ]),
+        ),
+      };
+    }
+    if (typeof value === 'boolean') return { type: 'boolean' };
+    if (typeof value === 'number') {
+      return { type: Number.isInteger(value) ? 'integer' : 'number' };
+    }
+    return { type: 'string' };
+  }
+
+  private validateContentNode(node: FlowNodeJSON) {
+    if (node.type === 'image' || node.type === 'video') {
+      validateNativeMediaNode(node);
+      if (isNativeMediaNode(node)) return;
+    }
+    const requiredKey = node.type === 'text' ? 'text' : 'url';
+    const value = node.data.inputsValues?.[requiredKey];
+    if (this.getInputValue(value, '') === '') {
+      throw new BadRequestException(`${this.contentNodeTitle(node.type)} ${node.id} 的${requiredKey === 'url' ? '资源地址' : '文本内容'}不能为空`);
+    }
+  }
+
+  private flowValueToDifyTemplate(
+    input: FlowInputValue | string | undefined,
+    nodes: FlowNodeJSON[],
+    enforceTemplateContract = true,
+  ): string {
+    if (input === undefined || input === null) return '';
+    if (typeof input === 'string') {
+      return this.convertVariableRefs(input, nodes, enforceTemplateContract);
+    }
+    if (input.type === 'constant') return String(input.content ?? '');
+    if (input.type === 'ref' && Array.isArray(input.content)) {
+      const selector = enforceTemplateContract
+        ? this.normalizeDifyTemplateSelector(input.content.map(String), nodes)
+        : this.normalizeDifySelector(input.content.map(String), nodes);
+      return `{{#${selector.join('.')}#}}`;
+    }
+    return this.convertVariableRefs(
+      String(input.content ?? ''),
+      nodes,
+      enforceTemplateContract,
+    );
+  }
+
+  private flowMapToLines(
+    values: Record<string, FlowInputValue> | undefined,
+    nodes: FlowNodeJSON[],
+    separator = ':',
+  ): string[] {
+    if (!values) return [];
+    return Object.entries(values)
+      .filter(([key]) => key.trim())
+      .map(([key, value]) => `${key}${separator}${this.flowValueToDifyTemplate(value, nodes)}`);
+  }
+
+  /**
+   * Dify 0.15.3 only masks credentials in HTTP execution logs when they use
+   * the native `api-key` authorization schema. Never flatten secrets into the
+   * ordinary header block: that block is copied verbatim into process_data.
+   */
+  private authorizationToDifyConfig(authorization: any, nodes: FlowNodeJSON[]): any {
+    if (!authorization || authorization.type === 'none') return { type: 'no-auth' };
+    if (authorization.type === 'bearer') {
+      return {
+        type: 'api-key',
+        config: {
+          type: 'bearer',
+          api_key: this.flowValueToDifyTemplate(authorization.token, nodes),
+          header: 'Authorization',
+        },
+      };
+    }
+    if (authorization.type === 'api-key') {
+      const name = this.flowValueToDifyTemplate(authorization.headerName, nodes) || 'X-API-Key';
+      return {
+        type: 'api-key',
+        config: {
+          type: 'custom',
+          api_key: this.flowValueToDifyTemplate(authorization.apiKey, nodes),
+          header: name,
+        },
+      };
+    }
+    if (authorization.type === 'basic') {
+      const username = this.flowValueToDifyTemplate(authorization.username, nodes);
+      const password = this.flowValueToDifyTemplate(authorization.password, nodes);
+      if (username.includes('{{#') || password.includes('{{#')) {
+        throw new BadRequestException('Basic 认证暂不支持变量用户名或密码，请改用请求头认证');
+      }
+      return {
+        type: 'api-key',
+        config: {
+          type: 'basic',
+          api_key: Buffer.from(`${username}:${password}`, 'utf8').toString('base64'),
+          header: 'Authorization',
+        },
+      };
+    }
+    return { type: 'no-auth' };
+  }
+
+  private compileFlowValueExpression(
+    input: FlowInputValue | undefined,
+    variables: Array<{ variable: string; value_selector: string[] }>,
+    hint: string,
+    nodes: FlowNodeJSON[],
+  ): string {
+    if (!input) return `''`;
+    if (input.type === 'ref' && Array.isArray(input.content)) {
+      return this.addCodeVariable(input.content.map(String), variables, hint, nodes);
+    }
+    if (input.type === 'constant' || typeof input.content !== 'string') {
+      return JSON.stringify(input.content ?? '');
+    }
+
+    const source = input.content;
+    const matcher = /\{\{#?([^{}#]+)#?\}\}/g;
+    const expressions: string[] = [];
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = matcher.exec(source))) {
+      if (match.index > cursor) expressions.push(JSON.stringify(source.slice(cursor, match.index)));
+      const selector = match[1].trim().split('.').filter(Boolean);
+      if (selector.length >= 2) {
+        expressions.push(`String(${this.addCodeVariable(selector, variables, hint, nodes)} ?? '')`);
+      } else {
+        expressions.push(JSON.stringify(match[0]));
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < source.length) expressions.push(JSON.stringify(source.slice(cursor)));
+    return expressions.length ? expressions.join(' + ') : JSON.stringify(source);
+  }
+
+  private addCodeVariable(
+    selector: string[],
+    variables: Array<{ variable: string; value_selector: string[] }>,
+    hint: string,
+    nodes: FlowNodeJSON[],
+  ): string {
+    const safeHint = hint.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24) || 'value';
+    const variable = `__ff_${safeHint}_${variables.length}`;
+    variables.push({ variable, value_selector: this.normalizeDifySelector(selector, nodes) });
+    return `args[${JSON.stringify(variable)}]`;
+  }
+
+  /** 将 FlowGram 输出名按源节点类型转换为 Dify 的实际变量名。 */
+  private normalizeDifySelector(
+    selector: string[],
+    nodes: FlowNodeJSON[],
+  ): string[] {
+    const normalized = selector.map(String);
+    if (normalized[0] === 'global') {
+      throw new BadRequestException(
+        'Dify 发布暂不支持 global 全局变量引用；请改为引用开始节点输入',
+      );
+    }
+    if (normalized.length < 2) return normalized;
+
+    const sourceNode = nodes.find((node) => node.id === normalized[0]);
+    if (sourceNode?.type === 'llm' && normalized[1] === 'result') {
+      normalized[1] = 'text';
+    } else if (sourceNode?.type === 'http' && normalized[1] === 'statusCode') {
+      normalized[1] = 'status_code';
+    } else if (
+      sourceNode?.type === 'loop'
+      && this.getNodeOutputNames(sourceNode).includes(normalized[1])
+    ) {
+      normalized[1] = 'output';
+    }
+    return normalized;
+  }
+
+  /**
+   * Array selectors are native structured data in Dify and accept arbitrary
+   * string segments.  Only selectors serialized into {{#node.property#}}
+   * templates are subject to the workflow template parser's 50/30/10 limits.
+   */
+  private normalizeDifyTemplateSelector(
+    selector: string[],
+    nodes: FlowNodeJSON[],
+  ): string[] {
+    const normalized = this.normalizeDifySelector(selector, nodes);
+    this.assertDifySelector(normalized);
+    return normalized;
+  }
+
+  private assertDifyNodeId(nodeId: string): void {
+    if (typeof nodeId === 'string' && DIFY_NODE_ID.test(nodeId)) return;
+    throw new BadRequestException(
+      `节点 ${nodeId} 的内部标识映射失败：Dify 模板节点标识只能使用 1-50 位英文字母、数字或下划线。`,
+    );
+  }
+
+  private assertDifySelectorProperty(property: string, label: string): void {
+    if (DIFY_SELECTOR_PROPERTY.test(property)) return;
+    throw new BadRequestException(
+      `${label} 的变量名不兼容 Dify：必须以英文字母或下划线开头，且只能包含英文字母、数字或下划线（最多 30 位）。`,
+    );
+  }
+
+  private assertDifySelector(selector: string[]): void {
+    this.assertDifyNodeId(selector[0]);
+    const properties = selector.slice(1);
+    if (properties.length > DIFY_MAX_SELECTOR_PROPERTY_SEGMENTS) {
+      throw new BadRequestException(
+        `变量引用 ${selector.join('.')} 的属性层级超过 Dify 支持的 ${DIFY_MAX_SELECTOR_PROPERTY_SEGMENTS} 层。`,
+      );
+    }
+    for (const property of properties) {
+      this.assertDifySelectorProperty(property, `变量引用 ${selector.join('.')}`);
+    }
+  }
+
+  private contentNodeTitle(type: string): string {
+    if (type === 'text') return '文本处理';
+    if (type === 'image') return '图片处理';
+    if (type === 'video') return '视频处理';
+    return '内容处理';
+  }
+
+  private defaultOutputKey(type: string): string {
+    if (type === 'llm' || type === 'text') return 'text';
+    if (type === 'http') return 'body';
+    if (type === 'image' || type === 'video') return 'url';
+    if (type === 'loop') return 'output';
+    return 'result';
+  }
+
+  /** 将 FlowGram JSON Schema 完整转换为 Dify Code 节点输出 schema。 */
+  private toDifyCodeOutputSchema(schema: any): {
+    type: string;
+    children: Record<string, any> | null;
+  } {
+    const rawType = String(schema?.type || 'string').toLowerCase();
+    if (rawType === 'object') {
+      const properties = schema?.properties && typeof schema.properties === 'object'
+        ? schema.properties as Record<string, any>
+        : {};
+      const children = Object.fromEntries(
+        Object.entries(properties).map(([key, child]) => [
+          key,
+          this.toDifyCodeOutputSchema(child),
+        ]),
+      );
+      return {
+        type: 'object',
+        children: Object.keys(children).length > 0 ? children : null,
+      };
+    }
+
+    if (rawType === 'array') {
+      const itemSchema = schema?.items || {};
+      const itemType = String(itemSchema.type || 'string').toLowerCase();
+      if (itemType === 'object') {
+        const objectSchema = this.toDifyCodeOutputSchema(itemSchema);
+        return { type: 'array[object]', children: objectSchema.children };
+      }
+      if (itemType === 'number' || itemType === 'integer') {
+        return { type: 'array[number]', children: null };
+      }
+      if (itemType === 'boolean') {
+        // Dify 0.15.3 的 CodeNodeData 不接受 array[boolean]，但会按
+        // array[number] 将 JSON boolean 稳定归一为 1/0。
+        return { type: 'array[number]', children: null };
+      }
+      return { type: 'array[string]', children: null };
+    }
+
+    const aliases: Record<string, string> = {
+      'array[string]': 'array[string]',
+      'string[]': 'array[string]',
+      'array[number]': 'array[number]',
+      'number[]': 'array[number]',
+      'array[boolean]': 'array[number]',
+      'boolean[]': 'array[number]',
+      'array[object]': 'array[object]',
+      'object[]': 'array[object]',
+      // Dify 0.15.3 的代码节点输出 schema 没有 boolean；声明为 number
+      // 时 Sandbox 会把 true/false 归一为 1/0，避免 DSL 在运行前被拒绝。
+      boolean: 'number',
+      integer: 'number',
+      number: 'number',
+      string: 'string',
+    };
+    return { type: aliases[rawType] || 'string', children: null };
+  }
+
   /** Translate FlowGram condition ports to Dify if-else case handles. */
-  private convertConditionNode(node: FlowNodeJSON): any {
+  private convertConditionNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
     return {
       type: 'if-else',
       title: node.data.title || '条件分支',
@@ -580,22 +2368,38 @@ export class DifyConverterService {
       cases: this.getConditionCases(node).map((entry) => ({
         case_id: entry.key,
         logical_operator: entry.logic,
-        conditions: entry.conditions.map((condition) => this.convertConditionAtom(condition.value)),
+        conditions: entry.conditions.map((condition) => this.convertConditionAtom(condition.value, nodes)),
       })),
     };
   }
 
-  private validateConditionNode(node: FlowNodeJSON) {
+  private validateConditionNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]) {
     const cases = this.getConditionCases(node);
     if (cases.length === 0) {
       throw new BadRequestException(`条件节点 ${node.id} 至少需要一个分支`);
     }
+    const caseKeys = new Set<string>();
     for (const entry of cases) {
-      if (!entry.key || entry.conditions.length === 0) {
+      if (
+        typeof entry.key !== 'string'
+        || !entry.key.trim()
+        || !Array.isArray(entry.conditions)
+        || entry.conditions.length === 0
+      ) {
         throw new BadRequestException(`条件节点 ${node.id} 包含无效分支`);
       }
+      const normalizedKey = entry.key.trim().toLowerCase();
+      if (normalizedKey === 'else' || normalizedKey === 'false') {
+        throw new BadRequestException(
+          `条件节点 ${node.id} 的分支不能使用保留端口 ${normalizedKey}`,
+        );
+      }
+      if (caseKeys.has(entry.key)) {
+        throw new BadRequestException(`条件节点 ${node.id} 包含重复的分支 key: ${entry.key}`);
+      }
+      caseKeys.add(entry.key);
       for (const condition of entry.conditions) {
-        this.convertConditionAtom(condition.value);
+        this.convertConditionAtom(condition?.value, nodes);
       }
     }
   }
@@ -609,34 +2413,185 @@ export class DifyConverterService {
     // data.branch. Keep those saved drafts executable during the UI fix.
     if (Array.isArray(node.data.branch) && node.data.branch.length > 0) {
       return node.data.branch.map((branch, index) => ({
-        key: branch.key || `branch.${index}`,
-        logic: branch.logic === 'or' ? 'or' : 'and',
-        conditions: branch.conditions || [],
+        key: branch?.key || `branch.${index}`,
+        logic: branch?.logic === 'or' ? 'or' : 'and',
+        conditions: Array.isArray(branch?.conditions) ? branch.conditions : [],
       }));
     }
-    return (node.data.conditions || []).map((condition) => ({
+    const conditions = Array.isArray(node.data.conditions) ? node.data.conditions : [];
+    return conditions.map((condition) => ({
       key: condition.key,
       logic: 'and',
       conditions: [condition],
     }));
   }
 
-  private convertConditionAtom(value: any) {
+  private convertConditionAtom(value: any, nodes: FlowNodeJSON[]) {
     const left = value?.left;
     const right = value?.right;
-    const selector = this.refSelector(left);
-    const comparisonOperator = this.normalizeComparisonOperator(value?.operator);
+    const flowSelector = this.refSelector(left);
+    const selector = this.normalizeDifySelector(flowSelector, nodes);
+    const flowOperator = String(value?.operator || '').trim().toLowerCase();
+    // Resolve the FlowGram output schema before aliases such as
+    // loop.<name> -> loop.output or http.statusCode -> http.status_code are
+    // applied for Dify. Otherwise the alias can hide the declared type and
+    // weaken the operator gate to the string fallback.
+    const selectorSchema = this.resolveSelectorSchema(flowSelector, nodes);
+    const comparisonOperator = this.normalizeComparisonOperator(
+      flowOperator,
+      selectorSchema?.type,
+    );
+    this.validateConditionOperator(
+      selector,
+      selectorSchema,
+      flowOperator,
+      comparisonOperator,
+    );
     const result: Record<string, any> = {
       variable_selector: selector,
       comparison_operator: comparisonOperator,
     };
-    if (!['empty', 'not empty'].includes(comparisonOperator)) {
+    if (flowOperator === 'is_true' || flowOperator === 'is_false') {
+      // Dify 0.15.3 没有布尔工作流变量；代码节点的 boolean 输出会被
+      // futureFlow 归一为 number，因此条件也必须用 number 的 1/0 契约。
+      result.value = flowOperator === 'is_true' ? '1' : '0';
+    } else if (!['empty', 'not empty', 'null', 'not null'].includes(comparisonOperator)) {
       if (!right || right.type !== 'constant') {
         throw new BadRequestException('条件右值当前仅支持常量');
       }
-      result.value = right.content;
+      result.value = this.toDifyConditionValue(
+        right.content,
+        comparisonOperator,
+        selectorSchema,
+        right.schema,
+      );
     }
     return result;
+  }
+
+  /** Dify 0.15.3 的 Condition.value 只接受 str 或 list[str]。 */
+  private toDifyConditionValue(
+    value: any,
+    operator: string,
+    selectorSchema: any,
+    valueSchema?: any,
+  ) {
+    const schemaType = String(selectorSchema?.type || 'string').toLowerCase();
+    const itemType = schemaType === 'array'
+      ? String(selectorSchema?.items?.type || 'string').toLowerCase()
+      : schemaType;
+    const stringify = (item: any): string => {
+      if (item === undefined || item === null) {
+        throw new BadRequestException('条件常量不能是 undefined 或 null');
+      }
+      if (typeof item === 'object') {
+        throw new BadRequestException('条件常量仅支持字符串、数字、布尔值或其数组');
+      }
+      if (typeof item === 'number' && !Number.isFinite(item)) {
+        throw new BadRequestException('条件数字常量必须是有限值');
+      }
+      if (itemType === 'boolean' && typeof item === 'boolean') return item ? '1' : '0';
+      return String(item);
+    };
+
+    if (value === undefined || value === null) {
+      throw new BadRequestException('条件常量不能是 undefined 或 null');
+    }
+    if (
+      typeof value === 'string'
+      && (operator === 'in' || operator === 'not in'
+        || String(valueSchema?.type || '').toLowerCase() === 'array')
+    ) {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        throw new BadRequestException('数组条件常量必须是合法的 JSON 数组');
+      }
+    }
+    if (operator === 'in' || operator === 'not in') {
+      if (!Array.isArray(value)) {
+        throw new BadRequestException(`${operator} 条件的右值必须是数组常量`);
+      }
+      return value.map(stringify);
+    }
+    if (Array.isArray(value)) {
+      throw new BadRequestException(`${operator} 条件的右值必须是标量常量`);
+    }
+    if (['number', 'integer'].includes(schemaType)) {
+      if (typeof value === 'boolean') {
+        throw new BadRequestException('数字条件的右值不能使用布尔值');
+      }
+      const numeric = typeof value === 'string' && value.trim() === ''
+        ? Number.NaN
+        : Number(value);
+      if (!Number.isFinite(numeric)) {
+        throw new BadRequestException('数字条件的右值必须是有限数字');
+      }
+      if (schemaType === 'integer' && !Number.isInteger(numeric)) {
+        throw new BadRequestException('整数条件的右值不能包含小数');
+      }
+      return String(numeric);
+    }
+    if (schemaType === 'boolean') {
+      if (typeof value === 'boolean') return value ? '1' : '0';
+      if (value === 1 || value === '1') return '1';
+      if (value === 0 || value === '0') return '0';
+      throw new BadRequestException('布尔条件的右值只能是 true/false 或 1/0');
+    }
+    return stringify(value);
+  }
+
+  private validateConditionOperator(
+    selector: string[],
+    selectorSchema: any,
+    flowOperator: string,
+    comparisonOperator: string,
+  ) {
+    const schemaType = String(selectorSchema?.type || 'string').toLowerCase();
+    if (
+      (flowOperator === 'is_true' || flowOperator === 'is_false')
+      && schemaType !== 'boolean'
+    ) {
+      throw new BadRequestException(
+        `条件变量 ${selector.join('.')} 不是布尔值，不能使用“为真/为假”判断`,
+      );
+    }
+
+    const allowedByType: Record<string, Set<string>> = {
+      string: new Set([
+        'is',
+        'is not',
+        'contains',
+        'not contains',
+        'in',
+        'not in',
+        'null',
+        'not null',
+      ]),
+      number: new Set(['=', '≠', '>', '<', '≥', '≤', 'null', 'not null']),
+      integer: new Set(['=', '≠', '>', '<', '≥', '≤', 'null', 'not null']),
+      boolean: new Set(['=', '≠', 'null', 'not null']),
+      array: new Set(['contains', 'not contains', 'null', 'not null']),
+      object: new Set(['null', 'not null']),
+      map: new Set(['null', 'not null']),
+      'date-time': new Set(['null', 'not null']),
+      null: new Set(['null', 'not null']),
+    };
+    const allowed = allowedByType[schemaType];
+    if (!allowed || !allowed.has(comparisonOperator)) {
+      throw new BadRequestException(
+        `条件变量 ${selector.join('.')} 的 ${schemaType} 类型不支持 ${flowOperator} 比较`,
+      );
+    }
+    if (
+      schemaType === 'array'
+      && ['contains', 'not contains'].includes(comparisonOperator)
+      && String(selectorSchema?.items?.type || '').toLowerCase() !== 'string'
+    ) {
+      throw new BadRequestException(
+        `条件变量 ${selector.join('.')} 当前仅支持字符串数组条件`,
+      );
+    }
   }
 
   private refSelector(value: any): string[] {
@@ -652,19 +2607,31 @@ export class DifyConverterService {
     return selector;
   }
 
-  private normalizeComparisonOperator(value: unknown): string {
+  private normalizeComparisonOperator(value: unknown, selectorType: unknown = 'string'): string {
     const normalized = String(value || '').trim().toLowerCase();
+    const isNumber = ['number', 'integer', 'boolean'].includes(
+      String(selectorType || 'string').toLowerCase(),
+    );
     const aliases: Record<string, string> = {
       '=': 'is',
       '==': 'is',
       '===': 'is',
+      eq: 'is',
       equal: 'is',
       equals: 'is',
       '!=': 'is not',
       '!==': 'is not',
       '≠': 'is not',
+      neq: 'is not',
       'is not': 'is not',
+      gt: '>',
+      lt: '<',
+      gte: '≥',
+      lte: '≤',
+      in: 'in',
+      nin: 'not in',
       contains: 'contains',
+      not_contains: 'not contains',
       'not contains': 'not contains',
       '>': '>',
       '<': '<',
@@ -672,14 +2639,22 @@ export class DifyConverterService {
       '≥': '≥',
       '<=': '≤',
       '≤': '≤',
-      empty: 'empty',
-      'is empty': 'empty',
-      'not empty': 'not empty',
-      'is not empty': 'not empty',
+      empty: 'null',
+      is_empty: 'null',
+      'is empty': 'null',
+      null: 'null',
+      is_not_empty: 'not null',
+      'not empty': 'not null',
+      'is not empty': 'not null',
+      'not null': 'not null',
+      is_true: 'is',
+      is_false: 'is',
     };
-    if (normalized === 'is') return 'is';
-    const operator = aliases[normalized];
+    if (normalized === 'is_true' || normalized === 'is_false') return '=';
+    const operator = normalized === 'is' ? 'is' : aliases[normalized];
     if (!operator) throw new BadRequestException(`不支持的条件比较符: ${String(value)}`);
+    if (isNumber && operator === 'is') return '=';
+    if (isNumber && operator === 'is not') return '≠';
     return operator;
   }
 
@@ -691,8 +2666,13 @@ export class DifyConverterService {
     const sourceNode = nodes.find((n) => n.id === edge.sourceNodeID);
     const targetNode = nodes.find((n) => n.id === edge.targetNodeID);
 
+    const sourcePort = edge.sourcePortID || 'source';
+    const targetPort = edge.targetPortID || 'target';
+
     return {
-      id: `${edge.sourceNodeID}-source-${edge.targetNodeID}-target`,
+      id: [edge.sourceNodeID, sourcePort, edge.targetNodeID, targetPort]
+        .map((part) => encodeURIComponent(part))
+        .join('-'),
       source: edge.sourceNodeID,
       sourceHandle:
         sourceNode?.type === 'condition' || sourceNode?.type === 'multi-condition'
@@ -706,19 +2686,33 @@ export class DifyConverterService {
       zIndex: 0,
       data: {
         isInIteration: false,
-        sourceType: sourceNode?.type || 'custom',
-        targetType: targetNode?.type || 'custom',
+        sourceType: this.toDifyNodeType(sourceNode?.type),
+        targetType: this.toDifyNodeType(targetNode?.type),
       },
     };
+  }
+
+  /** 自动 End 暴露末节点声明的全部输出，避免多输出代码节点被误写为 result。 */
+  private resolveAutoEndOutputs(
+    sourceNode: FlowNodeJSON,
+    nodes: FlowNodeJSON[],
+  ): Array<{ variable: string; value_selector: string[] }> {
+    const declaredOutputs = this.getNodeOutputNames(sourceNode);
+    const outputNames = declaredOutputs.length > 0 ? declaredOutputs : ['result'];
+    return outputNames.map((variable) => ({
+      variable,
+      value_selector: declaredOutputs.length > 0
+        ? this.normalizeDifySelector([sourceNode.id, variable], nodes)
+        : [sourceNode.id, this.defaultOutputKey(sourceNode.type)],
+    }));
   }
 
   /** 创建 End 节点(自动补充) */
   private createEndNode(
     id: string,
-    sourceNodeId: string,
     x: number,
     y: number,
-    outputKey: string = 'text',
+    outputs: Array<{ variable: string; value_selector: string[] }>,
   ): DifyNode {
     return {
       id,
@@ -734,12 +2728,7 @@ export class DifyConverterService {
         title: '结束',
         desc: '',
         selected: false,
-        outputs: [
-          {
-            variable: 'result',
-            value_selector: [sourceNodeId, outputKey],
-          },
-        ],
+        outputs,
       },
     };
   }
@@ -759,8 +2748,20 @@ export class DifyConverterService {
       targetHandle: 'target',
       type: 'custom',
       zIndex: 0,
-      data: { isInIteration: false, sourceType, targetType },
+      data: {
+        isInIteration: false,
+        sourceType: this.toDifyNodeType(sourceType),
+        targetType: this.toDifyNodeType(targetType),
+      },
     };
+  }
+
+  private toDifyNodeType(type?: string): string {
+    if (type === 'http') return 'http-request';
+    if (type === 'condition' || type === 'multi-condition') return 'if-else';
+    if (type === 'loop') return 'iteration';
+    if (type === 'text' || type === 'image' || type === 'video' || type === 'variable') return 'code';
+    return type || 'custom';
   }
 
   /** 从 FlowInputValue 中提取值 */
@@ -792,14 +2793,19 @@ export class DifyConverterService {
    * FlowGram: {{nodeId.variable}}  或  {{nodeId.variable.subfield}}
    * Dify:     {{#nodeId.variable#}} 或 {{#nodeId.variable.subfield#}}
    */
-  private convertVariableRefs(text: string): string {
+  private convertVariableRefs(
+    text: string,
+    nodes: FlowNodeJSON[],
+    enforceTemplateContract = true,
+  ): string {
     if (!text) return text;
-    // 匹配 {{xxx.yyy}} 或 {{xxx.yyy.zzz}} 格式(不包含 # 的才是 FlowGram 格式)
-    return text.replace(/\{\{([^}#]+)\}\}/g, (match, inner: string) => {
+    // 同时接受 FlowGram {{node.output}} 与已包装的 {{#node.output#}}。
+    return text.replace(/\{\{#?([^{}#]+)#?\}\}/g, (_match, inner: string) => {
       const trimmed = inner.trim();
-      // 如果已经是 Dify 格式 {{#...#}} 跳过
-      if (trimmed.startsWith('#')) return match;
-      return `{{#${trimmed}#}}`;
+      const selector = enforceTemplateContract
+        ? this.normalizeDifyTemplateSelector(trimmed.split('.'), nodes)
+        : this.normalizeDifySelector(trimmed.split('.'), nodes);
+      return `{{#${selector.join('.')}#}}`;
     });
   }
 
@@ -820,6 +2826,12 @@ export class DifyConverterService {
     const inputs: Record<string, any> = {};
 
     for (const key of Object.keys(properties)) {
+      const schemaType = String(properties[key]?.type || 'string').toLowerCase();
+      if (schemaType === 'boolean') {
+        throw new BadRequestException(
+          `开始节点输入 ${key} 使用了布尔值；当前 Dify 0.15.3 没有布尔输入类型，请改用整数 1/0 或字符串`,
+        );
+      }
       // 优先使用 inputsValues 中的值,否则用 schema default
       const val = inputsValues[key];
       if (val && val.content !== undefined) {
@@ -828,7 +2840,7 @@ export class DifyConverterService {
         inputs[key] = properties[key].default;
       } else {
         // 根据类型给默认值
-        inputs[key] = properties[key].type === 'number' ? 0 : '';
+        inputs[key] = ['number', 'integer'].includes(schemaType) ? 0 : '';
       }
     }
     return inputs;

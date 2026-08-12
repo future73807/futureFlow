@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
 echo ========================================
 echo futureFlow E2E 全自动测试
@@ -24,12 +25,17 @@ if errorlevel 1 (
 
 echo.
 echo [3/5] 等待 Dify 就绪...
-:wait_dify
-curl -s http://localhost:5001/health >nul 2>&1
-if errorlevel 1 (
-    timeout /t 3 /nobreak >nul
-    goto wait_dify
+rem 每次探测最多 1 秒，失败后等待 2 秒；60 次约 180 秒后明确失败。
+for /L %%I in (1,1,60) do (
+    curl.exe -fsS --connect-timeout 1 --max-time 1 http://localhost:5001/health >nul 2>&1
+    if not errorlevel 1 goto dify_ready
+    if %%I LSS 60 timeout /t 2 /nobreak >nul
 )
+echo [错误] 等待 Dify API 就绪超时（约 180 秒）
+docker compose ps
+exit /b 1
+
+:dify_ready
 echo [OK] Dify API 已就绪
 
 echo.
@@ -39,9 +45,27 @@ timeout /t 10 /nobreak >nul
 
 echo.
 echo [5/5] 启动网关并运行测试...
+if "%GATEWAY_BOOTSTRAP_ADMIN_USERNAME%"=="" (
+    echo [错误] 请先设置 GATEWAY_BOOTSTRAP_ADMIN_USERNAME
+    exit /b 1
+)
+if "%GATEWAY_BOOTSTRAP_ADMIN_EMAIL%"=="" (
+    echo [错误] 请先设置 GATEWAY_BOOTSTRAP_ADMIN_EMAIL
+    exit /b 1
+)
+if "%GATEWAY_BOOTSTRAP_ADMIN_PASSWORD%"=="" (
+    echo [错误] 请先设置 GATEWAY_BOOTSTRAP_ADMIN_PASSWORD
+    exit /b 1
+)
+set GATEWAY_BOOTSTRAP_ADMIN_ENABLED=true
+set GATEWAY_PORT=3201
+if not exist "gateway\node_modules" (
+    echo [错误] 缺少依赖，请先运行 corepack pnpm install --frozen-lockfile
+    exit /b 1
+)
+call corepack pnpm --filter futureflow-gateway build
+if errorlevel 1 exit /b 1
 cd gateway
-call npm install
-call npm run build
 start /B node dist/src/main.js
 cd ..
 timeout /t 5 /nobreak >nul
@@ -51,38 +75,20 @@ echo ========================================
 echo 运行 API 接口测试...
 echo ========================================
 
-set GATEWAY=http://localhost:3001
-
-echo.
-echo [测试 1] 健康检查...
-curl -s %GATEWAY%/health
-echo.
-
-echo.
-echo [测试 2] 管理员登录...
-for /f "delims=" %%i in ('curl -s -X POST %GATEWAY%/auth/login -H "Content-Type: application/json" -d "{\"account\":\"demo\",\"password\":\"demo123456\"}"') do set LOGIN_RESP=%%i
-echo %LOGIN_RESP%
-
-echo.
-echo [测试 3] 获取仪表盘统计...
-curl -s %GATEWAY%/admin/stats -H "Authorization: Bearer dummy"
-echo.
-
-echo.
-echo [测试 4] 获取 Dify 状态...
-curl -s %GATEWAY%/admin/dify/status -H "Authorization: Bearer dummy"
-echo.
+set GATEWAY_BASE_URL=http://localhost:3201
+node scripts\api-test.cjs
+if errorlevel 1 (
+    echo [错误] API 集成测试失败
+    exit /b 1
+)
 
 echo.
 echo ========================================
-echo 测试完成！
+echo API 集成测试全部通过！
 echo ========================================
 echo.
 echo 服务地址:
 echo   - Dify 控制台: http://localhost:8080
 echo   - Dify API:    http://localhost:5001
-echo   - 网关:        http://localhost:3001
-echo   - 前端:        http://localhost:3000
-echo.
-echo 按任意键退出...
-pause >nul
+echo   - 网关:        http://localhost:3201
+endlocal & exit /b 0

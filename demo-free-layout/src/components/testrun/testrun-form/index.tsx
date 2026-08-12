@@ -13,6 +13,7 @@ import { JsonValueEditor } from '../json-value-editor';
 import { useFormMeta } from '../hooks/use-form-meta';
 import { useFields } from '../hooks/use-fields';
 import { useSyncDefault } from '../hooks';
+import { getFieldLabel } from '../../../form-components/field-labels';
 
 import styles from './index.module.less';
 
@@ -107,7 +108,7 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
       {fields.map((field) => (
         <div key={field.name} className={styles.fieldGroup}>
           <label htmlFor={field.name} className={styles.fieldLabel}>
-            {field.name}
+            {getFieldLabel(field.name)}
             {field.required && <span className={styles.requiredIndicator}>*</span>}
             <span className={styles.fieldTypeIndicator}>
               <DisplaySchemaTag

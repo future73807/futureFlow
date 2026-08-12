@@ -53,9 +53,10 @@ export function TestRunButton(props: { disabled: boolean }) {
   const button =
     errorCount === 0 ? (
       <Button
+        aria-label="试运行"
         disabled={props.disabled}
         onClick={onTestRun}
-        icon={<IconPlay size="small" />}
+        icon={<IconPlay aria-hidden="true" size="small" />}
         className={styles.testrunSuccessButton}
       >
         试运行
@@ -63,10 +64,11 @@ export function TestRunButton(props: { disabled: boolean }) {
     ) : (
       <Badge count={errorCount} position="rightTop" type="danger">
         <Button
+          aria-label="试运行"
           type="danger"
           disabled={props.disabled}
           onClick={onTestRun}
-          icon={<IconPlay size="small" />}
+          icon={<IconPlay aria-hidden="true" size="small" />}
           className={styles.testrunErrorButton}
         >
             试运行

@@ -24,6 +24,7 @@ import { BreakNodeRegistry } from './break';
 import { BlockStartNodeRegistry } from './block-start';
 import { BlockEndNodeRegistry } from './block-end';
 import { MultiConditionNodeRegistry } from "./multi-condition";
+import { ImageNodeRegistry, TextNodeRegistry, VideoNodeRegistry } from './content';
 export { WorkflowNodeType } from './constants';
 
 export const nodeRegistries: FlowNodeRegistry[] = [
@@ -31,6 +32,9 @@ export const nodeRegistries: FlowNodeRegistry[] = [
   StartNodeRegistry,
   EndNodeRegistry,
   LLMNodeRegistry,
+  TextNodeRegistry,
+  ImageNodeRegistry,
+  VideoNodeRegistry,
   LoopNodeRegistry,
   CommentNodeRegistry,
   BlockStartNodeRegistry,

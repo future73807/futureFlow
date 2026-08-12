@@ -50,7 +50,7 @@ export class WorkflowRun {
   user: User;
 
   @Column({ type: 'varchar', default: 'pending' })
-  status: string; // pending / running / succeeded / failed
+  status: string; // pending / running / succeeded / failed / cancelled
 
   @Column({ type: 'jsonb', nullable: true })
   flowgramJson: Record<string, any>; // 原始 FlowGram JSON

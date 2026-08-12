@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { nanoid } from 'nanoid';
-
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
 import iconCode from '../../assets/icon-script.png';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
 let index = 0;
@@ -19,13 +18,13 @@ const defaultCode = `// 在这里，你可以使用 'params' 从节点获取输�
 // 以下是输出包含多种数据类型的 'ret' 对象的示例：
 // const ret = { "name": '小明', "hobbies": ["阅读", "旅行"] };
 
-async function main({ params }) {
+function main({ params }) {
   // 构建输出对象
   const ret = {
     key0: params.input + params.input, // 将输入参数 'input' 拼接两次
-    key1: ["hello", "world"], // 输出一个数组
+    key1: ["你好", "世界"], // 输出一个数组
     key2: { // 输出一个对象
-      key21: "hi"
+      key21: "示例"
     },
   };
 
@@ -46,10 +45,10 @@ export const CodeNodeRegistry: FlowNodeRegistry = {
   },
   onAdd() {
     return {
-      id: `code_${nanoid(5)}`,
+      id: createWorkflowNodeId('code'),
       type: 'code',
       data: {
-        title: `Code_${++index}`,
+        title: `代码执行 ${++index}`,
         inputsValues: {
           input: { type: 'constant', content: '' },
         },

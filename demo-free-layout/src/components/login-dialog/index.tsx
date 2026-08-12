@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Modal, Form, Button, Tabs, Typography, Toast } from '@douyinfe/semi-ui';
+import { Modal, Form, Button, Tabs, Toast } from '@douyinfe/semi-ui';
 import { IconUser, IconLock, IconMail } from '@douyinfe/semi-icons';
 import { login, register, isLoggedIn, getUser } from '../../utils/auth';
 
@@ -95,13 +95,6 @@ export const LoginDialog = ({
               登录
             </Button>
           </Form>
-          <Typography.Text
-            type="tertiary"
-            size="small"
-            style={{ display: 'block', marginTop: 12, textAlign: 'center' }}
-          >
-            演示账号: demo / demo123456
-          </Typography.Text>
         </Tabs.TabPane>
 
         <Tabs.TabPane tab="注册" itemKey="register">

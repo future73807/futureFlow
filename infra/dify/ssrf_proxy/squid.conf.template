@@ -1,0 +1,86 @@
+# Only containers on the local Compose networks may use this proxy.
+acl localnet src 10.0.0.0/8
+acl localnet src 100.64.0.0/10
+acl localnet src 172.16.0.0/12
+acl localnet src 192.168.0.0/16
+acl localnet src fc00::/7
+acl localnet src fe80::/10
+
+# Block destinations that can expose the host, Docker services, cloud metadata,
+# multicast ranges, or other non-public networks. Squid evaluates `dst` after
+# DNS resolution, so the rule also protects hostname-based private targets and
+# every redirected request that passes through the proxy.
+acl blocked_dst dst 0.0.0.0/8
+acl blocked_dst dst 10.0.0.0/8
+acl blocked_dst dst 100.64.0.0/10
+acl blocked_dst dst 127.0.0.0/8
+acl blocked_dst dst 169.254.0.0/16
+acl blocked_dst dst 172.16.0.0/12
+acl blocked_dst dst 192.0.0.0/24
+acl blocked_dst dst 192.168.0.0/16
+acl blocked_dst dst 198.18.0.0/15
+acl blocked_dst dst 224.0.0.0/4
+acl blocked_dst dst 240.0.0.0/4
+acl blocked_dst dst ::/128
+acl blocked_dst dst ::1/128
+acl blocked_dst dst fc00::/7
+acl blocked_dst dst fe80::/10
+acl blocked_dst dst ff00::/8
+acl blocked_domains dstdomain localhost .local .internal
+
+# Published native-media nodes call the host Gateway, which injects provider
+# credentials server-side. This is the sole private destination exception and
+# is constrained by exact hostname + exact port; provider secrets never enter
+# Dify or the canvas. The endpoint still requires a short-lived run token.
+acl media_gateway_host dstdomain -n ${MEDIA_GATEWAY_HOST}
+acl media_gateway_port port ${MEDIA_GATEWAY_PORT}
+
+# Some controlled desktop/container environments resolve public hostnames to
+# an egress proxy in 198.18.0.0/15. Keep the benchmark range blocked by
+# default, and only admit an explicitly allowlisted hostname through that
+# synthetic destination. IP-literal URLs never qualify for this exception.
+acl synthetic_dns_dst dst 198.18.0.0/15
+acl synthetic_dns_allowed_domains dstdomain -n ${SYNTHETIC_DNS_ALLOWED_DOMAINS}
+acl direct_ip_url url_regex -i ^[0-9]+(\.[0-9]+){3}:[0-9]+$
+acl direct_ip_url url_regex -i ^https?://([^/@]+@)?[0-9]+(\.[0-9]+){3}([:/]|$)
+acl direct_ip_url url_regex -i ^\[[0-9a-f:.]+\]:[0-9]+$
+acl direct_ip_url url_regex -i ^https?://([^/@]+@)?\[[0-9a-f:.]+\]([:/]|$)
+
+acl SSL_ports port 443
+acl SSL_ports port 1025-65535
+acl Safe_ports port 80
+acl Safe_ports port 21
+acl Safe_ports port 443
+acl Safe_ports port 70
+acl Safe_ports port 210
+acl Safe_ports port 1025-65535
+acl Safe_ports port 280
+acl Safe_ports port 488
+acl Safe_ports port 591
+acl Safe_ports port 777
+acl CONNECT method CONNECT
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localnet media_gateway_host media_gateway_port !direct_ip_url
+http_access deny blocked_domains
+# This narrow exception must stay between the domain deny-list and the
+# resolved-destination deny-list. `.invalid` is the safe Compose default.
+http_access allow localnet synthetic_dns_dst synthetic_dns_allowed_domains !direct_ip_url
+http_access deny blocked_dst
+http_access allow localhost manager
+http_access deny manager
+http_access allow localhost
+http_access allow localnet
+http_access deny all
+
+################################## Proxy Server ################################
+http_port ${HTTP_PORT}
+coredump_dir ${COREDUMP_DIR}
+refresh_pattern ^ftp: 1440 20% 10080
+refresh_pattern ^gopher: 1440 0% 1440
+refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
+refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+refresh_pattern \/Release(|\.gpg)$ 0 0% 0 refresh-ims
+refresh_pattern \/InRelease$ 0 0% 0 refresh-ims
+refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+refresh_pattern . 0 20% 4320

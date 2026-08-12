@@ -42,9 +42,10 @@ export const ProblemPanel = () => {
           {loading && <Spin size="small" style={{ lineHeight: '0' }} />}
         </div>
         <IconButton
+          aria-label="关闭问题检查"
           type="tertiary"
           theme="borderless"
-          icon={<IconClose />}
+          icon={<IconClose aria-hidden="true" />}
           onClick={() => closePanel()}
         />
       </div>
@@ -90,9 +91,10 @@ export const ProblemButton = () => {
   return (
     <Tooltip content="问题检查">
       <IconButton
+        aria-label="打开问题检查"
         type="tertiary"
         theme="borderless"
-        icon={<IconUploadError />}
+        icon={<IconUploadError aria-hidden="true" />}
         onClick={() => open()}
       />
     </Tooltip>

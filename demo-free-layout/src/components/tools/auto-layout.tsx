@@ -33,6 +33,7 @@ export const AutoLayout = () => {
   return (
     <Tooltip content={'自动布局'}>
       <IconButton
+        aria-label="自动布局"
         disabled={playground.config.readonly}
         type="tertiary"
         theme="borderless"

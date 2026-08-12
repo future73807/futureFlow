@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { nanoid } from 'nanoid';
 import {
   WorkflowNodeEntity,
   PositionSchema,
@@ -12,6 +11,7 @@ import {
 
 import { FlowNodeRegistry } from '../../typings';
 import iconLoop from '../../assets/icon-loop.jpg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -21,9 +21,10 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
   info: {
     icon: iconLoop,
     description:
-      '用于重复执行一系列任务，可设置迭代次数和逻辑。',
+      '串行处理字符串或数字数组，最多 20 项。',
   },
   meta: {
+    copyDisable: true,
     /**
      * Mark as subcanvas
      * 子画布标记
@@ -34,8 +35,8 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
      * 子画布默认大小设置
      */
     size: {
-      width: 424,
-      height: 244,
+      width: 760,
+      height: 520,
     },
     // autoResizeDisable: true,
     /**
@@ -78,15 +79,31 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
     // defaultPorts: [{ type: 'output', location: 'right' }, { type: 'input', location: 'left'}, { type: 'output', location: 'bottom', portID: 'bottom' }, { type: 'input', location: 'top', portID: 'top'}]
   },
   onAdd() {
+    const loopId = createWorkflowNodeId('loop');
+    const blockStartId = createWorkflowNodeId('block_start');
+    const codeId = createWorkflowNodeId('batch_code');
+    const blockEndId = createWorkflowNodeId('block_end');
     return {
-      id: `loop_${nanoid(5)}`,
+      id: loopId,
       type: WorkflowNodeType.Loop,
       data: {
-        title: `Loop_${++index}`,
+        title: `数组批处理 ${++index}`,
+        loopOutputs: {
+          result: { type: 'ref', content: [codeId, 'result'] },
+        },
+        outputs: {
+          type: 'object',
+          properties: {
+            result: {
+              type: 'array',
+              items: { type: 'number' },
+            },
+          },
+        },
       },
       blocks: [
         {
-          id: `block_start_${nanoid(5)}`,
+          id: blockStartId,
           type: WorkflowNodeType.BlockStart,
           meta: {
             position: {
@@ -97,16 +114,56 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
           data: {},
         },
         {
-          id: `block_end_${nanoid(5)}`,
+          id: codeId,
+          type: WorkflowNodeType.Code,
+          meta: {
+            position: {
+              x: 190,
+              y: 0,
+            },
+          },
+          data: {
+            title: '逐项处理',
+            inputsValues: {
+              item: { type: 'ref', content: [`${loopId}_locals`, 'item'] },
+              index: { type: 'ref', content: [`${loopId}_locals`, 'index'] },
+            },
+            inputs: {
+              type: 'object',
+              properties: {
+                item: { type: 'number', title: '当前项' },
+                index: { type: 'number', title: '序号' },
+              },
+            },
+            script: {
+              language: 'javascript',
+              content: `function main({ params }) {
+  return { result: params.item * 2 };
+}`,
+            },
+            outputs: {
+              type: 'object',
+              properties: {
+                result: { type: 'number', title: '处理结果' },
+              },
+            },
+          },
+        },
+        {
+          id: blockEndId,
           type: WorkflowNodeType.BlockEnd,
           meta: {
             position: {
-              x: 192,
+              x: 600,
               y: 0,
             },
           },
           data: {},
         },
+      ],
+      edges: [
+        { sourceNodeID: blockStartId, targetNodeID: codeId },
+        { sourceNodeID: codeId, targetNodeID: blockEndId },
       ],
     };
   },

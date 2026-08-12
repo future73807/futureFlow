@@ -34,6 +34,11 @@ export class AuthMiddleware implements NestMiddleware {
     // 1. 尝试 JWT 验证
     try {
       const payload = this.jwtService.verify(token);
+      // 媒体执行令牌只能由 MediaExecutionGuard 接收，不能当作普通用户
+      // 会话再次执行工作流或访问其他控制面接口。
+      if (payload?.type === 'media_execution') {
+        throw new UnauthorizedException('媒体执行令牌不能访问此接口');
+      }
       const user = await this.userRepository.findOne({
         where: { id: payload.sub },
       });

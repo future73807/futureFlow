@@ -1,0 +1,158 @@
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..f75d588e89df62a06c1507b5794d69ad8ccd0ba7 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -646,6 +646,9 @@ var LoopExecutor = class {
+     if (!loopArray || isNil(loopArray) || !Array.isArray(loopArray)) {
+       throw new Error('Loop "loopFor" is required');
+     }
++    if (loopArray.length > 20) {
++      throw new Error("数组批处理最多支持 20 项，输入不会被截断");
++    }
+     const loopArrayType = LoopArrayVariable.type;
+     if (loopArrayType !== WorkflowVariableType.Array) {
+       throw new Error('Loop "loopFor" must be an array');
+@@ -679,8 +682,13 @@ var LoopExecutor = class {
+     loopOutputNames.forEach((outputName) => {
+       const outputVariables = blockOutputs.map((blockOutput) => blockOutput[outputName]);
+       const outputTypes = outputVariables.map((fieldVariable) => fieldVariable.type);
+-      const itemsType = WorkflowRuntimeType.getArrayItemsType(outputTypes);
+-      const value = outputVariables.map((fieldVariable) => fieldVariable.value);
++      const booleanCompat = outputTypes.length > 0 && outputTypes.every(
++        (outputType) => outputType === WorkflowVariableType.Boolean
++      );
++      const itemsType = booleanCompat ? WorkflowVariableType.Number : WorkflowRuntimeType.getArrayItemsType(outputTypes);
++      const value = outputVariables.map(
++        (fieldVariable) => booleanCompat ? Number(Boolean(fieldVariable.value)) : fieldVariable.value
++      );
+       executionContext.runtime.variableStore.setVariable({
+         nodeID: loopNode.id,
+         key: outputName,
+@@ -697,7 +706,10 @@ var LoopExecutor = class {
+     const loopOutput = loopOutputNames.reduce(
+       (outputs, outputName) => ({
+         ...outputs,
+-        [outputName]: blockOutputs.map((blockOutput) => blockOutput[outputName].value)
++        [outputName]: blockOutputs.map((blockOutput) => {
++          const output = blockOutput[outputName];
++          return output.type === WorkflowVariableType.Boolean ? Number(Boolean(output.value)) : output.value;
++        })
+       }),
+       {}
+     );
+@@ -810,8 +810,7 @@ var HTTPExecutor = class {
+     const urlWithParams = this.buildUrlWithParams(url, params);
+     const requestOptions = {
+       method,
+-      headers: this.prepareHeaders(headers, bodyType),
+-      signal: AbortSignal.timeout(timeout)
++      headers: this.prepareHeaders(headers, bodyType)
+     };
+     if (method !== "GET" && method !== "HEAD" && body) {
+       requestOptions.body = this.prepareBody(body, bodyType);
+@@ -819,7 +818,12 @@ var HTTPExecutor = class {
+     let lastError = null;
+     for (let attempt = 0; attempt <= retryTimes; attempt++) {
+       try {
+-        const response = await fetch(urlWithParams, requestOptions);
++        // AbortSignal instances cannot be reused after a timed-out attempt.
++        // Create one per retry so a later request can actually reach the API.
++        const response = await fetch(urlWithParams, {
++          ...requestOptions,
++          signal: AbortSignal.timeout(timeout)
++        });
+         return response;
+       } catch (error) {
+         lastError = error;
+@@ -1506,7 +1510,11 @@ main({ params: __params__ });
+         const promiseState = context.getPromiseState(resultHandle);
+         if (promiseState.type === "fulfilled") {
+           rawResult = context.dump(promiseState.value);
+-          promiseState.value.dispose();
++          // QuickJS returns the original handle for synchronous values. Avoid
++          // disposing that handle twice in the finally block below.
++          if (promiseState.value !== resultHandle) {
++            promiseState.value.dispose();
++          }
+         } else if (promiseState.type === "rejected") {
+           const errMsg = context.dump(promiseState.error);
+           promiseState.error.dispose();
+diff --git a/dist/index.js b/dist/index.js
+index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..5e5ca2bda1eada7f9af280090fa9984326fb3310 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -687,6 +687,9 @@ var LoopExecutor = class {
+     if (!loopArray || (0, import_lodash_es.isNil)(loopArray) || !Array.isArray(loopArray)) {
+       throw new Error('Loop "loopFor" is required');
+     }
++    if (loopArray.length > 20) {
++      throw new Error("数组批处理最多支持 20 项，输入不会被截断");
++    }
+     const loopArrayType = LoopArrayVariable.type;
+     if (loopArrayType !== WorkflowVariableType.Array) {
+       throw new Error('Loop "loopFor" must be an array');
+@@ -720,8 +723,13 @@ var LoopExecutor = class {
+     loopOutputNames.forEach((outputName) => {
+       const outputVariables = blockOutputs.map((blockOutput) => blockOutput[outputName]);
+       const outputTypes = outputVariables.map((fieldVariable) => fieldVariable.type);
+-      const itemsType = WorkflowRuntimeType.getArrayItemsType(outputTypes);
+-      const value = outputVariables.map((fieldVariable) => fieldVariable.value);
++      const booleanCompat = outputTypes.length > 0 && outputTypes.every(
++        (outputType) => outputType === WorkflowVariableType.Boolean
++      );
++      const itemsType = booleanCompat ? WorkflowVariableType.Number : WorkflowRuntimeType.getArrayItemsType(outputTypes);
++      const value = outputVariables.map(
++        (fieldVariable) => booleanCompat ? Number(Boolean(fieldVariable.value)) : fieldVariable.value
++      );
+       executionContext.runtime.variableStore.setVariable({
+         nodeID: loopNode.id,
+         key: outputName,
+@@ -738,7 +747,10 @@ var LoopExecutor = class {
+     const loopOutput = loopOutputNames.reduce(
+       (outputs, outputName) => ({
+         ...outputs,
+-        [outputName]: blockOutputs.map((blockOutput) => blockOutput[outputName].value)
++        [outputName]: blockOutputs.map((blockOutput) => {
++          const output = blockOutput[outputName];
++          return output.type === WorkflowVariableType.Boolean ? Number(Boolean(output.value)) : output.value;
++        })
+       }),
+       {}
+     );
+@@ -851,8 +851,7 @@ var HTTPExecutor = class {
+     const urlWithParams = this.buildUrlWithParams(url, params);
+     const requestOptions = {
+       method,
+-      headers: this.prepareHeaders(headers, bodyType),
+-      signal: AbortSignal.timeout(timeout)
++      headers: this.prepareHeaders(headers, bodyType)
+     };
+     if (method !== "GET" && method !== "HEAD" && body) {
+       requestOptions.body = this.prepareBody(body, bodyType);
+@@ -860,7 +859,12 @@ var HTTPExecutor = class {
+     let lastError = null;
+     for (let attempt = 0; attempt <= retryTimes; attempt++) {
+       try {
+-        const response = await fetch(urlWithParams, requestOptions);
++        // AbortSignal instances cannot be reused after a timed-out attempt.
++        // Create one per retry so a later request can actually reach the API.
++        const response = await fetch(urlWithParams, {
++          ...requestOptions,
++          signal: AbortSignal.timeout(timeout)
++        });
+         return response;
+       } catch (error) {
+         lastError = error;
+@@ -1547,7 +1551,11 @@ main({ params: __params__ });
+         const promiseState = context.getPromiseState(resultHandle);
+         if (promiseState.type === "fulfilled") {
+           rawResult = context.dump(promiseState.value);
+-          promiseState.value.dispose();
++          // QuickJS returns the original handle for synchronous values. Avoid
++          // disposing that handle twice in the finally block below.
++          if (promiseState.value !== resultHandle) {
++            promiseState.value.dispose();
++          }
+         } else if (promiseState.type === "rejected") {
+           const errMsg = context.dump(promiseState.error);
+           promiseState.error.dispose();

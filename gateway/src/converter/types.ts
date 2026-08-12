@@ -5,22 +5,33 @@
 /** 输入值:支持常量和模板(可含变量插值) */
 export interface FlowInputValue {
   type: 'constant' | 'template' | 'ref';
-  content: string | number | boolean | string[];
+  content: string | number | boolean | string[] | number[] | boolean[] | Record<string, any>;
+}
+
+/** FlowGram 表单使用的 JSON Schema 子集。节点输出会包含默认值、数组项和嵌套对象。 */
+export interface FlowValueSchema {
+  type: string;
+  title?: string;
+  default?: unknown;
+  items?: FlowValueSchema;
+  properties?: Record<string, FlowValueSchema>;
+  required?: string[];
+  extra?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface FlowObjectSchema {
+  type: string;
+  required?: string[];
+  properties?: Record<string, FlowValueSchema>;
 }
 
 /** FlowGram 节点 data */
 export interface FlowNodeData {
   title: string;
   inputsValues?: Record<string, FlowInputValue>;
-  inputs?: {
-    type: string;
-    required?: string[];
-    properties?: Record<string, { type: string; extra?: Record<string, any> }>;
-  };
-  outputs?: {
-    type: string;
-    properties?: Record<string, { type: string }>;
-  };
+  inputs?: FlowObjectSchema;
+  outputs?: FlowObjectSchema;
   conditions?: Array<{
     key: string;
     value: {
@@ -41,6 +52,8 @@ export interface FlowNodeData {
       };
     }>;
   }>;
+  /** 各节点可声明自己的扩展配置，例如 api/script/body/authorization。 */
+  [key: string]: any;
 }
 
 /** FlowGram 节点 */
@@ -52,6 +65,10 @@ export interface FlowNodeJSON {
     [key: string]: any;
   };
   data: FlowNodeData;
+  /** 容器节点的子画布节点。首期数组批处理仅允许固定的三节点结构。 */
+  blocks?: FlowNodeJSON[];
+  /** 容器节点内部连线，与顶层 edges 使用相同结构。 */
+  edges?: FlowEdgeJSON[];
 }
 
 /** FlowGram 边 */
@@ -140,7 +157,7 @@ export interface DifyPromptItem {
 /** Dify 节点(外层) */
 export interface DifyNode {
   id: string;
-  type: 'custom';
+  type: 'custom' | 'custom-iteration-start';
   position: { x: number; y: number };
   positionAbsolute: { x: number; y: number };
   sourcePosition: 'right';
@@ -148,6 +165,13 @@ export interface DifyNode {
   width: number;
   height: number;
   data: DifyNodeDataBase & Record<string, any>;
+  /** Dify 子画布节点所属的 iteration 节点。 */
+  parentId?: string;
+  extent?: 'parent';
+  selected?: boolean;
+  draggable?: boolean;
+  selectable?: boolean;
+  zIndex?: number;
 }
 
 /** Dify 边 */
@@ -161,6 +185,7 @@ export interface DifyEdge {
   zIndex: number;
   data: {
     isInIteration: boolean;
+    iteration_id?: string;
     sourceType: string;
     targetType: string;
   };

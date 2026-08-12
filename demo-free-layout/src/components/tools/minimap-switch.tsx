@@ -16,6 +16,7 @@ export const MinimapSwitch = (props: {
   return (
     <Tooltip content="鸟瞰图">
       <IconButton
+        aria-label={minimapVisible ? '隐藏鸟瞰图' : '显示鸟瞰图'}
         type="tertiary"
         theme="borderless"
         icon={<UIIconMinimap visible={minimapVisible} />}

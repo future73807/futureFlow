@@ -234,3 +234,12 @@ textarea:focus-visible {
   color: #2563eb;
   font-size: 14px;
 }
+
+.canvas-add-node-action {
+  min-width: 112px;
+}
+
+.canvas-add-node-action .semi-button-content {
+  opacity: 1 !important;
+  visibility: visible !important;
+}

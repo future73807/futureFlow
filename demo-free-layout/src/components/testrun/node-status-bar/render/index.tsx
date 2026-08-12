@@ -21,7 +21,7 @@ interface NodeStatusRenderProps {
   report: NodeReport;
 }
 
-const msToSeconds = (ms: number): string => (ms / 1000).toFixed(2) + 's';
+const msToSeconds = (ms: number): string => (ms / 1000).toFixed(2) + ' 秒';
 const displayCount = 6;
 
 export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {

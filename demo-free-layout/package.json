@@ -33,6 +33,7 @@
     "@flowgram.ai/runtime-interface": "1.0.12",
     "@flowgram.ai/runtime-js": "1.0.12",
     "classnames": "^2.5.1",
+    "jszip": "3.10.1",
     "lodash-es": "^4.17.21",
     "nanoid": "^5.0.9",
     "react": "^18",
@@ -60,9 +61,9 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "exit 0",
-    "build:fast": "exit 0",
-    "build:watch": "exit 0",
+    "build": "cross-env MODE=app NODE_ENV=production rsbuild build",
+    "build:fast": "cross-env MODE=app NODE_ENV=production rsbuild build",
+    "build:watch": "cross-env MODE=app NODE_ENV=development rsbuild dev",
     "build:prod": "cross-env MODE=app NODE_ENV=production rsbuild build",
     "build:analyze": "BUNDLE_ANALYZE=true rsbuild build",
     "clean": "rimraf dist",
@@ -71,8 +72,8 @@
     "lint:fix": "eslint ./src --fix",
     "ts-check": "tsc --noEmit",
     "start": "cross-env NODE_ENV=development rsbuild dev --open",
-    "test": "exit",
-    "test:cov": "exit",
-    "watch": "exit 0"
+    "test": "tsc --noEmit",
+    "test:cov": "node -e \"console.error('尚未配置前端覆盖率测试，不能生成虚假覆盖率报告'); process.exit(1)\"",
+    "watch": "cross-env MODE=app NODE_ENV=development rsbuild dev"
   }
 }

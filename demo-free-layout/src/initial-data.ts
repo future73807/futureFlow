@@ -1,5 +1,5 @@
 /**
- * futureFlow 简化初始工作流:Start → LLM → End
+ * futureFlow 简化初始工作流：开始 → 大语言模型 → 结束
  * 这是 MVP 最小链路的画布初始状态
  */
 
@@ -17,12 +17,13 @@ export const initialData: FlowDocumentJSON = {
         },
       },
       data: {
-        title: 'Start',
+        title: '开始',
         outputs: {
           type: 'object',
           properties: {
             query: {
               type: 'string',
+              title: '用户输入',
               default: '你好,请介绍一下你自己。',
             },
           },
@@ -39,7 +40,7 @@ export const initialData: FlowDocumentJSON = {
         },
       },
       data: {
-        title: 'LLM_1',
+        title: '大语言模型 1',
         inputsValues: {
           modelName: {
             type: 'constant',
@@ -64,18 +65,22 @@ export const initialData: FlowDocumentJSON = {
           properties: {
             modelName: {
               type: 'string',
+              title: '模型名称',
             },
             temperature: {
               type: 'number',
+              title: '生成温度',
             },
             systemPrompt: {
               type: 'string',
+              title: '系统提示词',
               extra: {
                 formComponent: 'prompt-editor',
               },
             },
             prompt: {
               type: 'string',
+              title: '用户提示词',
               extra: {
                 formComponent: 'prompt-editor',
               },
@@ -87,6 +92,7 @@ export const initialData: FlowDocumentJSON = {
           properties: {
             result: {
               type: 'string',
+              title: '结果',
             },
           },
         },
@@ -102,7 +108,7 @@ export const initialData: FlowDocumentJSON = {
         },
       },
       data: {
-        title: 'End',
+        title: '结束',
         inputsValues: {
           result: {
             type: 'ref',
@@ -114,6 +120,7 @@ export const initialData: FlowDocumentJSON = {
           properties: {
             result: {
               type: 'string',
+              title: '结果',
             },
           },
         },
@@ -133,10 +140,6 @@ export const initialData: FlowDocumentJSON = {
   globalVariable: {
     type: 'object',
     required: [],
-    properties: {
-      userId: {
-        type: 'string',
-      },
-    },
+    properties: {},
   },
 };

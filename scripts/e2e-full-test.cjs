@@ -13,32 +13,69 @@
  * 用法：node scripts/e2e-full-test.cjs
  */
 
-const { spawn, execSync } = require('node:child_process');
+const { spawn, spawnSync, execSync } = require('node:child_process');
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { randomBytes } = require('node:crypto');
+const net = require('node:net');
+
+const randomSecret = () => randomBytes(32).toString('hex');
+const SKIP_UI = process.argv.includes('--skip-ui');
+
+function loadExistingEnv() {
+  const envPath = resolve(__dirname, '..', '.env');
+  if (!existsSync(envPath)) return;
+
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2].trim();
+    if (
+      value.length >= 2
+      && ((value.startsWith('"') && value.endsWith('"'))
+        || (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
+// Reuse the deployment's existing credentials and encryption keys. Explicit
+// environment variables still win, while missing values are generated below.
+loadExistingEnv();
 
 // ==================== 配置 ====================
 const CONFIG = {
   // 服务端口
   DIFY_API_PORT: 5001,
   DIFY_WEB_PORT: 8080,
-  GATEWAY_PORT: 3001,
-  FRONTEND_PORT: 3000,
+  GATEWAY_PORT: 3201,
+  FRONTEND_PORT: 3200,
   
   // Dify 配置
   DIFY_API_BASE: 'http://localhost:5001',
   DIFY_CONSOLE_BASE: 'http://localhost:5001/console/api',
-  ADMIN_EMAIL: 'admin@futureflow.ai',
-  ADMIN_PASSWORD: 'admin123456',
+  ADMIN_EMAIL: process.env.DIFY_ADMIN_EMAIL || 'admin-e2e@futureflow.local',
+  ADMIN_PASSWORD: process.env.DIFY_ADMIN_PASSWORD || randomSecret(),
   APP_NAME: 'futureFlow Bridge',
   
   // LLM 配置
-  LLM_API_KEY: process.env.LLM_API_KEY || '***REMOVED***',
+  LLM_API_KEY: process.env.LLM_API_KEY || '',
   LLM_API_HOST: process.env.LLM_API_HOST || 'https://api.longcat.chat/openai',
   
   // 网关配置
   GATEWAY_JWT_SECRET: 'e2e-test-secret-key-for-testing-only',
+  GATEWAY_ADMIN_USERNAME:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_USERNAME || 'futureflow-e2e-admin',
+  GATEWAY_ADMIN_EMAIL:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_EMAIL || 'futureflow-e2e-admin@futureflow.test',
+  GATEWAY_ADMIN_PASSWORD:
+    process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD ||
+    'futureflow-e2e-admin-secret-2026-08-09-strong',
   DIFY_KEY_ENCRYPTION_SECRET: 'e2e-encryption-secret-that-is-long-enough-1234567890',
+  DIFY_SECRET_KEY: process.env.DIFY_SECRET_KEY || randomSecret(),
+  DIFY_SANDBOX_API_KEY: process.env.DIFY_SANDBOX_API_KEY || randomSecret(),
   
   // 重试配置
   MAX_RETRIES: 30,
@@ -49,6 +86,58 @@ const CONFIG = {
 // ==================== 工具函数 ====================
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+function parseSseEvents(body) {
+  return String(body)
+    .split(/\r?\n\r?\n/)
+    .map((message) => message
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+    .map((jsonText) => JSON.parse(jsonText));
+}
+
+function assertPortAvailable(port) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', () => {
+      reject(new Error(`E2E port ${port} is already in use; stop the process you own on that port and retry.`));
+    });
+    probe.listen({ host: '127.0.0.1', port }, () => {
+      probe.close((error) => error ? reject(error) : resolve());
+    });
+  });
+}
+
+function stopOwnedProcess(child, name) {
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+
+  try {
+    if (process.platform === 'win32') {
+      const result = spawnSync(
+        'taskkill',
+        ['/PID', String(child.pid), '/T', '/F'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      if (result.error) throw result.error;
+      if (result.status !== 0 && child.exitCode === null && child.signalCode === null) {
+        throw new Error(`taskkill exited with status ${result.status}`);
+      }
+    } else {
+      process.kill(-child.pid, 'SIGTERM');
+    }
+    log('info', `${name} process stopped`);
+  } catch (error) {
+    try {
+      child.kill('SIGTERM');
+    } catch {}
+    log('warn', `Could not stop the complete ${name} process tree: ${error.message}`);
+  }
 }
 
 function log(level, message) {
@@ -273,6 +362,10 @@ async function step2_initDify() {
     DIFY_CONSOLE_TOKEN: token,
     DIFY_AUTO_BOOTSTRAP: 'true',
     DIFY_KEY_ENCRYPTION_SECRET: CONFIG.DIFY_KEY_ENCRYPTION_SECRET,
+    DIFY_ADMIN_EMAIL: CONFIG.ADMIN_EMAIL,
+    DIFY_ADMIN_PASSWORD: CONFIG.ADMIN_PASSWORD,
+    DIFY_SECRET_KEY: CONFIG.DIFY_SECRET_KEY,
+    DIFY_SANDBOX_API_KEY: CONFIG.DIFY_SANDBOX_API_KEY,
   });
   
   log('success', 'Dify initialization complete');
@@ -300,17 +393,17 @@ function updateEnvFile(updates) {
 // ==================== 步骤 3: 启动网关 ====================
 async function step3_startGateway() {
   log('info', 'Step 3: Starting gateway service...');
+  await assertPortAvailable(CONFIG.GATEWAY_PORT);
   
-  // 检查并安装依赖
+  // E2E 不隐式修改依赖树；依赖必须由调用方预先安装。
   const gatewayDir = resolve(process.cwd(), 'gateway');
   if (!existsSync(resolve(gatewayDir, 'node_modules'))) {
-    log('info', 'Installing gateway dependencies...');
-    await runCommand('npm install', { cwd: gatewayDir, timeout: 120000 });
+    throw new Error('Gateway dependencies are missing; run corepack pnpm install --frozen-lockfile first.');
   }
   
   // 构建网关
   log('info', 'Building gateway...');
-  await runCommand('npm run build', { cwd: gatewayDir, timeout: 120000 });
+  await runCommand('corepack pnpm --filter futureflow-gateway build', { timeout: 120000 });
   
   // 启动网关（后台）
   log('info', 'Starting gateway server...');
@@ -320,6 +413,10 @@ async function step3_startGateway() {
       ...process.env,
       GATEWAY_PORT: String(CONFIG.GATEWAY_PORT),
       GATEWAY_JWT_SECRET: CONFIG.GATEWAY_JWT_SECRET,
+      GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
+      GATEWAY_BOOTSTRAP_ADMIN_USERNAME: CONFIG.GATEWAY_ADMIN_USERNAME,
+      GATEWAY_BOOTSTRAP_ADMIN_EMAIL: CONFIG.GATEWAY_ADMIN_EMAIL,
+      GATEWAY_BOOTSTRAP_ADMIN_PASSWORD: CONFIG.GATEWAY_ADMIN_PASSWORD,
       DIFY_KEY_ENCRYPTION_SECRET: CONFIG.DIFY_KEY_ENCRYPTION_SECRET,
       DIFY_AUTO_BOOTSTRAP: 'true',
       NODE_ENV: 'production',
@@ -337,7 +434,7 @@ async function step3_startGateway() {
   
   gatewayProcess.stderr.on('data', (data) => {
     const output = data.toString().trim();
-    if (output.includes('Error') || error.includes('error')) {
+    if (/error/i.test(output)) {
       log('error', `Gateway error: ${output}`);
     }
   });
@@ -345,10 +442,106 @@ async function step3_startGateway() {
   gatewayProcess.unref();
   
   // 等待网关就绪
-  await waitForService(`http://localhost:${CONFIG.GATEWAY_PORT}/health`, 'Gateway', 30000);
+  await waitForService(`http://localhost:${CONFIG.GATEWAY_PORT}/healthz`, 'Gateway', 30000);
   log('success', 'Gateway started successfully');
   
   return gatewayProcess;
+}
+
+// ==================== UI 前端：由本次 E2E 独占启动 ====================
+async function startFrontendForUi() {
+  log('info', 'Starting the current frontend source for UI verification...');
+  await assertPortAvailable(CONFIG.FRONTEND_PORT);
+
+  const frontendDir = resolve(process.cwd(), 'demo-free-layout');
+  const rsbuildCli = resolve(
+    frontendDir,
+    'node_modules',
+    '@rsbuild',
+    'core',
+    'bin',
+    'rsbuild.js',
+  );
+  if (!existsSync(rsbuildCli)) {
+    throw new Error(
+      'Frontend dependencies are missing; run corepack pnpm install --frozen-lockfile first.',
+    );
+  }
+
+  let outputTail = '';
+  let spawnError = null;
+  const rememberOutput = (data) => {
+    outputTail = `${outputTail}${data.toString()}`.slice(-6000);
+  };
+
+  const frontendProcess = spawn(
+    process.execPath,
+    [rsbuildCli, 'dev', '--host', '127.0.0.1', '--port', String(CONFIG.FRONTEND_PORT)],
+    {
+      cwd: frontendDir,
+      env: {
+        ...process.env,
+        FRONTEND_PORT: String(CONFIG.FRONTEND_PORT),
+        PUBLIC_GATEWAY_URL: `http://127.0.0.1:${CONFIG.GATEWAY_PORT}`,
+        MODE: 'app',
+        NODE_ENV: 'development',
+        BROWSER: 'none',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+      windowsHide: true,
+    },
+  );
+  frontendProcess.stdout.on('data', rememberOutput);
+  frontendProcess.stderr.on('data', rememberOutput);
+  frontendProcess.on('error', (error) => {
+    spawnError = error;
+  });
+  frontendProcess.unref();
+
+  const frontendUrl = `http://127.0.0.1:${CONFIG.FRONTEND_PORT}/login`;
+  const startedAt = Date.now();
+  let lastError = 'not reachable yet';
+
+  try {
+    while (Date.now() - startedAt < 60000) {
+      if (spawnError) throw spawnError;
+      if (frontendProcess.exitCode !== null || frontendProcess.signalCode !== null) {
+        throw new Error(
+          `Frontend exited before becoming ready (exit ${frontendProcess.exitCode ?? frontendProcess.signalCode})`,
+        );
+      }
+
+      let response = null;
+      try {
+        response = await fetch(frontendUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000),
+        });
+      } catch (error) {
+        lastError = error.message;
+      }
+
+      if (response?.ok) {
+        const html = await response.text();
+        if (!/<title[^>]*>\s*futureFlow\s*<\/title>/i.test(html)) {
+          throw new Error(
+            `Unexpected page responded at ${frontendUrl}; refusing to test an unknown frontend`,
+          );
+        }
+        log('success', `Frontend is ready at ${frontendUrl}`);
+        return frontendProcess;
+      }
+      if (response) lastError = `HTTP ${response.status}`;
+      await sleep(500);
+    }
+
+    throw new Error(`Frontend did not become ready within 60000ms. Last error: ${lastError}`);
+  } catch (error) {
+    stopOwnedProcess(frontendProcess, 'Frontend');
+    const details = outputTail.trim();
+    throw new Error(details ? `${error.message}\nFrontend output:\n${details}` : error.message);
+  }
 }
 
 // ==================== 步骤 4: API 接口测试 ====================
@@ -359,8 +552,8 @@ async function step4_apiTests() {
   const results = [];
   
   // 测试 1: 健康检查
-  await runTest('GET /health', async () => {
-    const res = await fetch(`${BASE_URL}/health`);
+  await runTest('GET /healthz', async () => {
+    const res = await fetch(`${BASE_URL}/healthz`);
     if (!res.ok) throw new Error(`Status: ${res.status}`);
     return await res.json();
   }, results);
@@ -371,7 +564,10 @@ async function step4_apiTests() {
     const res = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'demo', password: 'demo123456' })
+      body: JSON.stringify({
+        account: CONFIG.GATEWAY_ADMIN_USERNAME,
+        password: CONFIG.GATEWAY_ADMIN_PASSWORD,
+      })
     });
     if (!res.ok) throw new Error(`Status: ${res.status}`);
     const data = await res.json();
@@ -491,8 +687,17 @@ async function step4_apiTests() {
     });
     if (!res.ok) throw new Error(`Status: ${res.status}`);
     const text = await res.text();
-    if (!text.includes('workflow_finished')) throw new Error('Workflow execution did not complete');
-    return { completed: true, length: text.length };
+    const events = parseSseEvents(text);
+    const finished = events.find((event) => event.event === 'workflow_finished');
+    if (!finished) throw new Error('Workflow stream ended without workflow_finished');
+    if (finished.data?.status !== 'succeeded') {
+      throw new Error(`Workflow failed: ${finished.data?.error || finished.data?.status || 'unknown'}`);
+    }
+    const failedNode = events.find(
+      (event) => event.event === 'node_finished' && event.data?.status !== 'succeeded',
+    );
+    if (failedNode) throw new Error(`Node failed: ${failedNode.data?.title || failedNode.data?.node_id}`);
+    return { completed: true, events: events.length, totalSteps: finished.data?.total_steps };
   }, results);
   
   // 测试 10: 获取工作流运行记录
@@ -580,29 +785,62 @@ async function runTest(name, testFn, results) {
   }
 }
 
+function findBrowserExecutable(playwright) {
+  const candidates = [
+    process.env.PLAYWRIGHT_EXECUTABLE_PATH,
+    playwright.chromium.executablePath(),
+    ...(process.platform === 'win32'
+      ? [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      ]
+      : process.platform === 'darwin'
+        ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ]
+        : [
+          '/usr/bin/google-chrome',
+          '/usr/bin/google-chrome-stable',
+          '/usr/bin/chromium',
+          '/usr/bin/chromium-browser',
+          '/snap/bin/chromium',
+        ]),
+  ];
+  return candidates.find((candidate) => candidate && existsSync(candidate)) || null;
+}
+
 // ==================== 步骤 5: UI 模拟测试 ====================
 async function step5_uiTests() {
   log('info', 'Step 5: Running UI simulation tests...');
   
-  // 检查是否有 Playwright
+  // UI 验收默认是全链路门禁；只有显式 --skip-ui 才能跳过。
   let playwright;
   try {
-    playwright = require('playwright');
+    playwright = require('playwright-core');
   } catch {
-    log('warn', 'Playwright not installed, skipping UI tests');
-    log('info', 'To install: npm install -g playwright && npx playwright install chromium');
-    return [];
+    throw new Error(
+      'UI 验收依赖 playwright-core，请先按锁文件安装项目依赖。',
+    );
+  }
+  const executablePath = findBrowserExecutable(playwright);
+  if (!executablePath) {
+    throw new Error(
+      '未找到可用于 UI 验收的 Chrome/Edge/Chromium；可通过 PLAYWRIGHT_EXECUTABLE_PATH 指定浏览器。',
+    );
   }
   
   const results = [];
-  const browser = await playwright.chromium.launch({ headless: true });
+  const browser = await playwright.chromium.launch({ headless: true, executablePath });
   const context = await browser.newContext();
   const page = await context.newPage();
   
   try {
     // 测试 1: 访问登录页
     await runUITest('Navigate to login page', async () => {
-      await page.goto(`http://localhost:${CONFIG.FRONTEND_PORT}/login`, { waitUntil: 'networkidle' });
+      await page.goto(`http://127.0.0.1:${CONFIG.FRONTEND_PORT}/login`, { waitUntil: 'networkidle' });
       const title = await page.title();
       if (!title) throw new Error('Page has no title');
       return { title };
@@ -610,8 +848,14 @@ async function step5_uiTests() {
     
     // 测试 2: 填写登录表单
     await runUITest('Fill login form', async () => {
-      await page.fill('input[name="account"], input[placeholder*="用户名"], input[placeholder*="账号"]', 'demo');
-      await page.fill('input[name="password"], input[type="password"]', 'demo123456');
+      await page.fill(
+        'input[name="account"], input[placeholder*="用户名"], input[placeholder*="账号"]',
+        CONFIG.GATEWAY_ADMIN_USERNAME,
+      );
+      await page.fill(
+        'input[name="password"], input[type="password"]',
+        CONFIG.GATEWAY_ADMIN_PASSWORD,
+      );
       return { filled: true };
     }, results);
     
@@ -658,7 +902,9 @@ async function step5_uiTests() {
       await page.click('text=Dify');
       await page.waitForTimeout(1000);
       const content = await page.content();
-      return { hasDifyInfo: content.includes('Dify') || content.includes('dify') };
+      const hasDifyInfo = content.includes('Dify') || content.includes('dify');
+      if (!hasDifyInfo) throw new Error('Dify status information not found');
+      return { hasDifyInfo: true };
     }, results);
     
   } finally {
@@ -690,15 +936,29 @@ async function main() {
   
   const startTime = Date.now();
   let gatewayProcess = null;
+  let frontendProcess = null;
+
+  if (!CONFIG.LLM_API_KEY) {
+    throw new Error('LLM_API_KEY is required for the full end-to-end test');
+  }
+  Object.assign(process.env, {
+    DIFY_ADMIN_EMAIL: CONFIG.ADMIN_EMAIL,
+    DIFY_ADMIN_PASSWORD: CONFIG.ADMIN_PASSWORD,
+    DIFY_SECRET_KEY: CONFIG.DIFY_SECRET_KEY,
+    DIFY_SANDBOX_API_KEY: CONFIG.DIFY_SANDBOX_API_KEY,
+  });
   
   try {
+    // Fail fast instead of silently reusing an unrelated process on the UI port.
+    if (!SKIP_UI) await assertPortAvailable(CONFIG.FRONTEND_PORT);
+
     // Step 1: 启动容器
     await step1_startContainers();
     
     // Step 2: 初始化 Dify
     const { appId, apiKey, token } = await step2_initDify();
     log('info', `Dify App ID: ${appId}`);
-    log('info', `Dify API Key: ${apiKey?.substring(0, 20)}...`);
+    log('info', 'Dify Service API key created');
     
     // Step 3: 启动网关
     gatewayProcess = await step3_startGateway();
@@ -706,32 +966,31 @@ async function main() {
     // Step 4: API 测试
     const apiResults = await step4_apiTests();
     
-    // Step 5: UI 测试（可选）
-    let uiResults = [];
-    try {
-      uiResults = await step5_uiTests();
-    } catch (err) {
-      log('warn', `UI tests skipped: ${err.message}`);
-    }
+    // Step 5: UI 测试。只允许调用方显式选择 API-only 模式。
+    if (!SKIP_UI) frontendProcess = await startFrontendForUi();
+    const uiResults = SKIP_UI ? null : await step5_uiTests();
+    if (SKIP_UI) log('warn', 'UI tests explicitly skipped by --skip-ui (API-only mode)');
     
     // 汇总结果
     const totalTime = Date.now() - startTime;
     const apiPassed = apiResults.filter(r => r.status === 'PASS').length;
     const apiTotal = apiResults.length;
-    const uiPassed = uiResults.filter(r => r.status === 'PASS').length;
-    const uiTotal = uiResults.length;
+    const uiPassed = uiResults?.filter(r => r.status === 'PASS').length || 0;
+    const uiTotal = uiResults?.length || 0;
     
     log('info', '========================================');
     log('info', 'TEST RESULTS SUMMARY');
     log('info', '========================================');
     log('info', `API Tests:  ${apiPassed}/${apiTotal} passed`);
-    if (uiTotal > 0) {
+    if (uiResults === null) {
+      log('warn', 'UI Tests:   skipped explicitly');
+    } else {
       log('info', `UI Tests:   ${uiPassed}/${uiTotal} passed`);
     }
     log('info', `Total Time: ${(totalTime / 1000).toFixed(1)}s`);
     
-    if (apiPassed === apiTotal && (uiTotal === 0 || uiPassed === uiTotal)) {
-      log('success', 'ALL TESTS PASSED! ✨');
+    if (apiPassed === apiTotal && (uiResults === null || (uiTotal > 0 && uiPassed === uiTotal))) {
+      log('success', uiResults === null ? 'API TESTS PASSED (UI skipped explicitly)' : 'ALL TESTS PASSED! ✨');
       return 0;
     } else {
       log('error', 'SOME TESTS FAILED');
@@ -744,10 +1003,9 @@ async function main() {
     return 1;
   } finally {
     // 清理
+    if (frontendProcess) stopOwnedProcess(frontendProcess, 'Frontend');
     if (gatewayProcess) {
-      try {
-        process.kill(-gatewayProcess.pid);
-      } catch {}
+      stopOwnedProcess(gatewayProcess, 'Gateway');
     }
   }
 }

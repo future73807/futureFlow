@@ -26,11 +26,15 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = this.jwtService.verify(token);
+      if (payload?.type === 'media_execution') {
+        throw new UnauthorizedException('媒体执行令牌不能访问此接口');
+      }
       const user = await this.authService.validateJwtPayload(payload);
       if (!user) {
         throw new UnauthorizedException('用户不存在或已被封禁');
       }
       req.user = user;
+      req.auth = payload;
       return true;
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;

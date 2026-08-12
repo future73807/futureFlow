@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 
 import { FlowNodeRegistry } from '../../typings';
 import iconCondition from '../../assets/icon-condition.svg';
+import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -30,7 +31,7 @@ export const ConditionNodeRegistry: FlowNodeRegistry = {
   formMeta,
   onAdd() {
     return {
-      id: `condition_${nanoid(5)}`,
+      id: createWorkflowNodeId('condition'),
       type: 'condition',
       data: {
         title: '条件分支',

@@ -7,13 +7,21 @@ import { useLayoutEffect } from 'react';
 
 import { nanoid } from 'nanoid';
 import { Field, FieldArray, I18n, WorkflowNodePortsData } from '@flowgram.ai/free-layout-editor';
-import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials';
+import {
+  ConditionProvider,
+  ConditionRow,
+  ConditionRowValueType,
+} from '@flowgram.ai/form-materials';
 import { Button, Select, Space } from '@douyinfe/semi-ui';
 import { IconCrossCircleStroked, IconDelete, IconPlus } from '@douyinfe/semi-icons';
 
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { Feedback, FormItem } from '../../../form-components';
 import { ConditionBranch, ConditionBranchLogic, ConditionPort } from './styles';
+import {
+  CHINESE_CONDITION_OPS,
+  FUTUREFLOW_CONDITION_RULES,
+} from '../../condition/condition-ops';
 
 interface ConditionValue {
   key: string;
@@ -36,9 +44,10 @@ export function ConditionInputs() {
   }, [node]);
 
   return (
-    <FieldArray name="branch">
-      {({ field: conditions }) => (
-        <>
+    <ConditionProvider ops={CHINESE_CONDITION_OPS} rules={FUTUREFLOW_CONDITION_RULES}>
+      <FieldArray name="branch">
+        {({ field: conditions }) => (
+          <>
           {conditions.map((branch, index) => (
             <Field<BranchItem> name={branch.name} key={branch.name}>
               {({ field, fieldState }) => (
@@ -178,8 +187,9 @@ export function ConditionInputs() {
               </Button>
             </div>
           )}
-        </>
-      )}
-    </FieldArray>
+          </>
+        )}
+      </FieldArray>
+    </ConditionProvider>
   );
 }

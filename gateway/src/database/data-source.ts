@@ -14,6 +14,10 @@ import { InitialPlatformSchema1721952000000 } from './migrations/1721952000000-i
 import { AddWorkflowVersionHistory1722038400000 } from './migrations/1722038400000-add-workflow-version-history';
 import { AddDifyIntegration1722124800000 } from './migrations/1722124800000-add-dify-integration';
 import { AddDifyWorkflowIsolation1722211200000 } from './migrations/1722211200000-add-dify-workflow-isolation';
+import { MediaCredential } from './entities/media-credential.entity';
+import { MediaJob } from './entities/media-job.entity';
+import { MediaAsset } from './entities/media-asset.entity';
+import { AddNativeMedia1722297600000 } from './migrations/1722297600000-add-native-media';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -32,12 +36,17 @@ loadEnvFile(resolve(process.cwd(), '..', '.futureflow.runtime.env'));
 loadEnvFile(resolve(process.cwd(), '.env'));
 loadEnvFile(resolve(process.cwd(), '..', '.env'));
 
+const postgresPassword = process.env.POSTGRES_PASSWORD;
+if (!postgresPassword) {
+  throw new Error('POSTGRES_PASSWORD is required; run pnpm env:init first');
+}
+
 export default new DataSource({
   type: 'postgres',
   host: process.env.POSTGRES_HOST || 'localhost',
   port: Number.parseInt(process.env.POSTGRES_PORT || '5432', 10),
   username: process.env.POSTGRES_USER || 'futureflow',
-  password: process.env.POSTGRES_PASSWORD || 'futureflow123',
+  password: postgresPassword,
   database: process.env.POSTGRES_DB || 'futureflow',
   entities: [
     User,
@@ -49,12 +58,16 @@ export default new DataSource({
     WorkflowTemplate,
     WorkflowTrigger,
     DifyIntegration,
+    MediaCredential,
+    MediaJob,
+    MediaAsset,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
     AddWorkflowVersionHistory1722038400000,
     AddDifyIntegration1722124800000,
     AddDifyWorkflowIsolation1722211200000,
+    AddNativeMedia1722297600000,
   ],
   synchronize: false,
   logging: false,

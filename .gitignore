@@ -1,8 +1,13 @@
 # Dependencies
 node_modules/
+.eslintcache
+.pnpm-store/
+.pnpm-store-recovery/
+.codex-tmp/
 
 # Build output
 dist/
+*.tsbuildinfo
 build/
 .awcache/
 
@@ -28,6 +33,9 @@ npm-debug.log*
 # Database
 *.sqlite
 *.db
+
+# Runtime-generated media assets
+.futureflow-media/
 
 # Docker volumes
 dify/volumes/

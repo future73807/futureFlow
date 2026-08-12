@@ -43,14 +43,16 @@ export class WorkflowExecutionGuardService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        // pg-mem does not implement row locks. Falling back keeps tests useful;
-        // real PostgreSQL always takes this lock before the two counts below.
+        // Production PostgreSQL must always take this lock before the two counts
+        // below. The only permitted fallback is pg-mem explicitly reporting that
+        // its test adapter cannot implement row locks.
         try {
           await manager.findOne(User, {
             where: { id: options.userId },
             lock: { mode: 'pessimistic_write' },
           });
-        } catch {
+        } catch (error) {
+          if (!this.isPgMemLockUnsupported(error)) throw error;
           await manager.findOne(User, { where: { id: options.userId } });
         }
 
@@ -135,5 +137,26 @@ export class WorkflowExecutionGuardService {
 
   private isUniqueViolation(error: any): boolean {
     return error?.code === '23505' || /duplicate key|unique constraint/i.test(error?.message || '');
+  }
+
+  private isPgMemLockUnsupported(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const details = error as {
+      message?: unknown;
+      stack?: unknown;
+      data?: { hint?: unknown; error?: unknown };
+    };
+    const evidence = [
+      details.message,
+      details.stack,
+      details.data?.hint,
+      details.data?.error,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+
+    return /\bpg-mem\b/i.test(evidence)
+      && /(?:pessimistic(?:[_\s-]?write)?|for\s+update|row\s+locks?|locking)/i.test(evidence)
+      && /(?:not\s+supported|not\s+implemented|does\s+not\s+implement)/i.test(evidence);
   }
 }
