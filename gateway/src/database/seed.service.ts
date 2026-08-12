@@ -82,8 +82,8 @@ export class SeedService implements OnModuleInit {
         '启用管理员初始化时必须提供用户名、邮箱和密码',
       );
     }
-    if (password.length < 32 || /change-me|replace-with/i.test(password)) {
-      throw new Error('管理员初始化密码必须至少 32 个字符且不能使用示例密码');
+    if (password.length < 8 || /change-me|replace-with/i.test(password)) {
+      throw new Error('管理员初始化密码必须至少 8 个字符且不能使用示例密码');
     }
 
     const existingAdmin = await this.userRepo.findOne({

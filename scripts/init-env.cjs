@@ -10,7 +10,6 @@ const examplePath = resolve(root, configuredExamplePath || '.env.example');
 const envDisplayName = configuredEnvPath ? envPath : '.env';
 const secretNames = [
   'GATEWAY_JWT_SECRET',
-  'GATEWAY_BOOTSTRAP_ADMIN_PASSWORD',
   'DIFY_KEY_ENCRYPTION_SECRET',
   'DIFY_SANDBOX_API_KEY',
   'DIFY_ADMIN_PASSWORD',
@@ -27,6 +26,7 @@ const settingDefaults = {
   GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
   GATEWAY_BOOTSTRAP_ADMIN_USERNAME: 'admin',
   GATEWAY_BOOTSTRAP_ADMIN_EMAIL: 'admin@futureflow.local',
+  GATEWAY_BOOTSTRAP_ADMIN_PASSWORD: 'futureFlow@',
   DIFY_AUTO_BOOTSTRAP: 'true',
   DIFY_MANAGED_BRIDGE: 'true',
   DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS: '.invalid',
@@ -115,6 +115,21 @@ for (const secretName of secretNames) {
   const result = ensureSecret(content, secretName);
   content = result.content;
   if (result.changed) repaired.push(secretName);
+}
+// The futureFlow admin password is a fixed local default so users only need to
+// fill in the model key. A real password already present in .env is preserved;
+// only the old example placeholder is replaced.
+const adminPasswordPattern = /^(GATEWAY_BOOTSTRAP_ADMIN_PASSWORD=)([^\r\n]*)$/m;
+const adminPasswordMatch = content.match(adminPasswordPattern);
+if (
+  adminPasswordMatch &&
+  (!adminPasswordMatch[2].trim() || placeholderPattern.test(adminPasswordMatch[2]))
+) {
+  content = content.replace(
+    adminPasswordPattern,
+    'GATEWAY_BOOTSTRAP_ADMIN_PASSWORD=futureFlow@',
+  );
+  repaired.push('GATEWAY_BOOTSTRAP_ADMIN_PASSWORD');
 }
 const databaseSecretsNeedingMigration = [];
 for (const secretName of databaseSecretNames) {

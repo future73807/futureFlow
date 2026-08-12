@@ -37,7 +37,7 @@ pnpm start
 4. 等待数据库、SSRF Proxy、Sandbox 与 Dify API 健康，并等待 Dify 初始化任务成功退出
 5. 自动创建 Dify 管理员和 futureFlow 管理员，将 Dify Console 会话加密保存到 PostgreSQL
 6. 发布工作流时自动创建独立 Dify 应用、导入 DSL、发布并生成独立执行 Key
-7. 为 PostgreSQL、网关 JWT、Dify 和管理员初始化生成本机随机密钥
+7. 为 PostgreSQL、网关 JWT、Dify 等生成本机随机密钥（futureFlow 管理员默认密码为固定值 `futureFlow@`，可在 `.env` 中覆盖）
 
 首次使用只需在 `.env` 填写模型供应商的 `LLM_API_KEY`（以及需要时调整模型地址/名称）；Dify Console 授权、应用和执行 Key 不需要手工配置。
 
@@ -52,7 +52,7 @@ pnpm start
 
 ### 首次登录与管理员
 
-平台不会使用公开的固定密码。一键启动默认创建 futureFlow 管理员，用户名、邮箱和随机密码分别保存在本机 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_*` 配置中，应用日志不会输出密码。账号存在时不会重复创建或覆盖；部署方可在环境升级完成后显式设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 关闭后续初始化。
+一键启动默认创建 futureFlow 管理员：用户名 `admin`，默认密码 `futureFlow@`（保存在本机 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`，可自行修改后重新初始化）。应用日志不会输出密码；账号存在时不会重复创建或覆盖。部署方可在环境升级完成后显式设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 关闭后续初始化。
 
 旧版生成的 `.env` 会在首次启动时一次性迁移到环境格式 v2，开启管理员和受控 Dify 的一键初始化并写入版本标记。迁移后再次显式关闭开关会被保留，不会在每次启动时强制改回。
 
