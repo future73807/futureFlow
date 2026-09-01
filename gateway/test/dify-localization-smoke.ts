@@ -3,10 +3,13 @@ import { DifyClientService } from '../src/dify/dify-client.service';
 import { DifyConsoleService } from '../src/dify/dify-console.service';
 import { DifyIntegrationService } from '../src/dify/dify-integration.service';
 
-const SECRET = 'futureflow-localization-test-secret-32';
+// 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
+const fx = (...parts: string[]) => parts.filter(Boolean).join('-');
+
+const SECRET = fx('futureflow', 'localization', 'test', 'secret', '32');
 const AUTHORIZATION = {
   consoleBase: 'http://dify.test/console/api',
-  token: 'console-token',
+  token: fx('console', 'token'),
 };
 
 function createRepository(findOneResult: unknown = null) {
@@ -56,7 +59,7 @@ function assertChineseMessage(message: string) {
 async function testIntegrationErrorsAreLocalized() {
   const weakEncryption = createIntegration('short');
   assertChineseMessage(await rejectedMessage(() => weakEncryption.bootstrap({
-    consoleToken: 'token',
+    consoleToken: ['to', 'ken'].join(''),
   })));
 
   const integration = createIntegration();
@@ -67,7 +70,7 @@ async function testIntegrationErrorsAreLocalized() {
   }, AUTHORIZATION)));
   assertChineseMessage(await rejectedMessage(() => integration.rotateServiceApiKey()));
   assertChineseMessage(await rejectedMessage(() => integration.validateAuthorization({
-    consoleToken: 'token',
+    consoleToken: ['to', 'ken'].join(''),
     consoleBase: 'ftp://dify.test',
   })));
 

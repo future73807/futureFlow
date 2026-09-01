@@ -20,6 +20,8 @@ const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 
 const randomSecret = () => randomBytes(32).toString('hex');
+// 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
+const e2eSecret = (name, fallbackLen) => process.env[name] || randomBytes(fallbackLen).toString('hex');
 const SKIP_UI = process.argv.includes('--skip-ui');
 
 function loadExistingEnv() {
@@ -65,15 +67,15 @@ const CONFIG = {
   LLM_API_HOST: process.env.LLM_API_HOST || 'https://api.longcat.chat/openai',
   
   // 网关配置
-  GATEWAY_JWT_SECRET: 'e2e-test-secret-key-for-testing-only',
+  GATEWAY_JWT_SECRET: e2eSecret('GATEWAY_JWT_SECRET', 32),
   GATEWAY_ADMIN_USERNAME:
     process.env.GATEWAY_BOOTSTRAP_ADMIN_USERNAME || 'futureflow-e2e-admin',
   GATEWAY_ADMIN_EMAIL:
     process.env.GATEWAY_BOOTSTRAP_ADMIN_EMAIL || 'futureflow-e2e-admin@futureflow.test',
   GATEWAY_ADMIN_PASSWORD:
     process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD ||
-    'futureflow-e2e-admin-secret-2026-08-09-strong',
-  DIFY_KEY_ENCRYPTION_SECRET: 'e2e-encryption-secret-that-is-long-enough-1234567890',
+    e2eSecret('GATEWAY_BOOTSTRAP_ADMIN_PASSWORD', 24),
+  DIFY_KEY_ENCRYPTION_SECRET: e2eSecret('DIFY_KEY_ENCRYPTION_SECRET', 32),
   DIFY_SECRET_KEY: process.env.DIFY_SECRET_KEY || randomSecret(),
   DIFY_SANDBOX_API_KEY: process.env.DIFY_SANDBOX_API_KEY || randomSecret(),
   

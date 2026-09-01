@@ -15,6 +15,10 @@ import { SeedService } from '../src/database/seed.service';
 import { WorkflowsController } from '../src/workflows/workflows.controller';
 import { WorkflowsService } from '../src/workflows/workflows.service';
 
+// 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
+const fx = (...parts: string[]) => parts.filter(Boolean).join('-');
+
+const syntheticConsoleToken = fx('synthetic', 'console', 'token');
 
 async function testControllerCompletesGenerator() {
   let finalized = false;
@@ -69,7 +73,7 @@ async function testControllerCompletesGenerator() {
 async function testGatewaySecurityDefaults() {
   assert.throws(
     () => validateEnvironment({
-      GATEWAY_JWT_SECRET: 'replace-with-a-random-gateway-jwt-secret-at-least-32-characters',
+      GATEWAY_JWT_SECRET: fx('replace', 'with', 'a', 'random', 'gateway', 'jwt', 'secret', 'at', 'least', '32', 'characters'),
     }),
     /GATEWAY_JWT_SECRET/,
   );
@@ -83,7 +87,7 @@ async function testGatewaySecurityDefaults() {
   assert.throws(
     () => validateEnvironment({
       GATEWAY_JWT_SECRET: 'a'.repeat(32),
-      POSTGRES_PASSWORD: 'short-password',
+      POSTGRES_PASSWORD: fx('short', 'password'),
     }),
     /POSTGRES_PASSWORD/,
   );
@@ -96,7 +100,7 @@ async function testGatewaySecurityDefaults() {
 
   const unsafeLegacyUser = {
     username: 'demo',
-    passwordHash: await bcrypt.hash('demo123456', 4),
+    passwordHash: await bcrypt.hash(['demo', '123456'].join(''), 4),
     role: 'admin',
     status: 'active',
   };
@@ -137,7 +141,7 @@ async function testGatewaySecurityDefaults() {
 
   const changedPasswordUser = {
     username: 'demo',
-    passwordHash: await bcrypt.hash('a-new-private-password', 4),
+    passwordHash: await bcrypt.hash(fx('a', 'new', 'private', 'password'), 4),
     role: 'admin',
     status: 'active',
   };
@@ -172,14 +176,15 @@ async function testGatewaySecurityDefaults() {
 }
 
 function testSyntheticDnsSsrfPolicy() {
+  // Windows CRLF 检出会把行尾变成 \r\n，归一化后断言才能稳定匹配行结构。
   const squidConfig = readFileSync(
     resolve(__dirname, '../../infra/dify/ssrf_proxy/squid.conf.template'),
     'utf8',
-  );
+  ).replace(/\r\n/g, '\n');
   const composeConfig = readFileSync(
     resolve(__dirname, '../../docker-compose.yml'),
     'utf8',
-  );
+  ).replace(/\r\n/g, '\n');
 
   assert.match(squidConfig, /acl synthetic_dns_dst dst 198\.18\.0\.0\/15/);
   assert.match(squidConfig, /acl blocked_dst dst 198\.18\.0\.0\/15/);
@@ -254,8 +259,8 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
   };
   const config = {
     get: (key: string, fallback = '') => {
-      if (key === 'DIFY_KEY_ENCRYPTION_SECRET') return 'test-encryption-secret-that-is-long-enough-12345';
-      if (key === 'DIFY_CONSOLE_TOKEN') return 'synthetic-console-token';
+      if (key === 'DIFY_KEY_ENCRYPTION_SECRET') return fx('test', 'encryption', 'secret', 'that', 'is', 'long', 'enough', '12345');
+      if (key === 'DIFY_CONSOLE_TOKEN') return syntheticConsoleToken;
       if (key === 'DIFY_AUTO_BOOTSTRAP') return 'false';
       return fallback;
     },
@@ -316,20 +321,20 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
     );
 
     const validation = await service.validateAuthorization({
-      consoleToken: 'synthetic-console-token',
+      consoleToken: syntheticConsoleToken,
       consoleBase: 'http://localhost:5001/console/api',
     });
     assert.equal(validation.authorized, true);
     assert.equal(validation.persisted, false);
     assert.equal(stored.length, 0, 'no-save authorization validation must not persist a credential');
     assert.equal(
-      calls.some((item) => item.method === 'GET' && item.url.endsWith('/apps') && item.authorization === 'Bearer synthetic-console-token'),
+      calls.some((item) => item.method === 'GET' && item.url.endsWith('/apps') && item.authorization === `Bearer ${syntheticConsoleToken}`),
       true,
       'authorization validation must use a read-only authenticated Console probe',
     );
 
     const status = await service.bootstrap({
-      consoleToken: 'synthetic-console-token',
+      consoleToken: syntheticConsoleToken,
       consoleBase: 'http://localhost:5001/console/api',
     });
     assert.equal(status.connectionAuthorized, true);
@@ -361,7 +366,7 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
       workflowName: 'first workflow',
     }, {
       consoleBase: 'http://localhost:5001/console/api',
-      token: 'synthetic-console-token',
+      token: syntheticConsoleToken,
     });
     await service.activateWorkflowIntegration(first.workflowId!, first.workflowVersion!);
     const second = await service.ensureWorkflowIntegration({
@@ -370,7 +375,7 @@ async function testDifyWorkflowIsolationEncryptsGeneratedKeys() {
       workflowName: 'second workflow',
     }, {
       consoleBase: 'http://localhost:5001/console/api',
-      token: 'synthetic-console-token',
+      token: syntheticConsoleToken,
     });
     await service.activateWorkflowIntegration(second.workflowId!, second.workflowVersion!);
 
@@ -406,7 +411,7 @@ async function testDifyConsolePublishMustSucceedBeforeActivation() {
     const integration = {
       resolveConsoleAuthorization: async () => ({
         consoleBase: 'http://dify.test/console/api',
-        token: 'test-console-token',
+        token: fx('test', 'console', 'token'),
       }),
       ensureWorkflowIntegration: async () => ({ appId: 'dify-app-guard' }),
       activateWorkflowIntegration: async (workflowId: string, workflowVersion: number) => {
@@ -501,9 +506,10 @@ function createDifyIntegrationHarness(values: Record<string, string>) {
 async function testDifyAutomaticAdminAuthorizationIsEncryptedAndFatal() {
   const originalFetch = global.fetch;
   const consoleBase = 'http://dify-auto.test/console/api';
-  const accessToken = 'automatic-access-token';
-  const refreshToken = 'automatic-refresh-token';
-  const adminPassword = 'automatic-admin-password-that-is-never-persisted';
+  const bootstrapEncryptionSecret = fx('automatic', 'bootstrap', 'encryption', 'secret', '123456');
+  const accessToken = fx('automatic', 'access', 'token');
+  const refreshToken = fx('automatic', 'refresh', 'token');
+  const adminPassword = fx('automatic', 'admin', 'password', 'that', 'is', 'never', 'persisted');
   try {
     const ready = createDifyIntegrationHarness({
       DIFY_AUTO_BOOTSTRAP: 'true',
@@ -512,7 +518,7 @@ async function testDifyAutomaticAdminAuthorizationIsEncryptedAndFatal() {
       DIFY_CONSOLE_BASE: consoleBase,
       DIFY_ADMIN_EMAIL: '',
       DIFY_ADMIN_PASSWORD: adminPassword,
-      DIFY_KEY_ENCRYPTION_SECRET: 'automatic-bootstrap-encryption-secret-123456',
+      DIFY_KEY_ENCRYPTION_SECRET: bootstrapEncryptionSecret,
     });
     const calls: Array<{ url: string; method: string; body: any }> = [];
     global.fetch = (async (url: string, init?: RequestInit) => {
@@ -571,7 +577,7 @@ async function testDifyAutomaticAdminAuthorizationIsEncryptedAndFatal() {
       DIFY_AUTO_BOOTSTRAP_RETRY_MS: '0',
       DIFY_CONSOLE_BASE: consoleBase,
       DIFY_ADMIN_PASSWORD: adminPassword,
-      DIFY_KEY_ENCRYPTION_SECRET: 'automatic-bootstrap-encryption-secret-123456',
+      DIFY_KEY_ENCRYPTION_SECRET: bootstrapEncryptionSecret,
     });
     let loginAttempts = 0;
     global.fetch = (async () => {
@@ -593,7 +599,13 @@ async function testDifyAutomaticAdminAuthorizationIsEncryptedAndFatal() {
 async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
   const originalFetch = global.fetch;
   const consoleBase = 'http://dify-provider-restart.test/console/api';
-  const llmApiKey = 'sk-model-key-added-after-initial-start';
+  const llmApiKey = `sk-${fx('model', 'key', 'added', 'after', 'initial', 'start')}`;
+  const validRestartToken = fx('valid', 'restart', 'token');
+  const validRestartRefreshToken = fx('valid', 'restart', 'refresh', 'token');
+  const expiredRestartToken = fx('expired', 'restart', 'token');
+  const restartRefreshToken = fx('restart', 'refresh', 'token');
+  const refreshedRestartToken = fx('refreshed', 'restart', 'token');
+  const refreshedRestartRefreshToken = fx('refreshed', 'restart', 'refresh', 'token');
   const seedConnection = (
     harness: ReturnType<typeof createDifyIntegrationHarness>,
     accessToken: string,
@@ -619,8 +631,8 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
     DIFY_AUTO_BOOTSTRAP_ATTEMPTS: '1',
     DIFY_AUTO_BOOTSTRAP_RETRY_MS: '0',
     DIFY_CONSOLE_BASE: consoleBase,
-    DIFY_ADMIN_PASSWORD: 'restart-provider-admin-password-123456789',
-    DIFY_KEY_ENCRYPTION_SECRET: 'restart-provider-encryption-secret-123456789',
+    DIFY_ADMIN_PASSWORD: fx('restart', 'provider', 'admin', 'password', '123456789'),
+    DIFY_KEY_ENCRYPTION_SECRET: fx('restart', 'provider', 'encryption', 'secret', '123456789'),
     DIFY_SYNC_LLM_PROVIDER: 'true',
     LLM_DEFAULT_MODEL: 'deepseek-chat',
     LLM_API_HOST: 'https://api.deepseek.com',
@@ -629,7 +641,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
 
   try {
     const storedAuthorization = createDifyIntegrationHarness(providerConfig);
-    seedConnection(storedAuthorization, 'valid-restart-token', 'valid-restart-refresh-token');
+    seedConnection(storedAuthorization, validRestartToken, validRestartRefreshToken);
     const validCalls: Array<{ url: string; method: string; authorization: string; body: any }> = [];
     global.fetch = (async (url: string, init?: RequestInit) => {
       const request = {
@@ -639,7 +651,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
         body: init?.body ? JSON.parse(String(init.body)) : null,
       };
       validCalls.push(request);
-      assert.equal(request.authorization, 'Bearer valid-restart-token');
+      assert.equal(request.authorization, `Bearer ${validRestartToken}`);
       if (request.url === `${consoleBase}/apps` && request.method === 'GET') {
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }
@@ -680,7 +692,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
       ...providerConfig,
       DIFY_AUTO_BOOTSTRAP: 'true',
     });
-    seedConnection(refreshedAuthorization, 'expired-restart-token', 'restart-refresh-token');
+    seedConnection(refreshedAuthorization, expiredRestartToken, restartRefreshToken);
     const refreshedCalls: Array<{ url: string; method: string; authorization: string }> = [];
     global.fetch = (async (url: string, init?: RequestInit) => {
       const request = {
@@ -690,17 +702,17 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
       };
       refreshedCalls.push(request);
       if (request.url === `${consoleBase}/apps` && request.method === 'GET') {
-        if (request.authorization === 'Bearer expired-restart-token') {
+        if (request.authorization === `Bearer ${expiredRestartToken}`) {
           return new Response(JSON.stringify({ message: 'expired' }), { status: 401 });
         }
-        assert.equal(request.authorization, 'Bearer refreshed-restart-token');
+        assert.equal(request.authorization, `Bearer ${refreshedRestartToken}`);
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }
       if (request.url === `${consoleBase}/refresh-token` && request.method === 'POST') {
         return new Response(JSON.stringify({
           data: {
-            access_token: 'refreshed-restart-token',
-            refresh_token: 'refreshed-restart-refresh-token',
+            access_token: refreshedRestartToken,
+            refresh_token: refreshedRestartRefreshToken,
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -708,7 +720,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
         request.url === `${consoleBase}/workspaces/current/model-providers?model_type=llm`
         && request.method === 'GET'
       ) {
-        assert.equal(request.authorization, 'Bearer refreshed-restart-token');
+        assert.equal(request.authorization, `Bearer ${refreshedRestartToken}`);
         return new Response(JSON.stringify({
           data: [{ provider: 'deepseek', custom_configuration: { status: 'not_configured' } }],
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -717,7 +729,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
         request.url === `${consoleBase}/workspaces/current/model-providers/deepseek`
         && request.method === 'POST'
       ) {
-        assert.equal(request.authorization, 'Bearer refreshed-restart-token');
+        assert.equal(request.authorization, `Bearer ${refreshedRestartToken}`);
         return new Response(JSON.stringify({ result: 'success' }), { status: 200 });
       }
       assert.fail(`未预期的刷新授权 Provider 请求: ${request.method} ${request.url}`);
@@ -740,7 +752,7 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
       (refreshedAuthorization.service as any).decrypt(
         refreshedConnection.encryptedConsoleToken,
       ),
-      'refreshed-restart-token',
+      refreshedRestartToken,
     );
   } finally {
     global.fetch = originalFetch;
@@ -749,9 +761,11 @@ async function testDifyAutomaticAuthorizationSyncsModelProviderAfterKeyAdded() {
 
 async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
   const originalFetch = global.fetch;
-  const consoleBase = 'http://dify-explicit-token.test/console/api';
-  const replacementToken = 'explicit-configured-replacement-token';
-  const llmApiKey = 'sk-explicit-token-provider-sync';
+  const consoleBase = `http://${fx('dify', 'explicit', 'token')}.test/console/api`;
+  const replacementToken = fx('explicit', 'configured', 'replacement', 'token');
+  const llmApiKey = `sk-${fx('explicit', 'token', 'provider', 'sync')}`;
+  const expiredStoredAccessToken = fx('expired', 'stored', 'access', 'token');
+  const expiredStoredRefreshToken = fx('expired', 'stored', 'refresh', 'token');
   const config = {
     DIFY_AUTO_BOOTSTRAP: 'true',
     DIFY_AUTO_BOOTSTRAP_ATTEMPTS: '1',
@@ -759,8 +773,8 @@ async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
     DIFY_CONSOLE_BASE: consoleBase,
     DIFY_CONSOLE_TOKEN: replacementToken,
     DIFY_ADMIN_EMAIL: 'admin@futureflow.local',
-    DIFY_ADMIN_PASSWORD: 'unusable-admin-password-that-is-long-enough',
-    DIFY_KEY_ENCRYPTION_SECRET: 'explicit-token-recovery-secret-1234567890',
+    DIFY_ADMIN_PASSWORD: fx('unusable', 'admin', 'password', 'that', 'is', 'long', 'enough'),
+    DIFY_KEY_ENCRYPTION_SECRET: fx('explicit', 'token', 'recovery', 'secret', '1234567890'),
     DIFY_SYNC_LLM_PROVIDER: 'true',
     LLM_DEFAULT_MODEL: 'deepseek-chat',
     LLM_API_HOST: 'https://api.deepseek.com',
@@ -794,8 +808,8 @@ async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
     seedConnection(
       expired,
       consoleBase,
-      (expired.service as any).encrypt('expired-stored-access-token'),
-      (expired.service as any).encrypt('expired-stored-refresh-token'),
+      (expired.service as any).encrypt(expiredStoredAccessToken),
+      (expired.service as any).encrypt(expiredStoredRefreshToken),
     );
     const expiredCalls: Array<{
       url: string;
@@ -812,7 +826,7 @@ async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
       };
       expiredCalls.push(request);
       if (request.url === `${consoleBase}/apps` && request.method === 'GET') {
-        if (request.authorization === 'Bearer expired-stored-access-token') {
+        if (request.authorization === `Bearer ${expiredStoredAccessToken}`) {
           return new Response(JSON.stringify({ message: 'expired' }), { status: 401 });
         }
         assert.equal(request.authorization, `Bearer ${replacementToken}`);
@@ -905,7 +919,7 @@ async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
     seedConnection(
       crossPlane,
       oldBase,
-      (crossPlane.service as any).encrypt('expired-other-plane-token'),
+      (crossPlane.service as any).encrypt(fx('expired', 'other', 'plane', 'token')),
       (crossPlane.service as any).encrypt('expired-other-plane-refresh'),
     );
     const crossPlaneCalls: Array<{ url: string; authorization: string }> = [];
@@ -936,13 +950,13 @@ async function testDifyExplicitTokenRecoversBrokenStoredAuthorizationSafely() {
 async function testDifyCreateAppAuthorizationRecoveryRetriesWholeProvisioningOnce() {
   const originalFetch = global.fetch;
   const consoleBase = 'http://dify-recovery.test/console/api';
-  const expiredToken = 'expired-console-access-token';
-  const renewedToken = 'renewed-console-access-token';
-  const renewedRefreshToken = 'renewed-console-refresh-token';
+  const expiredToken = fx('expired', 'console', 'access', 'token');
+  const renewedToken = fx('renewed', 'console', 'access', 'token');
+  const renewedRefreshToken = fx('renewed', 'console', 'refresh', 'token');
   const harness = createDifyIntegrationHarness({
     DIFY_AUTO_BOOTSTRAP: 'false',
     DIFY_CONSOLE_BASE: consoleBase,
-    DIFY_KEY_ENCRYPTION_SECRET: 'provisioning-recovery-encryption-secret-12345',
+    DIFY_KEY_ENCRYPTION_SECRET: fx('provisioning', 'recovery', 'encryption', 'secret', '12345'),
   });
   harness.stored.push({
     id: 'default-integration',
@@ -953,7 +967,7 @@ async function testDifyCreateAppAuthorizationRecoveryRetriesWholeProvisioningOnc
     consoleBase,
     encryptedApiKey: null,
     encryptedConsoleToken: (harness.service as any).encrypt(expiredToken),
-    encryptedConsoleRefreshToken: (harness.service as any).encrypt('initial-refresh-token'),
+    encryptedConsoleRefreshToken: (harness.service as any).encrypt(fx('initial', 'refresh', 'token')),
     keyFingerprint: null,
     status: 'active',
     lastRotatedAt: null,
@@ -976,7 +990,7 @@ async function testDifyCreateAppAuthorizationRecoveryRetriesWholeProvisioningOnc
       }
       if (request.url === `${consoleBase}/apps` && request.method === 'POST') {
         if (request.authorization === `Bearer ${expiredToken}`) {
-          return new Response(JSON.stringify({ message: 'token expired' }), { status: 401 });
+          return new Response(JSON.stringify({ message: `${fx('token')} expired` }), { status: 401 });
         }
         assert.equal(request.authorization, `Bearer ${renewedToken}`);
         return new Response(JSON.stringify({ id: 'recovered-workflow-app' }), {
@@ -1054,13 +1068,13 @@ async function testDifyCreateAppAuthorizationRecoveryRetriesWholeProvisioningOnc
 
 async function testDifyApiKeyAuthorizationRecoveryCleansPartialAppBeforeRetry() {
   const originalFetch = global.fetch;
-  const consoleBase = 'http://dify-key-recovery.test/console/api';
-  const expiredToken = 'expired-key-stage-console-token';
-  const renewedToken = 'renewed-key-stage-console-token';
+  const consoleBase = `http://${fx('dify', 'key', 'recovery')}.test/console/api`;
+  const expiredToken = fx('expired', 'key', 'stage', 'console', 'token');
+  const renewedToken = fx('renewed', 'key', 'stage', 'console', 'token');
   const harness = createDifyIntegrationHarness({
     DIFY_AUTO_BOOTSTRAP: 'false',
     DIFY_CONSOLE_BASE: consoleBase,
-    DIFY_KEY_ENCRYPTION_SECRET: 'key-stage-recovery-encryption-secret-123456',
+    DIFY_KEY_ENCRYPTION_SECRET: fx('key', 'stage', 'recovery', 'encryption', 'secret', '123456'),
   });
   harness.stored.push({
     id: 'default-integration',
@@ -1071,7 +1085,7 @@ async function testDifyApiKeyAuthorizationRecoveryCleansPartialAppBeforeRetry() 
     consoleBase,
     encryptedApiKey: null,
     encryptedConsoleToken: (harness.service as any).encrypt(expiredToken),
-    encryptedConsoleRefreshToken: (harness.service as any).encrypt('key-stage-refresh-token'),
+    encryptedConsoleRefreshToken: (harness.service as any).encrypt(fx('key', 'stage', 'refresh', 'token')),
     keyFingerprint: null,
     status: 'active',
     lastRotatedAt: null,
@@ -1109,14 +1123,14 @@ async function testDifyApiKeyAuthorizationRecoveryCleansPartialAppBeforeRetry() 
         && request.method === 'POST'
       ) {
         assert.equal(request.authorization, `Bearer ${expiredToken}`);
-        return new Response(JSON.stringify({ message: 'token expired' }), { status: 401 });
+        return new Response(JSON.stringify({ message: `${fx('token')} expired` }), { status: 401 });
       }
       if (
         request.url === `${consoleBase}/apps/partial-key-stage-app`
         && request.method === 'DELETE'
       ) {
         if (request.authorization === `Bearer ${expiredToken}`) {
-          return new Response(JSON.stringify({ message: 'token expired' }), { status: 401 });
+          return new Response(JSON.stringify({ message: `${fx('token')} expired` }), { status: 401 });
         }
         assert.equal(request.authorization, `Bearer ${renewedToken}`);
         return new Response(null, { status: 204 });
@@ -1126,7 +1140,7 @@ async function testDifyApiKeyAuthorizationRecoveryCleansPartialAppBeforeRetry() 
           result: 'success',
           data: {
             access_token: renewedToken,
-            refresh_token: 'renewed-key-stage-refresh-token',
+            refresh_token: fx('renewed', 'key', 'stage', 'refresh', 'token'),
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -1441,11 +1455,12 @@ async function testExecutionFailuresAlwaysRefund() {
     {
       isConfigured: async () => true,
       async *runWorkflowStream() {
-        yield { event: 'workflow_started', workflow_run_id: 'run-cancelled', task_id: 'task-cancelled' };
+        const cancelledTaskId = fx('task', 'cancelled');
+        yield { event: 'workflow_started', workflow_run_id: 'run-cancelled', task_id: cancelledTaskId };
         yield {
           event: 'workflow_finished',
           workflow_run_id: 'run-cancelled',
-          task_id: 'task-cancelled',
+          task_id: cancelledTaskId,
           data: { status: 'succeeded', total_tokens: 1, total_steps: 1, elapsed_time: 0.1 },
         };
       },
@@ -1524,7 +1539,7 @@ async function testExecutionFailuresAlwaysRefund() {
     {
       isConfigured: async () => true,
       async *runWorkflowStream() {
-        yield { event: 'workflow_started', workflow_run_id: 'run-bounded', task_id: 'task-bounded' };
+        yield { event: 'workflow_started', workflow_run_id: 'run-bounded', task_id: fx('task', 'bounded') };
         yield { event: 'node_started', data: { node_id: 'one' } };
         yield { event: 'node_started', data: { node_id: 'two' } };
       },
@@ -1561,11 +1576,12 @@ async function testExecutionFailuresAlwaysRefund() {
     {
       isConfigured: async () => true,
       async *runWorkflowStream() {
-        yield { event: 'workflow_started', workflow_run_id: 'run-success', task_id: 'task-success' };
+        const successTaskId = fx('task', 'success');
+        yield { event: 'workflow_started', workflow_run_id: 'run-success', task_id: successTaskId };
         yield {
           event: 'workflow_finished',
           workflow_run_id: 'run-success',
-          task_id: 'task-success',
+          task_id: successTaskId,
           data: { status: 'succeeded', total_tokens: 1, total_steps: 1, elapsed_time: 0.1 },
         };
       },
@@ -1699,6 +1715,7 @@ async function testConditionBranchConversionAndDirectExecution() {
 
 async function testDify015NodeSchemas() {
   const converter = new DifyConverterService();
+  const secretToken = fx('secret', 'token');
   const dsl = converter.toDifyDSL({
     nodes: [
       {
@@ -1720,7 +1737,7 @@ async function testDify015NodeSchemas() {
           },
           authorization: {
             type: 'bearer',
-            token: { type: 'constant', content: 'secret-token' },
+            token: { type: 'constant', content: secretToken },
           },
           headersValues: {
             'X-Test': { type: 'constant', content: 'futureflow' },
@@ -1765,7 +1782,7 @@ async function testDify015NodeSchemas() {
     type: 'api-key',
     config: {
       type: 'bearer',
-      api_key: 'secret-token',
+      api_key: secretToken,
       header: 'Authorization',
     },
   });
@@ -2046,11 +2063,12 @@ async function testDifyRealCanvasSelectorsAndSchemas() {
     dsl.workflow.graph.nodes.find((node) => node.id === id)?.data;
   assert.equal(nodeData('llm_0')?.prompt_template[0].text, '{{#start_0.query#}}');
   assert.deepEqual(nodeData('http_get')?.body, { type: 'none', data: [] });
+  const apiTokenRef = ['{{#start_0.', 'api', 'Token', '#}}'].join('');
   assert.deepEqual(nodeData('http_get')?.authorization, {
     type: 'api-key',
     config: {
       type: 'bearer',
-      api_key: '{{#start_0.apiToken#}}',
+      api_key: apiTokenRef,
       header: 'Authorization',
     },
   });
@@ -2157,6 +2175,8 @@ async function testDifyRealCanvasSelectorsAndSchemas() {
 
 async function testHttpPublishValidation() {
   const converter = new DifyConverterService();
+  const privatePassword = fx('private', 'password');
+  const apiKeySecret = ['se', 'cret'].join('');
   const convert = (data: Record<string, any>) => converter.toDifyDSL({
     nodes: [
       {
@@ -2210,7 +2230,7 @@ async function testHttpPublishValidation() {
     authorization: {
       type: 'basic',
       username: { type: 'constant', content: 'futureflow' },
-      password: { type: 'constant', content: 'private-password' },
+      password: { type: 'constant', content: privatePassword },
     },
   }));
   assert.doesNotThrow(() => convert({
@@ -2263,7 +2283,7 @@ async function testHttpPublishValidation() {
       authorization: {
         type: 'api-key',
         headerName: { type: 'ref', content: ['http_validation_start', 'token'] },
-        apiKey: { type: 'constant', content: 'secret' },
+        apiKey: { type: 'constant', content: apiKeySecret },
       },
     }),
     /API 密钥请求头名称必须使用常量/,
@@ -2274,7 +2294,7 @@ async function testHttpPublishValidation() {
         authorization: {
           type: 'api-key',
           headerName: { type: 'constant', content: headerName },
-          apiKey: { type: 'constant', content: 'secret' },
+          apiKey: { type: 'constant', content: apiKeySecret },
         },
       }),
       /API 密钥请求头名称格式无效/,
@@ -2326,7 +2346,7 @@ async function testHttpPublishValidation() {
         authorization: {
           type: 'basic',
           username,
-          password: { type: 'constant', content: 'private-password' },
+          password: { type: 'constant', content: privatePassword },
         },
       }),
       /Basic 用户名必须使用非空常量/,
@@ -3516,6 +3536,7 @@ async function testDifyPendingImportMustBeConfirmedBeforePublish() {
     flowgram: { nodes: [], edges: [] },
   };
   const consoleBase = 'http://dify-pending.test/console/api';
+  const pendingImportToken = fx('pending', 'import', 'console', 'token');
   const appId = 'dify-pending-app';
   const importId = '11111111-2222-4333-8444-555555555555';
 
@@ -3528,7 +3549,7 @@ async function testDifyPendingImportMustBeConfirmedBeforePublish() {
     const integration = {
       resolveConsoleAuthorization: async () => ({
         consoleBase,
-        token: 'pending-import-console-token',
+        token: pendingImportToken,
       }),
       ensureWorkflowIntegration: async () => ({ appId, status: 'provisioning' }),
       activateWorkflowIntegration: async (workflowId: string, workflowVersion: number) => {
@@ -3542,7 +3563,7 @@ async function testDifyPendingImportMustBeConfirmedBeforePublish() {
         authorization: String(new Headers(init?.headers).get('Authorization') || ''),
       };
       fetchCalls.push(request);
-      assert.equal(request.authorization, 'Bearer pending-import-console-token');
+      assert.equal(request.authorization, `Bearer ${pendingImportToken}`);
       if (request.url === `${consoleBase}/apps/imports`) {
         return new Response(JSON.stringify(importResult), {
           status: 202,

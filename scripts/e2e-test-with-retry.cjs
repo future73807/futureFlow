@@ -22,6 +22,8 @@ const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 
 const randomSecret = () => randomBytes(32).toString('hex');
+// 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
+const e2eSecret = (name, fallbackLen) => process.env[name] || randomBytes(fallbackLen).toString('hex');
 
 function loadExistingEnv() {
   const envPath = resolve(__dirname, '..', '.env');
@@ -58,7 +60,8 @@ const CONFIG = {
     process.env.GATEWAY_BOOTSTRAP_ADMIN_EMAIL || 'futureflow-e2e-admin@futureflow.test',
   GATEWAY_ADMIN_PASSWORD:
     process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD ||
-    'futureflow-e2e-admin-secret-2026-08-09-strong',
+    e2eSecret('GATEWAY_BOOTSTRAP_ADMIN_PASSWORD', 24),
+  GATEWAY_JWT_SECRET: e2eSecret('GATEWAY_JWT_SECRET', 32),
   ADMIN_EMAIL: process.env.DIFY_ADMIN_EMAIL || 'admin-e2e@futureflow.local',
   ADMIN_PASSWORD: process.env.DIFY_ADMIN_PASSWORD || randomSecret(),
   DIFY_SECRET_KEY: process.env.DIFY_SECRET_KEY || randomSecret(),
@@ -376,7 +379,7 @@ async function step4_startGateway() {
       ...process.env,
       NODE_ENV: 'development',
       GATEWAY_PORT: String(CONFIG.GATEWAY_PORT),
-      GATEWAY_JWT_SECRET: 'e2e-test-jwt-secret-that-is-long-enough-1234567890',
+      GATEWAY_JWT_SECRET: CONFIG.GATEWAY_JWT_SECRET,
       GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
       GATEWAY_BOOTSTRAP_ADMIN_USERNAME: CONFIG.GATEWAY_ADMIN_USERNAME,
       GATEWAY_BOOTSTRAP_ADMIN_EMAIL: CONFIG.GATEWAY_ADMIN_EMAIL,

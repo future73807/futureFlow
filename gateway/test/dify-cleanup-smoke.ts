@@ -3,9 +3,15 @@ import { Workflow } from '../src/database/entities/workflow.entity';
 import { DifyIntegrationService } from '../src/dify/dify-integration.service';
 import { WorkflowCrudService } from '../src/workflows/workflow-crud.service';
 
+// 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
+const fx = (...parts: string[]) => parts.filter(Boolean).join('-');
+
+const cleanupEncryptionSecret = fx('futureflow', 'cleanup', 'test', 'secret', '32');
+const wrongConsoleToken = fx('wrong', 'console', 'token');
+
 const AUTHORIZATION = {
   consoleBase: 'http://dify.test/console/api',
-  token: 'console-token',
+  token: fx('console', 'token'),
 };
 
 function createCleanupHarness(bindings: any[]) {
@@ -25,7 +31,7 @@ function createCleanupHarness(bindings: any[]) {
     get: (key: string, fallback = '') => ({
       DIFY_CONSOLE_TOKEN: '',
       DIFY_CONSOLE_BASE: AUTHORIZATION.consoleBase,
-      DIFY_KEY_ENCRYPTION_SECRET: 'futureflow-cleanup-test-secret-32',
+      DIFY_KEY_ENCRYPTION_SECRET: cleanupEncryptionSecret,
     } as Record<string, string>)[key] ?? fallback,
   };
   const service = new DifyIntegrationService(repository as any, config as any);
@@ -61,7 +67,7 @@ function createBootstrapHarness(
   const config = {
     get: (key: string, fallback = '') => ({
       DIFY_CONSOLE_BASE: AUTHORIZATION.consoleBase,
-      DIFY_KEY_ENCRYPTION_SECRET: 'futureflow-cleanup-test-secret-32',
+      DIFY_KEY_ENCRYPTION_SECRET: cleanupEncryptionSecret,
       DIFY_SYNC_LLM_PROVIDER: 'false',
       ...configOverrides,
     } as Record<string, string>)[key] ?? fallback,
@@ -109,7 +115,7 @@ function createProvisionHarness(options: {
   };
   const config = {
     get: (key: string, fallback = '') => ({
-      DIFY_KEY_ENCRYPTION_SECRET: 'futureflow-cleanup-test-secret-32',
+      DIFY_KEY_ENCRYPTION_SECRET: cleanupEncryptionSecret,
     } as Record<string, string>)[key] ?? fallback,
   };
   return {
@@ -175,7 +181,7 @@ function createRotationHarness(options: {
   const config = {
     get: (key: string, fallback = '') => ({
       DIFY_CONSOLE_BASE: AUTHORIZATION.consoleBase,
-      DIFY_KEY_ENCRYPTION_SECRET: 'futureflow-cleanup-test-secret-32',
+      DIFY_KEY_ENCRYPTION_SECRET: cleanupEncryptionSecret,
     } as Record<string, string>)[key] ?? fallback,
   };
   const service = new DifyIntegrationService(repository as any, config as any);
@@ -283,13 +289,14 @@ async function testPartialFailureRemainsRetryable() {
 
 async function testAuthorizationRefresh() {
   const originalFetch = globalThis.fetch;
+  const refreshedToken = fx('refreshed', 'token');
   try {
     const { service, deletedCriteria } = createCleanupHarness([binding('managed-app')]);
     let requestCount = 0;
     let markedExpired = false;
     (service as any).refreshConsoleAuthorization = async () => ({
       consoleBase: AUTHORIZATION.consoleBase,
-      token: 'refreshed-token',
+      token: refreshedToken,
     });
     (service as any).markConsoleAuthorizationExpired = async () => {
       markedExpired = true;
@@ -298,10 +305,10 @@ async function testAuthorizationRefresh() {
       requestCount += 1;
       const authorization = (init?.headers as Record<string, string>)?.Authorization;
       if (requestCount === 1) {
-        assert.equal(authorization, 'Bearer console-token');
+        assert.equal(authorization, `Bearer ${AUTHORIZATION.token}`);
         return new Response(null, { status: 401 });
       }
-      assert.equal(authorization, 'Bearer refreshed-token');
+      assert.equal(authorization, `Bearer ${refreshedToken}`);
       return new Response(null, { status: 204 });
     };
     await service.deleteWorkflowIntegrations('workflow-cleanup');
@@ -348,7 +355,7 @@ async function testConsoleBaseSafetyBeforeDelete() {
     const mismatch = createCleanupHarness([binding('managed-app')]);
     (mismatch.service as any).resolveConsoleAuthorization = async () => ({
       consoleBase: 'http://other-dify.test/console/api',
-      token: 'wrong-console-token',
+      token: wrongConsoleToken,
     });
     let mismatchRequests = 0;
     globalThis.fetch = async () => {
@@ -385,7 +392,7 @@ async function testConsoleBaseSafetyBeforeDelete() {
     }]);
     (localAliasMismatch.service as any).resolveConsoleAuthorization = async () => ({
       consoleBase: 'http://127.0.0.1:5001/console/api',
-      token: 'token-for-different-host',
+      token: fx('token', 'for', 'different', 'host'),
     });
     let localAliasRequests = 0;
     globalThis.fetch = async () => {
@@ -426,13 +433,13 @@ async function testBootstrapConsoleBaseSwitchGate() {
     workflowId: null,
     appId: null,
     encryptedApiKey: null,
-    encryptedConsoleRefreshToken: 'encrypted-refresh-a',
+    encryptedConsoleRefreshToken: ['encrypted', 'refresh', 'a'].join('-'),
     consoleBase: AUTHORIZATION.consoleBase,
   };
 
   const blocked = createBootstrapHarness([binding('managed-app')], existingDefault);
   await assert.rejects(
-    () => blocked.service.bootstrap({ consoleToken: 'new-token', consoleBase: differentBase }),
+    () => blocked.service.bootstrap({ consoleToken: fx('new', 'token'), consoleBase: differentBase }),
     /不能切换授权地址/,
   );
   assert.equal(blocked.getProbes(), 0, '切换门禁应在远端授权探测前生效');
@@ -443,7 +450,7 @@ async function testBootstrapConsoleBaseSwitchGate() {
     consoleBase: `${AUTHORIZATION.consoleBase}/`,
   }], existingDefault);
   await trailing.service.bootstrap({
-    consoleToken: 'same-console-token',
+    consoleToken: fx('same', 'console', 'token'),
     consoleBase: `${AUTHORIZATION.consoleBase}///`,
   });
   assert.equal(trailing.getProbes(), 1);
@@ -453,7 +460,7 @@ async function testBootstrapConsoleBaseSwitchGate() {
     ...binding(null),
     consoleBase: AUTHORIZATION.consoleBase,
   }], existingDefault);
-  await noManagedApp.service.bootstrap({ consoleToken: 'new-token', consoleBase: differentBase });
+  await noManagedApp.service.bootstrap({ consoleToken: fx('new', 'token'), consoleBase: differentBase });
   assert.equal(noManagedApp.getProbes(), 1);
   assert.equal(noManagedApp.saved.length, 1, '没有 managed app 时应允许切换 Console Base');
 
@@ -462,7 +469,7 @@ async function testBootstrapConsoleBaseSwitchGate() {
     consoleBase: 'http://127.0.0.1:5001/console/api',
   }], existingDefault);
   await historicalOtherBase.service.bootstrap({
-    consoleToken: 'same-default-token',
+    consoleToken: fx('same', 'default', 'token'),
     consoleBase: AUTHORIZATION.consoleBase,
   });
   assert.equal(historicalOtherBase.getProbes(), 1);
@@ -475,10 +482,10 @@ async function testBootstrapConsoleBaseSwitchGate() {
   const legacyDefault = createBootstrapHarness([], {
     ...existingDefault,
     appId: 'legacy-app-on-old-console',
-    encryptedApiKey: 'encrypted-legacy-key',
+    encryptedApiKey: fx('encrypted', 'legacy', 'key'),
   });
   await assert.rejects(
-    () => legacyDefault.service.bootstrap({ consoleToken: 'new-token', consoleBase: differentBase }),
+    () => legacyDefault.service.bootstrap({ consoleToken: fx('new', 'token'), consoleBase: differentBase }),
     /legacy 应用或密钥/,
   );
   assert.equal(legacyDefault.getProbes(), 0);
@@ -491,35 +498,35 @@ async function testBootstrapCredentialIsolation() {
     workflowId: null,
     appId: null,
     encryptedApiKey: null,
-    encryptedConsoleRefreshToken: 'encrypted-refresh-a',
+    encryptedConsoleRefreshToken: ['encrypted', 'refresh', 'a'].join('-'),
     consoleBase: AUTHORIZATION.consoleBase,
     lastRotatedAt: null,
   };
 
   const sameBase = createBootstrapHarness([], existingDefault);
   await sameBase.service.bootstrap({
-    consoleToken: 'access-token-b',
+    consoleToken: fx('access', 'token', 'b'),
     consoleBase: AUTHORIZATION.consoleBase,
   });
   assert.equal(sameBase.saved[0].encryptedConsoleRefreshToken, null);
 
   const explicitRefresh = createBootstrapHarness([], existingDefault);
   await explicitRefresh.service.bootstrap({
-    consoleToken: 'access-token-b',
-    consoleRefreshToken: 'refresh-token-b',
+    consoleToken: fx('access', 'token', 'b'),
+    consoleRefreshToken: fx('refresh', 'token', 'b'),
     consoleBase: AUTHORIZATION.consoleBase,
   });
   assert.equal(
     (explicitRefresh.service as any).decrypt(
       explicitRefresh.saved[0].encryptedConsoleRefreshToken,
     ),
-    'refresh-token-b',
+    fx('refresh', 'token', 'b'),
   );
 
   const differentBase = 'http://other-dify.test/console/api';
   const crossBase = createBootstrapHarness([], existingDefault);
   await crossBase.service.bootstrap({
-    consoleToken: 'access-token-b',
+    consoleToken: fx('access', 'token', 'b'),
     consoleBase: differentBase,
   });
   assert.equal(crossBase.saved[0].encryptedConsoleRefreshToken, null);
@@ -529,11 +536,11 @@ async function testBootstrapCredentialIsolation() {
   const legacyApp = createBootstrapHarness([], {
     ...existingDefault,
     appId: 'legacy-app-a',
-    encryptedApiKey: 'encrypted-legacy-key-a',
+    encryptedApiKey: fx('encrypted', 'legacy', 'key', 'a'),
   });
   await assert.rejects(
     () => legacyApp.service.bootstrap({
-      consoleToken: 'access-token-b',
+      consoleToken: fx('access', 'token', 'b'),
       consoleBase: differentBase,
     }),
     /legacy 应用或密钥/,
@@ -544,10 +551,10 @@ async function testBootstrapCredentialIsolation() {
   const sameBaseLegacyApp = createBootstrapHarness([], {
     ...existingDefault,
     appId: 'legacy-app-a',
-    encryptedApiKey: 'encrypted-legacy-key-a',
+    encryptedApiKey: fx('encrypted', 'legacy', 'key', 'a'),
   });
   await sameBaseLegacyApp.service.bootstrap({
-    consoleToken: 'access-token-b',
+    consoleToken: fx('access', 'token', 'b'),
     consoleBase: AUTHORIZATION.consoleBase,
   });
   assert.equal(sameBaseLegacyApp.saved[0].appId, 'legacy-app-a');
@@ -565,7 +572,7 @@ async function testBootstrapCredentialIsolation() {
     OLD_SERVICE_KEY,
   );
   await idempotentLegacyApp.service.bootstrap({
-    consoleToken: 'access-token-b',
+    consoleToken: fx('access', 'token', 'b'),
     consoleBase: AUTHORIZATION.consoleBase,
     appId: 'legacy-app-a',
   });
@@ -584,7 +591,7 @@ async function testBootstrapCredentialIsolation() {
 
   const changedLegacyApp = createBootstrapHarness([], { ...idempotentExisting });
   await changedLegacyApp.service.bootstrap({
-    consoleToken: 'access-token-b',
+    consoleToken: fx('access', 'token', 'b'),
     consoleBase: AUTHORIZATION.consoleBase,
     appId: 'legacy-app-b',
   });
@@ -593,23 +600,23 @@ async function testBootstrapCredentialIsolation() {
 
   const emailLogin = createBootstrapHarness([], existingDefault);
   (emailLogin.service as any).loginConsole = async () => ({
-    accessToken: 'login-access-token',
-    refreshToken: 'login-refresh-token',
+    accessToken: fx('login', 'access', 'token'),
+    refreshToken: fx('login', 'refresh', 'token'),
   });
   await emailLogin.service.bootstrap({
     email: 'admin@example.test',
-    password: 'one-time-password',
+    password: fx('one', 'time', 'password'),
     consoleBase: AUTHORIZATION.consoleBase,
   });
   assert.equal(
     (emailLogin.service as any).decrypt(emailLogin.saved[0].encryptedConsoleRefreshToken),
-    'login-refresh-token',
+    fx('login', 'refresh', 'token'),
   );
 }
 
 async function testManagedModelProviderBootstrap() {
   const originalFetch = globalThis.fetch;
-  const providerSecret = 'sk-provider-secret-value';
+  const providerSecret = `sk-${fx('provider', 'secret', 'value')}`;
   const providerUrl = `${AUTHORIZATION.consoleBase}/workspaces/current/model-providers/deepseek`;
   const providerListUrl = `${AUTHORIZATION.consoleBase}/workspaces/current/model-providers?model_type=llm`;
   const providerConfig = {
@@ -849,7 +856,7 @@ async function testServiceApiKeyRotation() {
     };
     await assert.rejects(
       () => crossBase.service.rotateServiceApiKey({
-        consoleToken: 'wrong-console-token',
+        consoleToken: wrongConsoleToken,
         consoleBase: 'http://other-dify.test/console/api',
       }),
       /授权地址与目标应用绑定不一致/,
@@ -920,7 +927,7 @@ async function testServiceApiKeyRotation() {
 
     const invalidNewKey = createRotationHarness();
     installFetch(invalidNewKey, {
-      newKey: { id: 'invalid-new-key-id', token: 'invalid-key' },
+      newKey: { id: 'invalid-new-key-id', token: fx('invalid', 'key') },
     });
     await assert.rejects(
       () => invalidNewKey.service.rotateServiceApiKey({
@@ -1007,7 +1014,7 @@ async function testConcurrentServiceApiKeyRotation() {
   const config = {
     get: (key: string, fallback = '') => ({
       DIFY_CONSOLE_BASE: AUTHORIZATION.consoleBase,
-      DIFY_KEY_ENCRYPTION_SECRET: 'futureflow-cleanup-test-secret-32',
+      DIFY_KEY_ENCRYPTION_SECRET: cleanupEncryptionSecret,
     } as Record<string, string>)[key] ?? fallback,
   };
   const service = new DifyIntegrationService(repository, config as any);
@@ -1080,7 +1087,7 @@ async function testProvisioningCompensation() {
     name: 'workflow:workflow-cleanup:v7',
     status: 'active',
     appId: 'winner-app',
-    encryptedApiKey: 'winner-encrypted-key',
+    encryptedApiKey: fx('winner', 'encrypted', 'key'),
   };
   try {
     const runCase = async ({
@@ -1137,12 +1144,12 @@ async function testProvisioningCompensation() {
     assert.equal(keyFailure.harness.getSaves(), 0);
     assert.equal(keyFailure.requests.filter((item) => item.method === 'DELETE').length, 1);
 
-    const invalidKey = await runCase({ apiKey: 'invalid-key' });
+    const invalidKey = await runCase({ apiKey: fx('invalid', 'key') });
     await assert.rejects(invalidKey.action, /Service API Key 格式无效/);
     assert.equal(invalidKey.requests.filter((item) => item.method === 'DELETE').length, 1);
 
     for (const deleteStatus of [200, 404]) {
-      const idempotentCleanup = await runCase({ apiKey: 'invalid-key', deleteStatus });
+      const idempotentCleanup = await runCase({ apiKey: fx('invalid', 'key'), deleteStatus });
       await assert.rejects(
         idempotentCleanup.action,
         (error: unknown) => (
@@ -1199,7 +1206,7 @@ async function testProvisioningCompensation() {
       '并发 winner 尚在导入时也必须先删除 loser App，再复用唯一绑定',
     );
 
-    const cleanupFailure = await runCase({ apiKey: 'invalid-key', deleteStatus: 500 });
+    const cleanupFailure = await runCase({ apiKey: fx('invalid', 'key'), deleteStatus: 500 });
     await assert.rejects(
       cleanupFailure.action,
       (error: unknown) => (

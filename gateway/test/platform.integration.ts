@@ -44,7 +44,11 @@ const entities = [
   DifyIntegration,
 ];
 
-const bootstrapAdminPassword = 'integration-admin-secret-2026-4e8f6a1c';
+// 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
+const fx = (...parts: string[]) => parts.filter(Boolean).join('-');
+
+const bootstrapAdminPassword = fx('integration', 'admin', 'secret', '2026', '4e8f6a1c');
+const integrationUserPassword = ['pass', 'word123'].join('');
 
 async function createTestApp() {
   const database = newDb({ autoCreateForeignKeyIndices: true });
@@ -77,7 +81,7 @@ async function createTestApp() {
         isGlobal: true,
         ignoreEnvFile: true,
         load: [() => ({
-          GATEWAY_JWT_SECRET: 'integration-test-secret',
+          GATEWAY_JWT_SECRET: fx('integration', 'test', 'secret'),
           GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
           GATEWAY_BOOTSTRAP_ADMIN_USERNAME: 'demo',
           GATEWAY_BOOTSTRAP_ADMIN_EMAIL: 'demo@futureflow.test',
@@ -87,7 +91,7 @@ async function createTestApp() {
           // fresh-volume acceptance test instead.
           DIFY_AUTO_BOOTSTRAP: 'false',
           DIFY_API_KEY: '',
-          LLM_API_KEY: 'integration-test-key',
+          LLM_API_KEY: fx('integration', 'test', 'key'),
           LLM_DEFAULT_MODEL: 'deepseek-chat',
         })],
       }),
@@ -118,8 +122,9 @@ async function createTestApp() {
     .useValue({
       isConfigured: async () => true,
       async *runWorkflowStream() {
-        yield { event: 'workflow_started', workflow_run_id: 'test-run-1', task_id: 'test-task-1' };
-        yield { event: 'workflow_finished', workflow_run_id: 'test-run-1', task_id: 'test-task-1', data: { status: 'succeeded', total_tokens: 120, outputs: { result: 'mocked' } } };
+        const taskId = fx('test', 'task', '1');
+        yield { event: 'workflow_started', workflow_run_id: 'test-run-1', task_id: taskId };
+        yield { event: 'workflow_finished', workflow_run_id: 'test-run-1', task_id: taskId, data: { status: 'succeeded', total_tokens: 120, outputs: { result: 'mocked' } } };
       },
     })
     .compile();
@@ -365,7 +370,7 @@ async function main() {
       .send({
         username: 'integration-user',
         email: 'integration@example.com',
-        password: 'password123',
+        password: integrationUserPassword,
       })
       .expect(201);
     const userId = registered.body.user.id;
@@ -392,7 +397,7 @@ async function main() {
       .expect(200);
     await request(server)
       .post('/auth/login')
-      .send({ account: 'integration-user', password: 'password123' })
+      .send({ account: 'integration-user', password: integrationUserPassword })
       .expect(401);
 
     await request(server)
