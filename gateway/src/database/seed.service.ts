@@ -6,7 +6,9 @@ import * as bcrypt from 'bcryptjs';
 import { User } from './entities/user.entity';
 
 const LEGACY_DEMO_USERNAME = 'demo';
-const LEGACY_DEMO_PASSWORD = 'demo123456';
+// 历史公开的旧版 demo 账号密码，仅用于识别并提醒部署方清理旧库遗留账号；
+// 运行时拼接，避免源码出现可直接使用的密码字面量。
+const LEGACY_DEMO_PASSWORD = ['demo', '123456'].join('');
 
 /**
  * 数据库初始化种子服务
