@@ -49,3 +49,6 @@ gui-test-screenshots/
 
 # Editor scratch directory
 .zcode-tmp/
+
+# Mimosa security scan artifacts
+.mimosa/
