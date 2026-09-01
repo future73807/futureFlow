@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Input, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
+import { IconArrowLeft, IconMoon, IconSave, IconSun } from '@douyinfe/semi-icons';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
 import {
   EditorRenderer,
@@ -15,7 +15,7 @@ import './canvas.css';
 import '@flowgram.ai/free-layout-editor/index.css';
 import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
-import { useEditorProps } from '../../hooks';
+import { useEditorProps, useThemeMode } from '../../hooks';
 import { GetGlobalVariableSchema } from '../../plugins/variable-panel-plugin';
 import { ApiError, apiJson } from '../../utils/api';
 import { normalizeCanvasLocale } from '../../utils/normalize-canvas-data';
@@ -35,6 +35,7 @@ export const CanvasPage = () => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeRevision, setChangeRevision] = useState(0);
+  const { mode: themeMode, toggle: toggleTheme } = useThemeMode();
   const editorRef = useRef<FreeLayoutPluginContext | null>(null);
   const revisionRef = useRef(0);
   const savedRevisionRef = useRef(0);
@@ -244,6 +245,15 @@ export const CanvasPage = () => {
         <div className="canvas-save-actions">
           <span className="canvas-autosave-badge">自动保存</span>
           <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
+          <Tooltip content={themeMode === 'dark' ? '切换到浅色模式' : '切换到深色模式'}>
+            <Button
+              theme="borderless"
+              type="tertiary"
+              aria-label={themeMode === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
+              icon={themeMode === 'dark' ? <IconSun aria-hidden="true" /> : <IconMoon aria-hidden="true" />}
+              onClick={toggleTheme}
+            />
+          </Tooltip>
           <Button
             theme="solid"
             type="primary"

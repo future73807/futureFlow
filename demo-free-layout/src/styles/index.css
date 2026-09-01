@@ -5,18 +5,25 @@
   --ff-sidebar: #111827;
   --ff-sidebar-muted: #94a3b8;
   --ff-text: #172033;
+  --ff-text-secondary: #344054;
   --ff-muted: #667085;
   --ff-subtle: #98a2b3;
   --ff-border: #e4e8f0;
+  --ff-border-hover: #9aa9c0;
   --ff-border-strong: #cfd7e5;
   --ff-primary: #2563eb;
   --ff-primary-hover: #1d4ed8;
   --ff-primary-soft: #eff6ff;
+  --ff-primary-border: #bfdbfe;
   --ff-success: #16794c;
+  --ff-success-soft: #ecfdf5;
   --ff-warning: #a15c07;
+  --ff-warning-soft: #fffbeb;
   --ff-danger: #c5382d;
+  --ff-danger-soft: #fff5f5;
+  --ff-danger-border: #fecaca;
   --ff-radius: 8px;
-  --ff-radius-lg: 8px;
+  --ff-radius-lg: 12px;
   --ff-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.04);
   --ff-shadow-lg: 0 18px 52px rgba(15, 23, 42, 0.16);
 
@@ -30,6 +37,52 @@
   --g-workflow-line-color-hover: #1d4ed8;
   --g-workflow-line-color-selected: #1d4ed8;
   --g-workflow-line-color-error: #c5382d;
+
+  /* FlowGram 画布本体（选区/背景）对齐品牌色 */
+  --g-editor-background: var(--ff-page);
+  --g-selection-background: #2563eb;
+}
+
+/* 深色模式：html[data-theme='dark'] 由 utils/theme.ts 切换，body theme-mode 供 Semi 调色板使用 */
+html[data-theme='dark'] {
+  --ff-page: #0d1424;
+  --ff-surface: #131c30;
+  --ff-surface-muted: #1a2540;
+  --ff-sidebar: #0a101d;
+  --ff-sidebar-muted: #8fa0bd;
+  --ff-text: #e7ecf6;
+  --ff-text-secondary: #c3cee2;
+  --ff-muted: #94a3bd;
+  --ff-subtle: #6b7a94;
+  --ff-border: #253352;
+  --ff-border-hover: #3a4c74;
+  --ff-border-strong: #33436a;
+  --ff-primary: #3b82f6;
+  --ff-primary-hover: #60a5fa;
+  --ff-primary-soft: rgba(59, 130, 246, 0.16);
+  --ff-primary-border: rgba(96, 165, 250, 0.45);
+  --ff-success: #34d399;
+  --ff-success-soft: rgba(52, 211, 153, 0.12);
+  --ff-warning: #fbbf24;
+  --ff-warning-soft: rgba(251, 191, 36, 0.12);
+  --ff-danger: #f87171;
+  --ff-danger-soft: rgba(248, 113, 113, 0.12);
+  --ff-danger-border: rgba(248, 113, 113, 0.4);
+  --ff-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.4);
+  --ff-shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.55);
+
+  --g-workflow-port-color-primary: #60a5fa;
+  --g-workflow-port-color-secondary: #1e40af;
+  --g-workflow-port-color-error: #f87171;
+  --g-workflow-port-color-background: #131c30;
+  --g-workflow-line-color-default: #3b82f6;
+  --g-workflow-line-color-drawing: #60a5fa;
+  --g-workflow-line-color-hover: #60a5fa;
+  --g-workflow-line-color-selected: #93c5fd;
+  --g-workflow-line-color-error: #f87171;
+
+  --g-editor-background: var(--ff-page);
+  --g-selection-background: #3b82f6;
 }
 
 * { box-sizing: border-box; }
@@ -58,12 +111,12 @@ textarea:focus-visible {
   min-height: 34px;
   border-radius: var(--ff-radius) !important;
   border-color: var(--ff-border-strong);
-  color: #344054;
+  color: var(--ff-text-secondary);
   font-weight: 600;
   box-shadow: none !important;
 }
 
-.semi-button:hover { border-color: #9aa9c0; background: #f8fafc; }
+.semi-button:hover { border-color: var(--ff-border-hover); background: var(--ff-surface-muted); }
 
 .semi-button-primary,
 .semi-button-primary.semi-button-solid {
@@ -80,11 +133,11 @@ textarea:focus-visible {
 
 .semi-button-light {
   background: var(--ff-primary-soft) !important;
-  border-color: #bfdbfe !important;
-  color: #1d4ed8 !important;
+  border-color: var(--ff-primary-border) !important;
+  color: var(--ff-primary-hover) !important;
 }
 
-.semi-button-borderless:hover { background: #eef2f7 !important; }
+.semi-button-borderless:hover { background: var(--ff-surface-muted) !important; }
 .semi-button-danger { color: var(--ff-danger) !important; }
 .semi-button .semi-button-content { gap: 6px; }
 .semi-tag { border-radius: 4px; font-size: 12px; font-weight: 600; }
@@ -99,7 +152,7 @@ textarea:focus-visible {
 
 .semi-input-wrapper:hover,
 .semi-select:hover,
-.semi-textarea-wrapper:hover { border-color: #aab7ca !important; }
+.semi-textarea-wrapper:hover { border-color: var(--ff-border-hover) !important; }
 
 .semi-input-wrapper-focus,
 .semi-select-focus,
@@ -108,19 +161,19 @@ textarea:focus-visible {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
 }
 
-.semi-form-field-label-text { color: #344054; font-size: 13px; font-weight: 600; }
+.semi-form-field-label-text { color: var(--ff-text-secondary); font-size: 13px; font-weight: 600; }
 .semi-table { color: var(--ff-text); }
 
 .semi-table-thead > .semi-table-row > .semi-table-row-head {
   height: 42px;
-  background: #f8fafc;
-  color: #667085;
+  background: var(--ff-surface-muted);
+  color: var(--ff-muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.semi-table-tbody > .semi-table-row > .semi-table-row-cell { border-color: #edf0f5; }
-.semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell { background: #f8fbff; }
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell { border-color: var(--ff-border); }
+.semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell { background: var(--ff-primary-soft); }
 
 .semi-tabs-bar-line .semi-tabs-tab-active::after {
   height: 2px;
@@ -151,7 +204,7 @@ textarea:focus-visible {
   min-height: 64px;
   margin: 0 !important;
   padding: 20px 24px 12px !important;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--ff-border);
 }
 
 .semi-modal-title {
@@ -174,7 +227,7 @@ textarea:focus-visible {
 .semi-sidesheet-header {
   min-height: 64px;
   padding: 18px 20px !important;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--ff-border);
 }
 
 .semi-sidesheet-body { padding: 20px !important; }
@@ -208,7 +261,7 @@ textarea:focus-visible {
   height: 100%;
   overflow: hidden;
   flex-direction: column;
-  background: #f8fafc;
+  background: var(--ff-page);
 }
 
 .node-running {
@@ -228,10 +281,10 @@ textarea:focus-visible {
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: 5px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary);
   font-size: 14px;
 }
 

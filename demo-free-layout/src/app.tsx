@@ -17,11 +17,15 @@ import { AdminPage } from './pages/admin';
 import { CanvasPage } from './pages/canvas';
 import { isLoggedIn, getUser } from './utils/auth';
 import { AUTH_EXPIRED_EVENT } from './utils/api';
+import { applyTheme, resolveInitialTheme } from './utils/theme';
 
 /**
  * React 18/19 polyfill for form-materials
  */
 unstableSetCreateRoot(createRoot);
+
+// 在首个组件渲染前套用主题，避免浅色闪烁。
+applyTheme(resolveInitialTheme());
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn()) {

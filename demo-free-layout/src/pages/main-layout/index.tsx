@@ -6,12 +6,15 @@ import {
   IconExit,
   IconKey,
   IconList,
+  IconMoon,
   IconPlus,
   IconSetting,
+  IconSun,
   IconUser,
 } from '@douyinfe/semi-icons';
 import './main-layout.css';
 import { fetchProfile, isLoggedIn, removeToken } from '../../utils/auth';
+import { useThemeMode } from '../../hooks/use-theme';
 
 const NAV_ITEMS = [
   { key: '/', label: '工作流', icon: <IconApps />, adminOnly: false },
@@ -23,6 +26,7 @@ export const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
+  const { mode, toggle: toggleTheme } = useThemeMode();
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -91,6 +95,16 @@ export const MainLayout = () => {
             onClick={() => navigate('/profile?action=create-key')}
           >
             创建密钥
+          </Button>
+          <Button
+            className="sidebar-command"
+            type="tertiary"
+            theme="borderless"
+            icon={mode === 'dark' ? <IconSun /> : <IconMoon />}
+            onClick={toggleTheme}
+            aria-label={mode === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
+          >
+            {mode === 'dark' ? '浅色模式' : '深色模式'}
           </Button>
         </div>
 
