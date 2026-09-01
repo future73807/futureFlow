@@ -12,6 +12,7 @@
     "test:smoke": "ts-node -r tsconfig-paths/register test/platform-smoke.ts && ts-node -r tsconfig-paths/register test/dify-localization-smoke.ts && ts-node -r tsconfig-paths/register test/api-credential-security-smoke.ts && ts-node -r tsconfig-paths/register test/dify-cleanup-smoke.ts && ts-node -r tsconfig-paths/register test/reference-validation-smoke.ts && ts-node -r tsconfig-paths/register test/javascript-contract-smoke.ts && ts-node -r tsconfig-paths/register test/workflow-execution-guard-smoke.ts && pnpm run test:media",
     "test:media": "ts-node -r tsconfig-paths/register test/media-provider-smoke.ts && ts-node -r tsconfig-paths/register test/native-media-bridge-smoke.ts",
     "test:batch-loop": "ts-node -r tsconfig-paths/register test/batch-loop-smoke.ts",
+    "test:fail-branch": "ts-node -r tsconfig-paths/register test/fail-branch-smoke.ts",
     "test:integration": "ts-node -r tsconfig-paths/register test/platform.integration.ts",
     "test:fuzz": "ts-node --transpile-only -r tsconfig-paths/register test/platform-fuzz.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",

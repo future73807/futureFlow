@@ -7,7 +7,7 @@ import { FormMeta, FormRenderProps, ValidateTrigger } from '@flowgram.ai/free-la
 import { createInferInputsPlugin, validateFlowValue } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
 
-import { FormHeader, FormContent, LocalizedOutputs } from '../../form-components';
+import { FormHeader, FormContent, LocalizedOutputs, FailBranchControl } from '../../form-components';
 import { HTTPNodeJSON } from './types';
 import { Timeout } from './components/timeout';
 import { Params } from './components/params';
@@ -75,6 +75,8 @@ export const FormRender = ({ form }: FormRenderProps<HTTPNodeJSON>) => (
       <Timeout />
       <Divider />
       <LocalizedOutputs />
+      <Divider />
+      <FailBranchControl />
     </FormContent>
   </>
 );

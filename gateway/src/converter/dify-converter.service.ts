@@ -250,6 +250,20 @@ export class DifyConverterService {
       if (node.type === 'http') this.validateHttpNode(node, json.nodes);
       if (node.type === 'code') this.validateCodeNode(node);
       if (['text', 'image', 'video'].includes(node.type)) this.validateContentNode(node);
+      if (
+        node.data.failBranchEnabled !== undefined
+        && typeof node.data.failBranchEnabled !== 'boolean'
+      ) {
+        throw new BadRequestException(`节点 ${node.id} 的失败分支开关必须是布尔值`);
+      }
+      if (
+        node.data.failBranchEnabled === true
+        && !['llm', 'http', 'code'].includes(node.type)
+      ) {
+        throw new BadRequestException(
+          `节点 ${node.id} 的类型不支持失败分支，仅大语言模型、API 请求和代码执行节点可用`,
+        );
+      }
     }
 
     // Dify 会把 iteration 子节点展平到 graph.nodes；顶层与全部子节点 ID
@@ -281,6 +295,17 @@ export class DifyConverterService {
         ]);
         if (!edge.sourcePortID || !ports.has(edge.sourcePortID)) {
           throw new BadRequestException(`条件节点 ${source.id} 的连线必须使用有效分支端口`);
+        }
+      }
+      if (edge.sourcePortID === 'onError') {
+        const failBranchAllowed =
+          source
+          && ['llm', 'http', 'code'].includes(source.type)
+          && source.data.failBranchEnabled === true;
+        if (!failBranchAllowed) {
+          throw new BadRequestException(
+            `节点 ${edge.sourceNodeID} 未开启失败分支，不能使用失败分支连线`,
+          );
         }
       }
     }
@@ -1073,7 +1098,7 @@ main = function(args) {
       text: userPrompt,
     });
 
-    return {
+    const data: Record<string, unknown> = {
       type: 'llm',
       title: node.data.title || 'LLM',
       desc: '',
@@ -1096,6 +1121,15 @@ main = function(args) {
       },
       variables: [],
     };
+    this.applyFailBranch(data, node);
+    return data;
+  }
+
+  /** 失败分支开关映射为 Dify 0.15.3 的 error_strategy（仅 LLM/HTTP/代码节点）。 */
+  private applyFailBranch(data: Record<string, unknown>, node: FlowNodeJSON): void {
+    if (node.data.failBranchEnabled === true) {
+      data.error_strategy = 'fail-branch';
+    }
   }
 
   /** 转换 End 节点 */
@@ -1259,7 +1293,7 @@ main = function(args) {
     const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const retryTimes = Math.max(0, Math.min(10, Number(node.data.timeout?.retryTimes || 0)));
 
-    return {
+    const data: Record<string, unknown> = {
       type: 'http-request',
       title: node.data.title || 'HTTP 请求',
       desc: '',
@@ -1292,6 +1326,8 @@ main = function(args) {
         retry_interval: 100,
       },
     };
+    this.applyFailBranch(data, node);
+    return data;
   }
 
   /** 转换代码执行节点 */
@@ -1364,7 +1400,7 @@ main = function(args) {
       ]),
     );
 
-    return {
+    const data: Record<string, unknown> = {
       type: 'code',
       title: node.data.title || '代码执行',
       desc: '',
@@ -1374,6 +1410,8 @@ main = function(args) {
       variables,
       outputs,
     };
+    this.applyFailBranch(data, node);
+    return data;
   }
 
   /** 变量节点编译为 Dify 0.15.3 稳定支持的 JavaScript Code 节点。 */
@@ -2675,11 +2713,13 @@ main = function(args) {
         .join('-'),
       source: edge.sourceNodeID,
       sourceHandle:
-        sourceNode?.type === 'condition' || sourceNode?.type === 'multi-condition'
-          ? edge.sourcePortID === 'else'
-            ? 'false'
-            : edge.sourcePortID || 'false'
-          : 'source',
+        sourcePort === 'onError'
+          ? 'fail-branch'
+          : sourceNode?.type === 'condition' || sourceNode?.type === 'multi-condition'
+            ? edge.sourcePortID === 'else'
+              ? 'false'
+              : edge.sourcePortID || 'false'
+            : 'source',
       target: edge.targetNodeID,
       targetHandle: 'target',
       type: 'custom',
