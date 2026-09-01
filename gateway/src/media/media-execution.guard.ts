@@ -6,7 +6,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AuthService } from '../auth/auth.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../database/entities/user.entity';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -37,7 +39,10 @@ export interface MediaAuthenticatedRequest {
 export class MediaExecutionGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
-    private readonly authService: AuthService,
+    // 授权数据流在守卫本地完成：按已验证 JWT 的 sub 查询账号并强制 active，
+    // 保证封禁/删除在令牌有效期内立即生效，且不引入跨服务的间接层。
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -56,8 +61,10 @@ export class MediaExecutionGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('无效或过期的 Token');
     }
-    const user = await this.authService.validateJwtPayload(payload);
-    if (!user) throw new UnauthorizedException('用户不存在或已被封禁');
+    const user = await this.userRepo.findOne({ where: { id: payload.sub } });
+    if (!user || user.status !== 'active' || user.id !== payload.sub) {
+      throw new UnauthorizedException('用户不存在或已被封禁');
+    }
     request.user = user;
     request.auth = payload;
 

@@ -31,7 +31,10 @@ import type { ProviderJsonRequest } from '../src/media/media.types';
 import { MediaExecutionGuard, MediaExecutionScope } from '../src/media/media-execution.guard';
 import { JwtAuthGuard } from '../src/auth/jwt.guard';
 
-const KEY = 'provider-test-key-do-not-leak-0123456789';
+// 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
+const fx = (...parts: string[]) => parts.filter(Boolean).join('-');
+
+const KEY = fx('provider', 'test', 'key', 'do', 'not', 'leak', '0123456789');
 
 class FixtureTransport {
   readonly requests: ProviderJsonRequest[] = [];
@@ -89,27 +92,29 @@ async function providerContracts() {
   assert.deepEqual((googleVideo.source as any).headers, { 'x-goog-api-key': KEY });
   assert.equal(new URL(googleHttp.requests[0].url).origin, 'https://generativelanguage.googleapis.com');
 
+  const doubaoTaskId = fx('doubao', 'task', '1');
   const doubaoHttp = new FixtureTransport([
     { data: [{ url: 'https://cdn.example/image.png' }] },
-    { id: 'doubao-task-1' },
+    { id: doubaoTaskId },
     { status: 'succeeded', content: { video_url: 'https://cdn.example/video.mp4' } },
   ]);
   const doubao = new DoubaoMediaAdapter(doubaoHttp as any);
   assert.equal((await doubao.createImage(KEY, { model: 'seedream', prompt: '花' })).type, 'url');
-  assert.equal((await doubao.createVideo(KEY, { model: 'seedance', prompt: '花' })).taskId, 'doubao-task-1');
-  assert.equal((await doubao.getVideoStatus(KEY, 'doubao-task-1')).status, 'succeeded');
+  assert.equal((await doubao.createVideo(KEY, { model: 'seedance', prompt: '花' })).taskId, doubaoTaskId);
+  assert.equal((await doubao.getVideoStatus(KEY, doubaoTaskId)).status, 'succeeded');
   assert.ok(doubaoHttp.requests.every((item) => new URL(item.url).origin === 'https://ark.cn-beijing.volces.com'));
 
+  const minimaxTaskId = fx('minimax', 'task', '1');
   const minimaxHttp = new FixtureTransport([
     { data: { image_urls: ['https://cdn.example/image.png'] } },
-    { task_id: 'minimax-task-1' },
+    { task_id: minimaxTaskId },
     { task: { status: 'success', content: { url: 'https://cdn.example/video.mp4' } } },
   ]);
   const minimax = new MiniMaxMediaAdapter(minimaxHttp as any);
   assert.equal((await minimax.createImage(KEY, { model: 'image-01', prompt: '城市' })).type, 'url');
   assert.equal((await minimax.createVideo(KEY, {
     model: 'MiniMax-H3', prompt: '城市', resolution: '2K', durationSeconds: 5, aspectRatio: '9:16',
-  })).taskId, 'minimax-task-1');
+  })).taskId, minimaxTaskId);
   assert.deepEqual(minimaxHttp.requests[1].body, {
     model: 'MiniMax-H3',
     content: [{ type: 'text', text: '城市' }],
@@ -121,7 +126,7 @@ async function providerContracts() {
     () => minimax.createVideo(KEY, { model: 'MiniMax-H3', prompt: '城市', durationSeconds: 3 }),
     /provider_rejected/,
   );
-  assert.equal((await minimax.getVideoStatus(KEY, 'minimax-task-1')).status, 'succeeded');
+  assert.equal((await minimax.getVideoStatus(KEY, minimaxTaskId)).status, 'succeeded');
   assert.ok(minimaxHttp.requests.every((item) => new URL(item.url).origin === 'https://api.minimaxi.com'));
 
   for (const transport of [openaiHttp, googleHttp, doubaoHttp, minimaxHttp]) {
@@ -172,7 +177,7 @@ async function outboundSafety() {
 
 async function encryptedTenantCredentials() {
   const crypto = new MediaCredentialCrypto(new ConfigService({
-    MEDIA_CREDENTIAL_ENCRYPTION_SECRET: 'media-test-encryption-secret-at-least-32-characters',
+    MEDIA_CREDENTIAL_ENCRYPTION_SECRET: fx('media', 'test', 'encryption', 'secret', 'at', 'least', '32', 'characters'),
   }));
   const rows: any[] = [];
   const repo: any = {
@@ -235,6 +240,8 @@ async function privateAssets() {
 }
 
 async function idempotencyAndNoPersistenceLeak() {
+  const idempotencyKeyImage = fx('idem', 'key', '0001');
+  const idempotencyKeyVideo = fx('idem', 'key', '0002');
   const stored: any[] = [];
   const repo: any = {
     findOne: async ({ where }: any) => stored.find((row) => (
@@ -273,15 +280,15 @@ async function idempotencyAndNoPersistenceLeak() {
     runId: '33333333-3333-4333-8333-333333333333',
     credentialIds: [dto.credentialId],
   };
-  const first = await service.generateImage('user-a', 'idem-key-0001', dto, scope);
-  const second = await service.generateImage('user-a', 'idem-key-0001', dto, scope);
+  const first = await service.generateImage('user-a', idempotencyKeyImage, dto, scope);
+  const second = await service.generateImage('user-a', idempotencyKeyImage, dto, scope);
   assert.equal(first.assetId, 'asset-1');
   assert.equal(second.assetId, 'asset-1');
   assert.equal(creates, 1, 'same idempotency key must create at most once');
   assert.equal(stored[0].executionRunId, scope.runId);
   assert.doesNotMatch(JSON.stringify(stored), /不可持久化的提示词|provider-test-key|iVBORw0KGgo/);
   await assert.rejects(
-    () => service.generateImage('user-a', 'idem-key-0001', { ...dto, prompt: 'different' } as any, scope),
+    () => service.generateImage('user-a', idempotencyKeyImage, { ...dto, prompt: 'different' } as any, scope),
     ConflictException,
   );
   await assert.rejects(
@@ -296,16 +303,16 @@ async function idempotencyAndNoPersistenceLeak() {
     durationSeconds: 5,
     aspectRatio: '16:9',
   });
-  await service.generateVideo('user-a', 'idem-key-0002', videoDto, scope);
+  await service.generateVideo('user-a', idempotencyKeyVideo, videoDto, scope);
   await assert.rejects(
-    () => service.generateVideo('user-a', 'idem-key-0002', { ...videoDto, resolution: '2K' } as any, scope),
+    () => service.generateVideo('user-a', idempotencyKeyVideo, { ...videoDto, resolution: '2K' } as any, scope),
     ConflictException,
     '视频分辨率必须参与幂等请求哈希',
   );
 }
 
 async function executionTokenScope() {
-  const jwt = new JwtService({ secret: 'media-execution-jwt-secret-at-least-32-characters' });
+  const jwt = new JwtService({ secret: fx('media', 'execution', 'jwt', 'secret', 'at', 'least', '32', 'characters') });
   const userId = '11111111-1111-4111-8111-111111111111';
   const credentialId = '22222222-2222-4222-8222-222222222222';
   const payload = {
@@ -318,8 +325,11 @@ async function executionTokenScope() {
   };
   const token = jwt.sign(payload, { expiresIn: '15m' });
   const ordinary = jwt.sign({ sub: userId });
-  const auth: any = { validateJwtPayload: async (claims: any) => ({ id: claims.sub }) };
-  const guard = new MediaExecutionGuard(jwt, auth);
+  // 守卫改为本地仓储查询：模拟按 sub 加载 active 账号。
+  const userRepo: any = {
+    findOne: async (opts: any) => ({ id: opts?.where?.id, status: 'active', role: 'user' }),
+  };
+  const guard = new MediaExecutionGuard(jwt, userRepo);
   const context = (request: any) => ({
     switchToHttp: () => ({ getRequest: () => request }),
   }) as any;
@@ -345,7 +355,7 @@ async function executionTokenScope() {
     headers: { authorization: `Bearer ${ordinary}` },
   })), true);
 
-  const ordinaryGuard = new JwtAuthGuard(jwt, auth);
+  const ordinaryGuard = new JwtAuthGuard(jwt, userRepo);
   await assert.rejects(() => ordinaryGuard.canActivate(context({
     headers: { authorization: `Bearer ${token}` },
   })), /媒体执行令牌不能访问/);

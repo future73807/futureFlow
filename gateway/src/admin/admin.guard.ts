@@ -5,7 +5,9 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AuthService } from '../auth/auth.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../database/entities/user.entity';
 
 /**
  * 管理员权限守卫
@@ -15,7 +17,9 @@ import { AuthService } from '../auth/auth.service';
 export class AdminGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
-    private readonly authService: AuthService,
+    // 授权数据流在守卫本地完成（同 jwt.guard），并额外要求 role === 'admin'。
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,8 +34,8 @@ export class AdminGuard implements CanActivate {
 
     try {
       const payload = this.jwtService.verify(token);
-      const user = await this.authService.validateJwtPayload(payload);
-      if (!user) {
+      const user = await this.userRepo.findOne({ where: { id: payload.sub } });
+      if (!user || user.status !== 'active' || user.id !== payload.sub) {
         throw new ForbiddenException('用户不存在或已被封禁');
       }
       if (user.role !== 'admin') {

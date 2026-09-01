@@ -109,14 +109,6 @@ export class AuthService {
     return this.sanitizeUser(await this.userRepo.save(user));
   }
 
-  async validateJwtPayload(payload: any): Promise<User | null> {
-    const user = await this.userRepo.findOne({ where: { id: payload.sub } });
-    if (!user || user.status !== 'active') {
-      return null;
-    }
-    return user;
-  }
-
   private generateTokens(user: User) {
     const payload = {
       sub: user.id,

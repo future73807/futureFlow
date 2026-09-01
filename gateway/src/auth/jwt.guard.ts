@@ -5,13 +5,18 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AuthService } from './auth.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../database/entities/user.entity';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
-    private readonly authService: AuthService,
+    // 授权数据流在守卫本地完成：按已验证 JWT 的 sub 查询账号并强制 active，
+    // 保证封禁/删除在令牌有效期内立即生效，且不引入跨服务的间接层。
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -29,8 +34,8 @@ export class JwtAuthGuard implements CanActivate {
       if (payload?.type === 'media_execution') {
         throw new UnauthorizedException('媒体执行令牌不能访问此接口');
       }
-      const user = await this.authService.validateJwtPayload(payload);
-      if (!user) {
+      const user = await this.userRepo.findOne({ where: { id: payload.sub } });
+      if (!user || user.status !== 'active' || user.id !== payload.sub) {
         throw new UnauthorizedException('用户不存在或已被封禁');
       }
       req.user = user;

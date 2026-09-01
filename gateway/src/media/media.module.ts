@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { User } from '../database/entities/user.entity';
 import { MediaAsset } from '../database/entities/media-asset.entity';
 import { MediaCredential } from '../database/entities/media-credential.entity';
 import { MediaJob } from '../database/entities/media-job.entity';
@@ -20,7 +21,7 @@ import { MediaExecutionGuard } from './media-execution.guard';
 @Module({
   imports: [
     AuthModule,
-    TypeOrmModule.forFeature([MediaCredential, MediaJob, MediaAsset]),
+    TypeOrmModule.forFeature([User, MediaCredential, MediaJob, MediaAsset]),
   ],
   controllers: [MediaController],
   providers: [
