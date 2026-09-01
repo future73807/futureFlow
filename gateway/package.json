@@ -13,6 +13,7 @@
     "test:media": "ts-node -r tsconfig-paths/register test/media-provider-smoke.ts && ts-node -r tsconfig-paths/register test/native-media-bridge-smoke.ts",
     "test:batch-loop": "ts-node -r tsconfig-paths/register test/batch-loop-smoke.ts",
     "test:fail-branch": "ts-node -r tsconfig-paths/register test/fail-branch-smoke.ts",
+    "test:knowledge": "ts-node -r tsconfig-paths/register test/knowledge-retrieval-smoke.ts",
     "test:integration": "ts-node -r tsconfig-paths/register test/platform.integration.ts",
     "test:fuzz": "ts-node --transpile-only -r tsconfig-paths/register test/platform-fuzz.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",

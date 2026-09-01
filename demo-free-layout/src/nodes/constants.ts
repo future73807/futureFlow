@@ -17,6 +17,7 @@ export enum WorkflowNodeType {
   Video = 'video',
   HTTP = 'http',
   Code = 'code',
+  Knowledge = 'knowledge',
   Variable = 'variable',
   Condition = 'condition',
   MultiCondition = 'multi-condition',

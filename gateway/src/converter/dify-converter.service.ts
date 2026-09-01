@@ -119,7 +119,7 @@ export class DifyConverterService {
     // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
     if (!endNode) {
       const executableNodes = flowgram.nodes.filter((n) =>
-        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(n.type),
+        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(n.type),
       );
       if (executableNodes.length > 0) {
         const lastNode = executableNodes[executableNodes.length - 1];
@@ -250,6 +250,7 @@ export class DifyConverterService {
       if (node.type === 'http') this.validateHttpNode(node, json.nodes);
       if (node.type === 'code') this.validateCodeNode(node);
       if (['text', 'image', 'video'].includes(node.type)) this.validateContentNode(node);
+      if (node.type === 'knowledge') this.validateKnowledgeNode(node, json.nodes);
       if (
         node.data.failBranchEnabled !== undefined
         && typeof node.data.failBranchEnabled !== 'boolean'
@@ -392,7 +393,7 @@ export class DifyConverterService {
       this.validateBatchLoopInnerReferences(loop);
     }
     const executableNodes = json.nodes.filter((n) =>
-      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(n.type),
+      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(n.type),
     );
     if (executableNodes.length === 0) {
       throw new BadRequestException(
@@ -1016,6 +1017,8 @@ main = function(args) {
       case 'condition':
       case 'multi-condition':
         return { ...base, height: 180, data: this.convertConditionNode(node, flowgram.nodes) };
+      case 'knowledge':
+        return { ...base, height: 140, data: this.convertKnowledgeNode(node, flowgram.nodes) };
       default:
         throw new BadRequestException(
           `暂不支持的节点类型: ${node.type}`,
@@ -1150,7 +1153,7 @@ main = function(args) {
     );
     if (
       !sourceNode ||
-      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop'].includes(sourceNode.type)
+      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(sourceNode.type)
     ) {
       throw new BadRequestException(
         `结束节点 ${node.id} 仅能连接可输出结果的执行节点`,
@@ -2337,6 +2340,56 @@ main = function(args) {
     return 'result';
   }
 
+  /** 知识检索节点：查询引用必须显式选择，数据集使用平台受控 Dify 数据集 UUID。 */
+  private validateKnowledgeNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): void {
+    const datasetId = String(node.data.datasetId || '').trim();
+    if (!datasetId) {
+      throw new BadRequestException(`知识检索节点 ${node.id} 尚未选择知识库`);
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(datasetId)) {
+      throw new BadRequestException(`知识检索节点 ${node.id} 的知识库 ID 格式无效`);
+    }
+    const queryValue = node.data.queryValue as FlowInputValue | undefined;
+    if (!queryValue || queryValue.type !== 'ref' || !Array.isArray(queryValue.content) || queryValue.content.length < 2) {
+      throw new BadRequestException(`知识检索节点 ${node.id} 必须引用一个上游变量作为检索语句`);
+    }
+    const selector = this.normalizeDifySelector(queryValue.content.map(String), nodes);
+    const referencedNode = nodes.find((candidate) => candidate.id === selector[0]);
+    if (!referencedNode || referencedNode.id === node.id) {
+      throw new BadRequestException(`知识检索节点 ${node.id} 的检索语句引用了不存在或无效的节点`);
+    }
+    const topK = Number(node.data.topK ?? 4);
+    if (!Number.isInteger(topK) || topK < 1 || topK > 10) {
+      throw new BadRequestException(`知识检索节点 ${node.id} 的返回数量必须是 1 到 10 之间的整数`);
+    }
+  }
+
+  /** 知识检索节点编译为 Dify knowledge-retrieval 节点；结果输出为 result 数组。 */
+  private convertKnowledgeNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
+    const datasetId = String(node.data.datasetId || '').trim();
+    const queryValue = node.data.queryValue as FlowInputValue | undefined;
+    const querySelector = this.normalizeDifySelector(
+      (queryValue?.content as unknown[]).map(String),
+      nodes,
+    );
+    const topK = Number(node.data.topK ?? 4);
+
+    return {
+      type: 'knowledge-retrieval',
+      title: node.data.title || '知识检索',
+      desc: '',
+      selected: false,
+      dataset_ids: [datasetId],
+      query_variable_selector: querySelector,
+      retrieval_mode: 'single',
+      multiple_retrieval_config: {
+        top_k: topK,
+        score_threshold: null,
+        reranking_enable: false,
+      },
+    };
+  }
+
   /** 将 FlowGram JSON Schema 完整转换为 Dify Code 节点输出 schema。 */
   private toDifyCodeOutputSchema(schema: any): {
     type: string;
@@ -2800,6 +2853,7 @@ main = function(args) {
     if (type === 'http') return 'http-request';
     if (type === 'condition' || type === 'multi-condition') return 'if-else';
     if (type === 'loop') return 'iteration';
+    if (type === 'knowledge') return 'knowledge-retrieval';
     if (type === 'text' || type === 'image' || type === 'video' || type === 'variable') return 'code';
     return type || 'custom';
   }

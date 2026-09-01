@@ -22,8 +22,8 @@ export const VIP_NODE_PERMISSIONS: Record<string, string[]> = {
   // 条件分支已接入 Dify 转换，应作为所有工作流的基础能力，
   // 而不是在运行时被误拒绝。
   free: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition'],
-  pro: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop'],
-  enterprise: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop'],
+  pro: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop', 'knowledge'],
+  enterprise: ['start', 'end', 'llm', 'text', 'image', 'video', 'variable', 'condition', 'multi-condition', 'http', 'code', 'loop', 'knowledge'],
 };
 
 /**
