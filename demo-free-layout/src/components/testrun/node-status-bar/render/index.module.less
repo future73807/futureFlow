@@ -5,24 +5,24 @@
 
 .nodeStatus {
   &Succeed {
-    background-color: rgba(105, 209, 140, 0.3);
-    color: #00b42a;
+    background-color: rgba(22, 121, 76, 0.1);
+    color: var(--ff-success);
   }
 
   &Processing {
-    background-color: rgba(153, 187, 255, 0.3);
-    color: #4d53e8;
+    background-color: rgba(37, 99, 235, 0.1);
+    color: var(--ff-primary);
   }
 
   &Failed {
-    background-color: rgba(255, 163, 171, 0.3);
-    color: #f53f3f;
+    background-color: rgba(197, 56, 45, 0.1);
+    color: var(--ff-danger);
   }
 }
 
 .icon {
   &.processing {
-    color: rgba(77, 83, 232, 1);
+    color: var(--ff-primary);
   }
 }
 
@@ -36,7 +36,7 @@
 
 .count {
   font-weight: 500;
-  color: #333;
+  color: var(--ff-text);
   font-size: 15px;
   margin-left: 12px;
 }
@@ -59,12 +59,12 @@
   font-weight: 500;
 
   &.active {
-    border-color: #4d53e8;
+    border-color: var(--ff-primary);
     font-weight: 800;
   }
 
   &.inactive {
-    border-color: rgba(29, 28, 35, 0.08);
+    border-color: var(--ff-border);
   }
 }
 
@@ -74,11 +74,11 @@
   border: 1px solid;
 
   &.active {
-    border-color: #4d53e8;
+    border-color: var(--ff-primary);
   }
 
   &.inactive {
-    border-color: rgba(29, 28, 35, 0.08);
+    border-color: var(--ff-border);
   }
 }
 
@@ -90,5 +90,5 @@
 
 .error {
   padding: 12px;
-  color: red;
+  color: var(--ff-danger);
 }

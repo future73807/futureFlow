@@ -10,7 +10,7 @@
 .formTitle {
   font-size: 20px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--ff-text);
   margin-bottom: 24px;
   text-align: center;
 }
@@ -27,7 +27,7 @@
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: #333333;
+  color: var(--ff-text);
   margin-bottom: 8px;
   line-height: 1.4;
 }
@@ -38,12 +38,12 @@
   :global(.semi-input) {
 
     &:hover {
-      border-color: #4096ff;
+      border-color: var(--ff-primary);
     }
 
     &:focus {
-      border-color: #4096ff;
-      box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.1);
+      border-color: var(--ff-primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
     }
   }
 
@@ -51,12 +51,12 @@
     width: 100%;
 
     &:hover {
-      border-color: #4096ff;
+      border-color: var(--ff-primary);
     }
 
     &:focus-within {
-      border-color: #4096ff;
-      box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.1);
+      border-color: var(--ff-primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
     }
   }
 }
@@ -64,10 +64,10 @@
 .codeEditorWrapper {
   min-height: 100px;
   max-height: 200px;
-  background: #fff;
+  background: var(--ff-surface);
   padding: 8px 8px 8px 4px;
-  border-radius: 8px;
-  border: 1px solid #7f92cd40;
+  border-radius: var(--ff-radius);
+  border: 1px solid var(--ff-border);
   width: 348px;
 
   :global(.cm-editor) {
@@ -86,16 +86,16 @@
   }
 
   :global(.cm-activeLine) {
-    background-color: #efefef78;
+    background-color: rgba(37, 99, 235, 0.04);
   }
 
   :global(.cm-activeLineGutter) {
-    background-color: #efefef78;
+    background-color: rgba(37, 99, 235, 0.04);
   }
 
   :global(.cm-gutters) {
-    background-color: #fff;
-    color: #000A298A;
+    background-color: var(--ff-surface);
+    color: var(--ff-subtle);
     border-right-color: transparent;
     border-right-width: 0px;
   }
@@ -112,7 +112,7 @@
 .emptyState {
   text-align: center;
   padding: 20px 20px;
-  color: #999999;
+  color: var(--ff-subtle);
   font-size: 14px;
 
   .emptyText {
@@ -121,7 +121,7 @@
 }
 
 .requiredIndicator {
-  color: #ff4d4f;
+  color: var(--ff-danger);
   margin-left: 4px;
   font-weight: 500;
 }

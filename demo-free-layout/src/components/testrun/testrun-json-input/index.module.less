@@ -6,10 +6,10 @@
 .testrun-json-input {
   min-height: 300px;
   max-height: 400px;
-  background: #fff;
+  background: var(--ff-surface);
   padding: 8px 8px 8px 4px;
-  border-radius: 8px;
-  border: 1px solid #7f92cd40;
+  border-radius: var(--ff-radius);
+  border: 1px solid var(--ff-border);
   width: 348px;
 
   :global(.cm-editor) {
@@ -28,16 +28,16 @@
   }
 
   :global(.cm-activeLine) {
-    background-color: #efefef78;
+    background-color: rgba(37, 99, 235, 0.04);
   }
 
   :global(.cm-activeLineGutter) {
-    background-color: #efefef78;
+    background-color: rgba(37, 99, 235, 0.04);
   }
 
   :global(.cm-gutters) {
-    background-color: #fff;
-    color: #000A298A;
+    background-color: var(--ff-surface);
+    color: var(--ff-subtle);
     border-right-color: transparent;
     border-right-width: 0px;
   }

@@ -4,14 +4,25 @@
  */
 
 .testrun-success-button {
-  background-color: #5968d8 !important; // keep canvas execution actions consistent
-  border-color: #5968d8 !important;
-  border-radius: 8px;
+  background-color: var(--ff-primary) !important; // keep canvas execution actions consistent
+  border-color: var(--ff-primary) !important;
+  border-radius: var(--ff-radius);
   color: #fff !important; // override semi style
+
+  &:hover {
+    background-color: var(--ff-primary-hover) !important;
+    border-color: var(--ff-primary-hover) !important;
+  }
 }
 
 .testrun-error-button {
-  background-color: rgba(255, 115, 0, 1) !important; // override semi style
-  border-radius: 8px;
+  background-color: var(--ff-danger) !important; // override semi style
+  border-color: var(--ff-danger) !important;
+  border-radius: var(--ff-radius);
   color: #fff !important; // override semi style
+
+  &:hover {
+    background-color: #b02f26 !important;
+    border-color: #b02f26 !important;
+  }
 }

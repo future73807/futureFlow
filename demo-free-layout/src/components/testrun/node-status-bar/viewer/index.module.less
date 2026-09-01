@@ -7,12 +7,12 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 14px;
   line-height: 1.5;
-  color: #333;
-  background: #fafafa;
-  border-radius: 6px;
+  color: var(--ff-text);
+  background: var(--ff-surface-muted);
+  border-radius: var(--ff-radius);
   padding: 12px 12px 12px 0;
   margin: 12px;
-  border: 1px solid #e1e4e8;
+  border: 1px solid var(--ff-border);
   overflow: hidden;
 
   .treeNode {
@@ -44,7 +44,7 @@
         top: 0;
         bottom: 0;
         width: 1px;
-        background: #e1e4e8;
+        background: var(--ff-border);
       }
     }
   }
@@ -54,7 +54,7 @@
     border: none;
     cursor: pointer;
     font-size: 10px;
-    color: #666;
+    color: var(--ff-muted);
     width: 16px;
     height: 16px;
     display: flex;
@@ -67,7 +67,7 @@
 
     &:hover {
       background-color: rgba(0, 0, 0, 0.1);
-      color: #333;
+      color: var(--ff-text);
     }
 
     &.expanded {

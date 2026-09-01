@@ -15,24 +15,24 @@
     .title {
       font-size: 15px;
       font-weight: 500;
-      color: #333;
+      color: var(--ff-text);
       flex: 1;
     }
   }
 
 
   .error {
-    color: red;
+    color: var(--ff-danger);
     font-size: 14px;
   }
 
   .code-editor-container {
     min-height: 200px;
     max-height: 400px;
-    background: #fff;
+    background: var(--ff-surface);
     padding: 8px 8px 8px 4px;
-    border-radius: 4px;
-    border: 1px solid #52649a0f;
+    border-radius: var(--ff-radius);
+    border: 1px solid var(--ff-border);
 
     :global(.cm-editor) {
       height: 100% !important;
@@ -62,49 +62,55 @@
 
   .text {
     font-size: 18px;
+    color: var(--ff-text);
   }
 }
 
 .button {
-  border-radius: 8px;
+  border-radius: var(--ff-radius);
   flex: 1;
   height: 40px;
 
   &.running {
-    background-color: rgba(87, 104, 161, 0.08) !important; // override semi style
-    color: rgba(15, 21, 40, 0.82);
+    background-color: rgba(23, 32, 51, 0.06) !important; // override semi style
+    color: var(--ff-text);
   }
 
   &.default {
-    background-color: rgba(0, 178, 60, 1) !important; // override semi style
+    background-color: var(--ff-primary) !important; // override semi style
     color: #fff;
+
+    &:hover {
+      background-color: var(--ff-primary-hover) !important;
+    }
   }
 }
 
 .download-button {
   flex: 1;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ff-radius);
 }
 
 
 .testrun-panel-container {
-  background: rgb(255, 255, 255);
-  border-radius: 8px;
+  background: var(--ff-surface);
+  border-radius: var(--ff-radius-lg);
   height: 100%;
   width: 100%;
-  border: 1px solid rgba(82, 100, 154, 0.13);
+  border: 1px solid var(--ff-border);
   padding: 8px 0 8px 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  box-shadow: var(--ff-shadow-lg);
 
   .testrun-panel-header {
-    background: var(#fcfcff);
-    border-bottom: 1px solid rgba(82, 100, 154, 0.13);
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
+    background: var(--ff-surface-muted);
+    border-bottom: 1px solid var(--ff-border);
+    border-top-left-radius: var(--ff-radius-lg);
+    border-top-right-radius: var(--ff-radius-lg);
     display: flex;
     height: 40px;
     justify-content: space-between;
@@ -114,7 +120,8 @@
 
     .testrun-panel-title {
       font-size: 16px;
-      font-weight: 500;
+      font-weight: 600;
+      color: var(--ff-text);
       margin: 8px 8px 8px 16px;
     }
 
@@ -134,13 +141,13 @@
   }
 
   .testrun-panel-footer {
-    border-top: 1px solid rgba(82, 100, 154, 0.13);
+    border-top: 1px solid var(--ff-border);
     height: 40px;
     position: absolute;
-    background: #fbfbfb;
+    background: var(--ff-surface-muted);
     height: 62px;
     bottom: 0;
-    border-radius: 0 0 8px 8px;
+    border-radius: 0 0 var(--ff-radius-lg) var(--ff-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;

@@ -16,8 +16,8 @@
   height: 32px;
   padding: 8px 12px;
 
-  border: 1px solid rgba(29, 28, 35, 8%);
-  border-radius: 8px;
+  border: 1px solid var(--ff-border-strong);
+  border-radius: var(--ff-radius);
 
   &-icon {
     height: 20px;
@@ -45,9 +45,10 @@
 
       text-align: center;
 
-      background: var(--coz-mg-card, #FFF);
-      border: 1px solid var(--coz-stroke-plus, rgba(6, 7, 9, 15%));
-      border-radius: var(--default, 8px);
+      background: var(--ff-surface);
+      border: 1px solid var(--ff-border);
+      border-radius: var(--ff-radius);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
       &-icon {
         padding-top: 26px;
@@ -55,42 +56,44 @@
 
       &-title {
         padding-top: 8px;
+        color: var(--ff-text);
       }
 
       &-subTitle {
         padding: 4px 12px 0;
+        color: var(--ff-muted);
       }
 
       &-icon-selected {
-        color: rgb(19 0 221);
+        color: var(--ff-primary);
       }
 
       &-title-selected {
-        color: var(--coz-fg-hglt, #4E40E5);
+        color: var(--ff-primary);
       }
 
       &-subTitle-selected {
-        color: var(--coz-fg-hglt, #4E40E5);
+        color: var(--ff-primary);
       }
 
       &-selected {
         cursor: pointer;
-        background-color: var(--coz-mg-hglt, rgba(186, 192, 255, 20%));
-        border: 1px solid var(--coz-stroke-hglt, #4E40E5);
-        border-radius: var(--default, 8px);
+        background-color: var(--ff-primary-soft);
+        border: 1px solid var(--ff-primary);
+        border-radius: var(--ff-radius);
       }
 
       &:hover:not(&-selected) {
         cursor: pointer;
 
-        background-color: var(--coz-mg-card-hovered, #FFF);
-        border: 1px solid var(--coz-stroke-plus, rgba(6, 7, 9, 15%));
-        border-radius: var(--default, 8px);
-        box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 16%), 0 16px 48px 0 rgba(0, 0, 0, 8%);
+        background-color: var(--ff-surface);
+        border: 1px solid var(--ff-border-strong);
+        border-radius: var(--ff-radius);
+        box-shadow: var(--ff-shadow-sm);
       }
 
       &:active:not(&-selected) {
-        background-color: rgba(46, 46, 56, 12%);
+        background-color: var(--ff-surface-muted);
       }
 
       &:last-of-type {
@@ -101,17 +104,17 @@
 
   &:hover {
     cursor: pointer;
-    background-color: rgba(46, 46, 56, 8%);
-    border-color: rgba(77, 83, 232, 100%);
+    background-color: var(--ff-surface-muted);
+    border-color: var(--ff-primary);
   }
 
   &:active,
   &:focus {
-    background-color: rgba(46, 46, 56, 12%);
-    border-color: rgba(77, 83, 232, 100%);
+    background-color: var(--ff-surface-muted);
+    border-color: var(--ff-primary);
   }
 
   &-active {
-    border-color: rgba(77, 83, 232, 100%);
+    border-color: var(--ff-primary);
   }
 }
