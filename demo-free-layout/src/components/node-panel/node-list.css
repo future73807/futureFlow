@@ -2,16 +2,16 @@
   width: 344px;
   overflow: hidden;
   border: 1px solid var(--ff-border);
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-lg);
 }
 
 .canvas-node-panel-head {
   display: grid;
   gap: 12px;
   padding: 16px 16px 12px;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--ff-border);
   background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
 }
 
@@ -46,7 +46,7 @@
 .canvas-node-group h3 {
   margin: 0;
   padding: 4px 8px 5px;
-  color: #98a2b3;
+  color: var(--ff-subtle);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -62,15 +62,15 @@
   border: 0;
   border-radius: var(--ff-radius);
   background: transparent;
-  color: #344054;
+  color: var(--ff-text);
   cursor: pointer;
   text-align: left;
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
 .canvas-node-option:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary-hover);
   transform: translateX(2px);
 }
 
@@ -86,10 +86,10 @@
   flex: 0 0 24px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: 6px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary);
 }
 
 .canvas-node-icon-image {
@@ -105,7 +105,7 @@
 }
 
 .canvas-node-option-copy strong {
-  color: #344054;
+  color: var(--ff-text);
   font-size: 13px;
   font-weight: 700;
 }
@@ -121,8 +121,8 @@
   flex: 0 0 auto;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #fff7ed;
-  color: #c2410c;
+  background: var(--ff-warning-soft);
+  color: var(--ff-warning);
   font-size: 10px;
   font-style: normal;
   font-weight: 600;
@@ -130,7 +130,7 @@
 
 .canvas-node-option-copy small {
   overflow: hidden;
-  color: #98a2b3;
+  color: var(--ff-subtle);
   font-size: 11px;
   font-weight: 400;
   line-height: 16px;
@@ -139,7 +139,7 @@
 }
 
 .canvas-node-option:hover .canvas-node-option-copy strong {
-  color: #1d4ed8;
+  color: var(--ff-primary-hover);
 }
 
 .canvas-node-option:disabled {
@@ -152,7 +152,7 @@
 
 .canvas-node-empty {
   padding: 38px 12px;
-  color: #98a2b3;
+  color: var(--ff-subtle);
   font-size: 12px;
   text-align: center;
 }

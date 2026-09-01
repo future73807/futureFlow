@@ -14,7 +14,7 @@
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  border: 1px solid #e8ecf2;
+  border: 1px solid var(--ff-border);
   border-radius: 8px;
   background: #f8fafc;
   color: #475467;

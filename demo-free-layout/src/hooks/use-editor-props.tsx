@@ -120,12 +120,12 @@ export function useEditorProps(
       },
       lineColor: {
         hidden: 'var(--g-workflow-line-color-hidden,transparent)',
-        default: 'var(--g-workflow-line-color-default,#4d53e8)',
-        drawing: 'var(--g-workflow-line-color-drawing, #5DD6E3)',
-        hovered: 'var(--g-workflow-line-color-hover,#37d0ff)',
-        selected: 'var(--g-workflow-line-color-selected,#37d0ff)',
-        error: 'var(--g-workflow-line-color-error,red)',
-        flowing: 'var(--g-workflow-line-color-flowing,#4d53e8)',
+        default: 'var(--g-workflow-line-color-default,#2563eb)',
+        drawing: 'var(--g-workflow-line-color-drawing,#2563eb)',
+        hovered: 'var(--g-workflow-line-color-hover,#1d4ed8)',
+        selected: 'var(--g-workflow-line-color-selected,#1d4ed8)',
+        error: 'var(--g-workflow-line-color-error,#c5382d)',
+        flowing: 'var(--g-workflow-line-color-flowing,#2563eb)',
       },
       /*
        * Check whether the line can be added
@@ -590,8 +590,8 @@ export function useEditorProps(
          * 自动对齐及辅助线插件
          */
         createFreeSnapPlugin({
-          edgeColor: '#00B2B2',
-          alignColor: '#00B2B2',
+          edgeColor: '#93c5fd',
+          alignColor: '#2563eb',
           edgeLineWidth: 1,
           alignLineWidth: 1,
           alignCrossWidth: 8,

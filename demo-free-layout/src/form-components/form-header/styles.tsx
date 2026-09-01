@@ -7,9 +7,9 @@ export const Header = styled.div`
   gap: 8px;
   padding: 10px 12px;
   overflow: hidden;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--ff-border);
   border-radius: var(--ff-radius) var(--ff-radius) 0 0;
-  background: #f8fafc;
+  background: var(--ff-surface-muted);
   box-sizing: border-box;
   cursor: move;
 `;

@@ -849,7 +849,7 @@ export const WorkflowListPage = () => {
               只需完成一次管理员授权。futureFlow 会在每次发布时，为该工作流版本自动创建独立 Dify 应用、生成独立 Service API Key，并将密钥加密保存；页面不会回显明文密钥。若服务端已配置 LLM_API_KEY，还会在 Provider 缺失时安全同步到 Dify。
             </Typography.Text>
             {difyStatus && (
-              <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: '#f7f8fa' }}>
+              <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: 'var(--ff-surface-muted)' }}>
                 <Tag color={difyStatus.connectionAuthorized ? 'green' : 'orange'}>
                   {difyStatus.connectionAuthorized ? '已授权' : '未授权'}
                 </Tag>
@@ -868,7 +868,7 @@ export const WorkflowListPage = () => {
                 )}
               </div>
             )}
-            <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, border: '1px solid #e5e6eb' }}>
+            <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, border: '1px solid var(--ff-border)' }}>
               <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
                 零成本安全预检
               </Typography.Text>
@@ -1252,7 +1252,7 @@ const WorkflowCard = styled.article`
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 
   &:hover {
-    border-color: #bfdbfe;
+    border-color: var(--ff-primary-border);
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     transform: translateY(-1px);
   }
@@ -1270,9 +1270,9 @@ const CardIcon = styled.div`
   width: 38px;
   height: 38px;
   place-items: center;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
-  background: #eff6ff;
+  background: var(--ff-primary-soft);
 `;
 
 const CardTitle = styled.div`
@@ -1308,7 +1308,7 @@ const CardActions = styled.div`
   gap: 6px;
   margin-top: 4px;
   padding-top: 12px;
-  border-top: 1px solid #edf0f5;
+  border-top: 1px solid var(--ff-border);
 `;
 
 const ActionButton = styled.button`
@@ -1320,16 +1320,17 @@ const ActionButton = styled.button`
   padding: 6px 10px;
   border: 1px solid var(--ff-border-strong);
   border-radius: var(--ff-radius);
-  background: #ffffff;
-  color: #475467;
+  background: var(--ff-surface);
+  color: var(--ff-muted);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 
   &:hover {
-    border-color: #bfdbfe;
+    border-color: var(--ff-primary-border);
     background: #f8fbff;
-    color: #1d4ed8;
+    color: var(--ff-primary-hover);
   }
 
   &:disabled {
@@ -1365,8 +1366,8 @@ const DeleteCardAction = styled(ActionButton)`
   }
 
   &:hover {
-    border-color: #fecaca;
-    background: #fff5f5;
+    border-color: var(--ff-danger-border);
+    background: var(--ff-danger-soft);
     color: var(--ff-danger);
   }
 `;
@@ -1407,7 +1408,15 @@ const TemplateCard = styled.article`
   padding: 18px;
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
-  background: #ffffff;
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+
+  &:hover {
+    border-color: var(--ff-primary-border);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-2px);
+  }
 
   .semi-button {
     margin-top: auto;
@@ -1421,7 +1430,7 @@ const TemplateIntro = styled.div`
   gap: 16px;
   margin: 0 0 16px;
   padding: 14px 16px;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
   background: #f8fbff;
 
@@ -1460,10 +1469,10 @@ const TemplateMark = styled.div`
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: linear-gradient(135deg, #dbeafe 0%, var(--ff-primary-soft) 100%);
+  color: var(--ff-primary-hover);
   font-size: 14px;
   font-weight: 700;
 `;
@@ -1509,9 +1518,14 @@ const RunHistory = styled.div`
 
 const RunRow = styled.div`
   padding: 14px;
-  border: 1px solid #e8ecf2;
+  border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
-  background: #ffffff;
+  background: var(--ff-surface);
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--ff-border-strong);
+  }
 `;
 
 const RunHeader = styled.div`

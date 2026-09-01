@@ -32,10 +32,10 @@ export const ToolContainer = styled.div`
 export const ToolSection = styled.div`
   display: flex;
   align-items: center;
-  background-color: #fff;
-  border: 1px solid #dfe5ef;
-  border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.10);
+  background-color: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  box-shadow: var(--ff-shadow-sm);
   column-gap: 4px;
   min-height: 44px;
   padding: 4px 10px;
@@ -85,11 +85,18 @@ export const ToolSection = styled.div`
 
 export const SelectZoom = styled.span`
   padding: 4px;
-  border-radius: 8px;
-  border: 1px solid rgba(68, 83, 130, 0.25);
+  border-radius: var(--ff-radius);
+  border: 1px solid var(--ff-border);
   font-size: 12px;
   width: 50px;
   cursor: pointer;
+  color: var(--ff-muted);
+  transition: border-color 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    border-color: var(--ff-primary);
+    color: var(--ff-primary);
+  }
 `;
 
 export const MinimapContainer = styled.div`

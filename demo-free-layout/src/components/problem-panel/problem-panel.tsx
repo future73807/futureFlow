@@ -6,9 +6,57 @@
 import { useService, WorkflowSelectService } from '@flowgram.ai/free-layout-editor';
 import { IconButton, Spin, Typography, Avatar, Tooltip } from '@douyinfe/semi-ui';
 import { IconUploadError, IconClose } from '@douyinfe/semi-icons';
+import styled from 'styled-components';
 
 import { useProblemPanel, useNodeFormPanel } from '../../plugins/panel-manager-plugin/hooks';
 import { useWatchValidate } from './use-watch-validate';
+
+const PanelContainer = styled.div`
+  width: 100%;
+  height: 100%;
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  box-shadow: var(--ff-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const PanelHeader = styled.div`
+  display: flex;
+  height: 50px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ff-border);
+  background: var(--ff-surface-muted);
+`;
+
+const ProblemList = styled.div`
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  rowGap: 8px;
+  overflow: auto;
+`;
+
+const ProblemItem = styled.div`
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  padding: 8px;
+  cursor: pointer;
+  background: var(--ff-surface);
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    border-color: var(--ff-primary);
+    background: var(--ff-primary-soft);
+  }
+`;
 
 export const ProblemPanel = () => {
   const { results, loading } = useWatchValidate();
@@ -19,24 +67,8 @@ export const ProblemPanel = () => {
   const { open: openNodeFormPanel } = useNodeFormPanel();
 
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        borderRadius: '8px',
-        background: 'rgb(251, 251, 251)',
-        border: '1px solid rgba(82,100,154, 0.13)',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          height: '50px',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 12px',
-        }}
-      >
+    <PanelContainer>
+      <PanelHeader>
         <div style={{ display: 'flex', alignItems: 'center', columnGap: '4px', height: '100%' }}>
           <Typography.Text strong>问题检查</Typography.Text>
           {loading && <Spin size="small" style={{ lineHeight: '0' }} />}
@@ -48,19 +80,11 @@ export const ProblemPanel = () => {
           icon={<IconClose aria-hidden="true" />}
           onClick={() => closePanel()}
         />
-      </div>
-      <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', rowGap: '4px' }}>
+      </PanelHeader>
+      <ProblemList>
         {results.map((i) => (
-          <div
+          <ProblemItem
             key={i.node.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              border: '1px solid #999',
-              borderRadius: '4px',
-              padding: '0 4px',
-              cursor: 'pointer',
-            }}
             onClick={() => {
               selectService.selectNodeAndScrollToView(i.node);
               openNodeFormPanel({ nodeId: i.node.id });
@@ -72,17 +96,19 @@ export const ProblemPanel = () => {
               size="24px"
               shape="square"
             />
-            <div style={{ marginLeft: '8px' }}>
-              <Typography.Text>{i.node.form?.values.title}</Typography.Text>
+            <div style={{ marginLeft: '8px', minWidth: 0 }}>
+              <Typography.Text ellipsis={{ showTooltip: true }}>
+                {i.node.form?.values.title}
+              </Typography.Text>
               <br />
               <Typography.Text type="danger">
                 {i.feedbacks.map((i) => i.feedbackText).join(', ')}
               </Typography.Text>
             </div>
-          </div>
+          </ProblemItem>
         ))}
-      </div>
-    </div>
+      </ProblemList>
+    </PanelContainer>
   );
 };
 

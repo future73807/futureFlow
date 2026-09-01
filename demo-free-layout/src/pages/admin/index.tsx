@@ -743,7 +743,7 @@ const LogsView = ({
       dataIndex: 'amount',
       width: 100,
       render: (a: number) => (
-        <span style={{ color: a >= 0 ? '#00b42a' : '#f53f3f', fontWeight: 600 }}>
+        <span style={{ color: a >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)', fontWeight: 600 }}>
           {a >= 0 ? '+' : ''}{a.toFixed(4)}
         </span>
       ),
@@ -812,7 +812,7 @@ const StatsGrid = styled.div`
 `;
 
 const StatCard = styled.div`
-  background: #fff;
+  background: var(--ff-surface);
   min-height: 104px;
   border-radius: var(--ff-radius);
   padding: 20px;
@@ -860,14 +860,14 @@ const Bar = styled.div`
 const BarFill = styled.div`
   width: 28px;
   min-height: 4px;
-  background: #60a5fa;
+  background: linear-gradient(180deg, #3b82f6 0%, var(--ff-primary) 100%);
   border-radius: 4px 4px 0 0;
   transition: height 0.3s;
 `;
 
 const BarLabel = styled.div`
   font-size: 12px;
-  color: #999;
+  color: var(--ff-subtle);
   margin-top: 6px;
 `;
 
