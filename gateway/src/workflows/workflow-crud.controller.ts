@@ -46,6 +46,12 @@ export class WorkflowCrudController {
     return this.crudService.listVersions(id, req.user.id);
   }
 
+  /** 子工作流节点配置数据：目标工作流已发布快照的入参出参契约。 */
+  @Get(':id/subflow-meta')
+  async subflowMeta(@Param('id') id: string, @Request() req) {
+    return this.crudService.getSubflowMeta(id, req.user.id);
+  }
+
   @Post()
   async create(@Body() dto: CreateWorkflowDto, @Request() req) {
     return this.crudService.create(req.user.id, dto);

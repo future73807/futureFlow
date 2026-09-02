@@ -133,6 +133,7 @@ export class WorkflowCrudService {
 
       // 完整转换是发布前的无副作用门禁；变量支配关系、End 引用和 Dify DSL
       // 结构错误必须在写入不可变快照前失败，不能留下“已发布但永远无法同步”的版本。
+      await this.attachSubworkflowSnapshots(wf, manager, new Set([wf.id]));
       this.converter.toDifyDSL(wf.flowgramJson as FlowGramJSON);
       const publishedAt = new Date();
       wf.publishedFlowgramJson = this.cloneJson(wf.flowgramJson);
@@ -336,5 +337,87 @@ export class WorkflowCrudService {
 
   private cloneJson(value: Record<string, any>): Record<string, any> {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  /**
+   * 供画布「子工作流」节点配置使用：返回目标工作流已发布快照的
+   * 开始节点入参契约和结束节点输出变量。
+   */
+  async getSubflowMeta(id: string, userId: string) {
+    const target = await this.getById(id, userId);
+    if (!target.publishedVersion || !target.publishedFlowgramJson) {
+      throw new BadRequestException(`「${target.name}」还没有已发布版本，请先发布`);
+    }
+    const snapshot = target.publishedFlowgramJson as FlowGramJSON;
+    const start = (snapshot.nodes || []).find((node) => node.type === 'start');
+    const end = (snapshot.nodes || []).find((node) => node.type === 'end');
+    const properties = (start?.data?.outputs?.properties || {}) as Record<string, any>;
+    const endOutputs = end?.data?.inputsValues
+      ? Object.keys(end.data.inputsValues)
+      : Object.keys((end?.data?.outputs?.properties || {}) as Record<string, any>);
+    return {
+      workflowId: target.id,
+      name: target.name,
+      publishedVersion: target.publishedVersion,
+      startVariables: Object.entries(properties).map(([variable, schema]) => ({
+        variable,
+        label: (schema as any)?.title || variable,
+        type: (schema as any)?.type || 'string',
+      })),
+      endOutputs,
+    };
+  }
+
+  /**
+   * 解析画布中所有子工作流节点的已发布快照并写入 inlinedGraph。
+   * 仅允许引用同一用户、active 且已发布的工作流；沿引用链做环检测，
+   * 链上任何一环未发布都会让本次发布明确失败。
+   */
+  private async attachSubworkflowSnapshots(
+    wf: Workflow,
+    manager: EntityManager,
+    visiting: Set<string>,
+    depth = 0,
+  ): Promise<void> {
+    if (depth > 3) {
+      throw new BadRequestException('子工作流嵌套层数超过上限（最多 3 层）');
+    }
+    const workflowRepo = manager.getRepository(Workflow);
+    const graph = wf.flowgramJson as FlowGramJSON;
+    for (const node of graph.nodes || []) {
+      if (node?.type !== 'subworkflow') continue;
+      const targetId = String(node.data?.targetWorkflowId || '').trim();
+      if (!targetId) {
+        throw new BadRequestException(`子工作流节点 ${node.id} 尚未选择目标工作流`);
+      }
+      if (visiting.has(targetId)) {
+        throw new BadRequestException(
+          `子工作流引用形成环：工作流 ${wf.id} → ${targetId}`,
+        );
+      }
+      const target = await workflowRepo.findOne({ where: { id: targetId } });
+      if (!target || target.status !== 'active' || target.userId !== wf.userId) {
+        throw new BadRequestException(
+          `子工作流节点 ${node.id} 引用的目标工作流不存在、已删除或不属于当前用户`,
+        );
+      }
+      if (!target.publishedVersion || !target.publishedFlowgramJson) {
+        throw new BadRequestException(
+          `子工作流节点 ${node.id} 引用的「${target.name}」还没有已发布版本，请先发布目标工作流`,
+        );
+      }
+      const childSnapshot = this.cloneJson(target.publishedFlowgramJson) as FlowGramJSON;
+      // 目标工作流的快照里若还有 subworkflow 节点，递归展开其引用链。
+      await this.attachSubworkflowSnapshots(
+        { ...target, flowgramJson: childSnapshot } as Workflow,
+        manager,
+        new Set([...visiting, targetId]),
+        depth + 1,
+      );
+      node.data.inlinedGraph = {
+        nodes: childSnapshot.nodes || [],
+        edges: childSnapshot.edges || [],
+      };
+    }
   }
 }

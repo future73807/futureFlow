@@ -76,6 +76,9 @@ export class DifyConverterService {
   toDifyDSL(flowgram: FlowGramJSON): DifyDSL {
     flowgram = this.stripCanvasDecorations(flowgram);
     this.validateFlowGram(flowgram);
+    // 子工作流必须在引用校验前展开：inlinedGraph 内部的引用属于子图，
+    // 展开后（前缀化）才会出现在统一的图引用校验里。
+    flowgram = this.expandSubworkflows(flowgram);
     validateWorkflowReferences(flowgram);
     flowgram = prepareNativeMediaNodes(flowgram);
     // The saved semantic media node expands into a trusted Gateway request and
@@ -119,7 +122,7 @@ export class DifyConverterService {
     // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
     if (!endNode) {
       const executableNodes = flowgram.nodes.filter((n) =>
-        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(n.type),
+        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(n.type),
       );
       if (executableNodes.length > 0) {
         const lastNode = executableNodes[executableNodes.length - 1];
@@ -251,6 +254,7 @@ export class DifyConverterService {
       if (node.type === 'code') this.validateCodeNode(node);
       if (['text', 'image', 'video'].includes(node.type)) this.validateContentNode(node);
       if (node.type === 'knowledge') this.validateKnowledgeNode(node, json.nodes);
+      if (node.type === 'subworkflow') this.validateSubworkflowNode(node, json.nodes);
       if (
         node.data.failBranchEnabled !== undefined
         && typeof node.data.failBranchEnabled !== 'boolean'
@@ -393,7 +397,7 @@ export class DifyConverterService {
       this.validateBatchLoopInnerReferences(loop);
     }
     const executableNodes = json.nodes.filter((n) =>
-      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(n.type),
+      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(n.type),
     );
     if (executableNodes.length === 0) {
       throw new BadRequestException(
@@ -1135,6 +1139,249 @@ main = function(args) {
     }
   }
 
+  private static readonly SUBFLOW_MAX_DEPTH = 3;
+
+  /**
+   * 子工作流编译期内联：把每个 subworkflow 节点替换为其已发布子图快照。
+   * 发布服务负责解析 targetWorkflowId → 快照并做环检测（写入 inlinedGraph），
+   * 这里只做同步展开：子图节点 ID 前缀化、开始节点替换为参数注入代码节点、
+   * 结束节点删除并把父图引用重定向到子图产出节点。
+   */
+  private expandSubworkflows(flowgram: FlowGramJSON, depth = 0): FlowGramJSON {
+    const subNodes = (flowgram.nodes || []).filter((n) => n?.type === 'subworkflow');
+    if (subNodes.length === 0) return flowgram;
+    if (depth > DifyConverterService.SUBFLOW_MAX_DEPTH) {
+      throw new BadRequestException('子工作流嵌套层数超过上限（最多 3 层）');
+    }
+
+    let nodes = [...flowgram.nodes];
+    let edges = [...flowgram.edges];
+    for (const sub of subNodes) {
+      const expanded = this.expandOneSubworkflow(sub, nodes, edges, depth);
+      nodes = expanded.nodes;
+      edges = expanded.edges;
+    }
+    return { ...flowgram, nodes, edges };
+  }
+
+  private expandOneSubworkflow(
+    sub: FlowNodeJSON,
+    parentNodes: FlowNodeJSON[],
+    parentEdges: FlowGramJSON['edges'],
+    depth: number,
+  ): { nodes: FlowNodeJSON[]; edges: FlowGramJSON['edges'] } {
+    const inlined = sub.data?.inlinedGraph as
+      | { nodes?: FlowNodeJSON[]; edges?: FlowGramJSON['edges'] }
+      | undefined;
+    if (
+      !inlined
+      || !Array.isArray(inlined.nodes)
+      || !Array.isArray(inlined.edges)
+      || inlined.nodes.length === 0
+    ) {
+      throw new BadRequestException(
+        `子工作流节点 ${sub.id} 缺少已发布的子图快照，请重新保存并发布`,
+      );
+    }
+    // 子图自身可能也包含 subworkflow 节点（其快照带各自的 inlinedGraph），先递归展开。
+    const childGraph = this.expandSubworkflows(
+      {
+        nodes: this.cloneValue(inlined.nodes),
+        edges: this.cloneValue(inlined.edges),
+      } as FlowGramJSON,
+      depth + 1,
+    );
+
+    const childStarts = childGraph.nodes.filter((n) => n.type === 'start');
+    if (childStarts.length !== 1) {
+      throw new BadRequestException(`子工作流节点 ${sub.id} 引用的子图必须恰好有一个开始节点`);
+    }
+    const childStart = childStarts[0];
+    const childEnds = childGraph.nodes.filter((n) => n.type === 'end');
+    if (childEnds.length !== 1) {
+      throw new BadRequestException(
+        `子工作流节点 ${sub.id} 引用的子图必须恰好有一个结束节点，多结束分支请拆分后引用`,
+      );
+    }
+    const childEnd = childEnds[0];
+    const incomingToEnd = childGraph.edges.filter((e) => e.targetNodeID === childEnd.id);
+    if (incomingToEnd.length !== 1) {
+      throw new BadRequestException(`子工作流节点 ${sub.id} 的子图结束节点必须恰好有一个上游`);
+    }
+    const endSourceId = incomingToEnd[0].sourceNodeID;
+
+    const prefix = `sw_${this.subflowPrefix(sub.id)}`;
+    const idMap = new Map<string, string>();
+    for (const child of childGraph.nodes) {
+      idMap.set(child.id, `${prefix}_${child.id}`);
+    }
+
+    // 入参映射校验 + 参数注入节点（替代子图开始节点）。
+    const startProperties = (childStart.data?.outputs?.properties || {}) as Record<string, any>;
+    const varNames = Object.keys(startProperties);
+    const mappings = (sub.data?.inputMappings || {}) as Record<string, any>;
+    const inputsValues: Record<string, any> = {};
+    for (const name of varNames) {
+      const mapping = mappings[name];
+      if (
+        !mapping
+        || mapping.type !== 'ref'
+        || !Array.isArray(mapping.content)
+        || mapping.content.length < 2
+      ) {
+        throw new BadRequestException(
+          `子工作流节点 ${sub.id} 的入参 ${name} 必须映射一个上游变量`,
+        );
+      }
+      inputsValues[name] = mapping;
+    }
+    const injectId = `${prefix}__in`;
+    const injectNode: FlowNodeJSON = {
+      id: injectId,
+      type: 'code',
+      meta: { position: { x: 0, y: 0 } },
+      data: {
+        title: `${sub.data?.title || '子工作流'} · 参数注入`,
+        inputsValues,
+        script: {
+          language: 'javascript',
+          content: `function main({ params }) {\n  return { ${varNames
+            .map((name) => `${JSON.stringify(name)}: params[${JSON.stringify(name)}]`)
+            .join(', ')} };\n}`,
+        },
+        outputs: {
+          type: 'object',
+          properties: this.cloneValue(startProperties) as Record<string, any>,
+        },
+      },
+    };
+
+    // 子图节点重命名 + 引用重写（开始引用 → 注入节点）。
+    const referenceMap = new Map(idMap);
+    referenceMap.set(childStart.id, injectId);
+    const rewrittenChildNodes = childGraph.nodes
+      .filter((n) => n.type !== 'start' && n.type !== 'end')
+      .map((n) => this.rewriteIdsDeep({ ...n, id: idMap.get(n.id) || n.id }, referenceMap) as FlowNodeJSON);
+
+    const childEdges: FlowGramJSON['edges'] = [];
+    for (const edge of childGraph.edges) {
+      if (edge.sourceNodeID === childEnd.id || edge.targetNodeID === childEnd.id) continue;
+      childEdges.push({
+        ...edge,
+        sourceNodeID: referenceMap.get(edge.sourceNodeID) || edge.sourceNodeID,
+        targetNodeID: referenceMap.get(edge.targetNodeID) || edge.targetNodeID,
+      });
+    }
+
+    // 父图引用重写：子工作流输出按子图 End 的输出映射展开到真实来源节点。
+    // 例：父图 [sub_1, result]，子图 End 声明 result ← [c_text, text]，
+    // 则重写为 [前缀化 c_text, text]。
+    const endInputs = (childEnd.data?.inputsValues || {}) as Record<string, any>;
+    const outputMap = new Map<string, { nodeId: string; field: string }>();
+    for (const [outVar, ref] of Object.entries(endInputs)) {
+      if (ref?.type === 'ref' && Array.isArray(ref.content) && ref.content.length >= 2) {
+        outputMap.set(outVar, {
+          nodeId: idMap.get(String(ref.content[0])) || String(ref.content[0]),
+          field: String(ref.content[1]),
+        });
+      }
+    }
+    const rewrittenParentNodes = parentNodes
+      .filter((n) => n.id !== sub.id)
+      .map((n) => this.rewriteSubflowOutputsDeep(n, sub.id, outputMap) as FlowNodeJSON);
+
+    const rewrittenParentEdges: FlowGramJSON['edges'] = [];
+    for (const edge of parentEdges) {
+      if (edge.sourceNodeID === sub.id) {
+        rewrittenParentEdges.push({ ...edge, sourceNodeID: idMap.get(endSourceId)! });
+      } else if (edge.targetNodeID === sub.id) {
+        rewrittenParentEdges.push({ ...edge, targetNodeID: injectId });
+      } else {
+        rewrittenParentEdges.push(edge);
+      }
+    }
+
+    return {
+      nodes: [...rewrittenParentNodes, injectNode, ...rewrittenChildNodes],
+      edges: [...rewrittenParentEdges, ...childEdges],
+    };
+  }
+
+  /** 深度遍历节点数据，重写变量选择器与 {{#id.var#}} 模板中的节点 ID。 */
+  private rewriteIdsDeep(value: any, idMap: Map<string, string>): any {
+    if (Array.isArray(value)) {
+      if (
+        value.length >= 2
+        && typeof value[0] === 'string'
+        && idMap.has(value[0])
+        && value.slice(1).every((part) => typeof part === 'string')
+      ) {
+        return [idMap.get(value[0])!, ...value.slice(1)];
+      }
+      return value.map((item) => this.rewriteIdsDeep(item, idMap));
+    }
+    if (value && typeof value === 'object') {
+      const result: Record<string, any> = {};
+      for (const [key, item] of Object.entries(value)) {
+        result[key] = this.rewriteIdsDeep(item, idMap);
+      }
+      return result;
+    }
+    if (typeof value === 'string' && idMap.size > 0 && value.includes('{{#')) {
+      return value.replace(/\{\{#([A-Za-z0-9_-]+)\.([^#}]+)#\}\}/g, (match, id, name) => (
+        idMap.has(id) ? `{{#${idMap.get(id)}.${name}#}}` : match
+      ));
+    }
+    return value;
+  }
+
+  /**
+   * 深度重写父图中对子工作流节点输出的引用：
+   * [subId, outVar] → [End 映射的来源节点, 来源字段]；模板串同理。
+   * 未在 End 输出映射中的变量名保持原样，由统一引用校验报错。
+   */
+  private rewriteSubflowOutputsDeep(
+    value: any,
+    subId: string,
+    outputMap: Map<string, { nodeId: string; field: string }>,
+  ): any {
+    if (Array.isArray(value)) {
+      if (
+        value.length === 2
+        && value[0] === subId
+        && typeof value[1] === 'string'
+        && outputMap.has(value[1])
+      ) {
+        const target = outputMap.get(value[1])!;
+        return [target.nodeId, target.field];
+      }
+      return value.map((item) => this.rewriteSubflowOutputsDeep(item, subId, outputMap));
+    }
+    if (value && typeof value === 'object') {
+      const result: Record<string, any> = {};
+      for (const [key, item] of Object.entries(value)) {
+        result[key] = this.rewriteSubflowOutputsDeep(item, subId, outputMap);
+      }
+      return result;
+    }
+    if (typeof value === 'string' && value.includes('{{#')) {
+      return value.replace(/\{\{#([A-Za-z0-9_-]+)\.([^#}]+)#\}\}/g, (match, id, name) => {
+        if (id !== subId || !outputMap.has(name)) return match;
+        const target = outputMap.get(name)!;
+        return `{{#${target.nodeId}.${target.field}#}}`;
+      });
+    }
+    return value;
+  }
+
+  private subflowPrefix(nodeId: string): string {
+    return createHash('sha256').update(nodeId).digest('hex').slice(0, 8);
+  }
+
+  private cloneValue<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
   /** 转换 End 节点 */
   private convertEndNode(node: FlowNodeJSON, flowgram: FlowGramJSON): any {
     const incoming = flowgram.edges.filter(
@@ -1153,7 +1400,7 @@ main = function(args) {
     );
     if (
       !sourceNode ||
-      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge'].includes(sourceNode.type)
+      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(sourceNode.type)
     ) {
       throw new BadRequestException(
         `结束节点 ${node.id} 仅能连接可输出结果的执行节点`,
@@ -2338,6 +2585,33 @@ main = function(args) {
     if (type === 'image' || type === 'video') return 'url';
     if (type === 'loop') return 'output';
     return 'result';
+  }
+
+  /** 子工作流节点的画布层校验；快照存在性与环检测由发布服务负责。 */
+  private validateSubworkflowNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): void {
+    const targetWorkflowId = String(node.data.targetWorkflowId || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetWorkflowId)) {
+      throw new BadRequestException(`子工作流节点 ${node.id} 尚未选择目标工作流`);
+    }
+    if (targetWorkflowId === node.id || nodes.some((candidate) => candidate.id === targetWorkflowId)) {
+      throw new BadRequestException(`子工作流节点 ${node.id} 不能引用自身所在画布中的节点`);
+    }
+    const mappings = (node.data.inputMappings || {}) as Record<string, unknown>;
+    for (const [name, mapping] of Object.entries(mappings)) {
+      const value = mapping as FlowInputValue | undefined;
+      if (!value || value.type !== 'ref' || !Array.isArray(value.content) || value.content.length < 2) {
+        throw new BadRequestException(
+          `子工作流节点 ${node.id} 的入参 ${name} 必须引用一个上游变量`,
+        );
+      }
+      const referenced = this.normalizeDifySelector(value.content.map(String), nodes);
+      const referencedNode = nodes.find((candidate) => candidate.id === referenced[0]);
+      if (!referencedNode || referencedNode.id === node.id) {
+        throw new BadRequestException(
+          `子工作流节点 ${node.id} 的入参 ${name} 引用了不存在或无效的节点`,
+        );
+      }
+    }
   }
 
   /** 知识检索节点：查询引用必须显式选择，数据集使用平台受控 Dify 数据集 UUID。 */

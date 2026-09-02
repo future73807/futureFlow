@@ -18,6 +18,7 @@ export enum WorkflowNodeType {
   HTTP = 'http',
   Code = 'code',
   Knowledge = 'knowledge',
+  Subworkflow = 'subworkflow',
   Variable = 'variable',
   Condition = 'condition',
   MultiCondition = 'multi-condition',

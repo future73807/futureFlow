@@ -15,6 +15,7 @@ import { LoopNodeRegistry } from './loop';
 import { LLMNodeRegistry } from './llm';
 import { HTTPNodeRegistry } from './http';
 import { KnowledgeNodeRegistry } from './knowledge';
+import { SubworkflowNodeRegistry } from './subworkflow';
 import { GroupNodeRegistry } from './group';
 import { EndNodeRegistry } from './end';
 import { ContinueNodeRegistry } from './continue';
@@ -43,6 +44,7 @@ export const nodeRegistries: FlowNodeRegistry[] = [
   HTTPNodeRegistry,
   CodeNodeRegistry,
   KnowledgeNodeRegistry,
+  SubworkflowNodeRegistry,
   ContinueNodeRegistry,
   BreakNodeRegistry,
   VariableNodeRegistry,
