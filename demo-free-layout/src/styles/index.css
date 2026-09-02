@@ -137,6 +137,15 @@ textarea:focus-visible {
   color: var(--ff-primary-hover) !important;
 }
 
+/* 浅色主按钮 hover 时保持浅底深字；否则 primary:hover 的深蓝底
+   会和 light 的深蓝字叠加，按钮变成“看不见文字的纯色块”。 */
+.semi-button-primary.semi-button-light:hover,
+.semi-button-light:hover {
+  background: var(--ff-primary-soft) !important;
+  border-color: var(--ff-primary-border) !important;
+  color: var(--ff-primary-hover) !important;
+}
+
 .semi-button-borderless:hover { background: var(--ff-surface-muted) !important; }
 .semi-button-danger { color: var(--ff-danger) !important; }
 .semi-button .semi-button-content { gap: 6px; }

@@ -18,6 +18,10 @@ import { MediaCredential } from './entities/media-credential.entity';
 import { MediaJob } from './entities/media-job.entity';
 import { MediaAsset } from './entities/media-asset.entity';
 import { AddNativeMedia1722297600000 } from './migrations/1722297600000-add-native-media';
+import { FileUpload } from './entities/file-upload.entity';
+import { AddFileUploads1722384000000 } from './migrations/1722384000000-add-file-uploads';
+import { McpServer } from './entities/mcp-server.entity';
+import { AddMcpServers1722470400000 } from './migrations/1722470400000-add-mcp-servers';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -61,6 +65,8 @@ export default new DataSource({
     MediaCredential,
     MediaJob,
     MediaAsset,
+    FileUpload,
+    McpServer,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
@@ -68,6 +74,8 @@ export default new DataSource({
     AddDifyIntegration1722124800000,
     AddDifyWorkflowIsolation1722211200000,
     AddNativeMedia1722297600000,
+    AddFileUploads1722384000000,
+    AddMcpServers1722470400000,
   ],
   synchronize: false,
   logging: false,
