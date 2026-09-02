@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DifyConsoleAuthorization, DifyIntegrationService } from '../dify/dify-integration.service';
 
 export interface KnowledgeDatasetSummary {
@@ -25,13 +26,17 @@ interface ConsoleJsonInit {
 }
 
 /**
- * 知识库管理服务：以受控 Dify Console 会话代理 datasets/documents 的
- * 生命周期。数据集本身归属 Dify 授权账号（permission=only_me），
+ * 知识库管理服务。
+ * dataset 层走受控 Dify Console 会话；文档层走 Dify Service API
+ * （dataset 专属 `dataset-` API Key，由本服务按需创建）。
  * futureFlow 不落库存储知识内容，只做转发与状态呈现。
  */
 @Injectable()
 export class KnowledgeService {
-  constructor(private readonly dify: DifyIntegrationService) {}
+  constructor(
+    private readonly dify: DifyIntegrationService,
+    private readonly config: ConfigService,
+  ) {}
 
   async isEnabled(): Promise<boolean> {
     return this.dify.resolveConsoleAuthorization() !== null;
@@ -77,7 +82,7 @@ export class KnowledgeService {
   }
 
   async listDocuments(datasetId: string): Promise<KnowledgeDocumentSummary[]> {
-    const data = await this.consoleJson<any>(
+    const data = await this.datasetApiJson<any>(
       `/datasets/${encodeURIComponent(datasetId)}/documents?page=1&limit=100`,
     );
     const rows = Array.isArray(data?.data) ? data.data : [];
@@ -92,7 +97,7 @@ export class KnowledgeService {
   }
 
   async createDocumentByText(datasetId: string, name: string, text: string): Promise<KnowledgeDocumentSummary> {
-    const row = await this.consoleJson<any>(
+    const row = await this.datasetApiJson<any>(
       `/datasets/${encodeURIComponent(datasetId)}/document/create-by-text`,
       {
         method: 'POST',
@@ -117,10 +122,82 @@ export class KnowledgeService {
   }
 
   async deleteDocument(datasetId: string, documentId: string): Promise<void> {
-    await this.consoleJson(
+    await this.datasetApiJson(
       `/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}`,
       { method: 'DELETE' },
     );
+  }
+
+  /**
+   * 获取可用的 Dify Dataset API Key（`dataset-` 前缀）。
+   * Console 0.15.3 没有给已有 dataset 添加文档的接口，文档操作必须走
+   * Service API；Key 复用第一个已启用的，没有则自动创建一个。
+   */
+  private async datasetApiKey(): Promise<string> {
+    const auth = await this.authorization();
+    const listResponse = await this.consoleFetchRaw(`${auth.consoleBase}/datasets/api-keys`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    if (listResponse.ok) {
+      const list = await listResponse.json().catch(() => ({})) as any;
+      const items = Array.isArray(list?.data) ? list.data : [];
+      const existing = items.find((item: any) => item?.token && item?.disabled !== true);
+      if (existing?.token) return String(existing.token);
+    }
+    const createdResponse = await this.consoleFetchRaw(`${auth.consoleBase}/datasets/api-keys`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!createdResponse.ok) {
+      throw new ServiceUnavailableException(
+        `创建 Dify 知识库 API Key 失败（HTTP ${createdResponse.status}）`,
+      );
+    }
+    const created = await createdResponse.json().catch(() => ({})) as any;
+    if (!created?.token) {
+      throw new ServiceUnavailableException('Dify 未返回知识库 API Key');
+    }
+    return String(created.token);
+  }
+
+  private serviceApiBase(): string {
+    return String(this.config.get<string>('DIFY_API_BASE') || 'http://localhost:5001/v1').replace(/\/+$/, '');
+  }
+
+  private async datasetApiJson<T = unknown>(path: string, init: ConsoleJsonInit = {}): Promise<T> {
+    const token = await this.datasetApiKey();
+    let response: Response;
+    try {
+      response = await fetch(`${this.serviceApiBase()}${path}`, {
+        method: init.method || 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal: AbortSignal.timeout(init.timeoutMs || 15_000),
+      });
+    } catch (error) {
+      throw new ServiceUnavailableException(`Dify Service API 不可达：${this.safeError(error)}`);
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new BadRequestException(
+        `Dify 知识库请求失败（HTTP ${response.status}）：${detail.slice(0, 200)}`,
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
+  }
+
+  private async consoleFetchRaw(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
+    }
   }
 
   private async authorization(): Promise<DifyConsoleAuthorization> {
