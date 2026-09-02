@@ -70,8 +70,8 @@
 .profile-avatar .semi-avatar {
   width: 48px;
   height: 48px;
-  background: #e7f0ff;
-  color: #1d4ed8;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary-hover);
   font-size: 18px;
   font-weight: 700;
 }
@@ -185,8 +185,8 @@
 .profile-key-prefix {
   padding: 4px 8px;
   border-radius: 4px;
-  background: #f1f5f9;
-  color: #334155;
+  background: var(--ff-surface-muted);
+  color: var(--ff-text-secondary);
   font-size: 12px;
 }
 
@@ -194,10 +194,10 @@
   margin: 0 0 12px;
   padding: 14px;
   overflow: auto;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
-  background: #f8fbff;
-  color: #1e3a8a;
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary-hover);
   font-size: 13px;
 }
 

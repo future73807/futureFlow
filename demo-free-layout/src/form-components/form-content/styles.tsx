@@ -7,7 +7,7 @@ export const FormWrapper = styled.div`
   gap: 8px;
   padding: 0 12px 12px;
   border-radius: 0 0 var(--ff-radius) var(--ff-radius);
-  background: #ffffff;
+  background: var(--ff-surface);
   box-sizing: border-box;
 `;
 
