@@ -16,20 +16,32 @@ import {
 import {
   IconCopy,
   IconDelete,
+  IconDownload,
   IconEdit,
   IconKey,
   IconPlus,
+  IconUpload,
   IconUser,
 } from '@douyinfe/semi-icons';
 import './profile.css';
 import { fetchProfile, setUser } from '../../utils/auth';
 import { apiJson } from '../../utils/api';
+import { GATEWAY_URL } from '../../utils/config';
 
 interface ApiKey {
   id: string;
   name: string;
   keyPrefix: string;
   lastUsedAt: string | null;
+  createdAt: string;
+}
+
+interface StoredFile {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
   createdAt: string;
 }
 
@@ -44,6 +56,12 @@ export const ProfilePage = () => {
   const [editVisible, setEditVisible] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [files, setFiles] = useState<StoredFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const fetchFiles = useCallback(async () => {
+    setFiles(await apiJson<StoredFile[]>('/files'));
+  }, []);
 
   const fetchApiKeys = useCallback(async () => {
     setApiKeys(await apiJson<ApiKey[]>('/user/api-keys'));
@@ -59,14 +77,13 @@ export const ProfilePage = () => {
         return;
       }
       setCurrentUser(profile);
-      await fetchApiKeys();
+      await Promise.all([fetchApiKeys(), fetchFiles().catch(() => undefined)]);
     } catch (error: any) {
       setLoadError(error.message || '加载个人中心失败，请确认网关服务已启动');
     } finally {
       setLoading(false);
     }
   }, [fetchApiKeys, navigate]);
-
   useEffect(() => {
     void loadPage();
   }, [loadPage]);
@@ -131,6 +148,45 @@ export const ProfilePage = () => {
     } catch {
       Toast.error('复制失败，请手动复制');
     }
+  };
+
+  const handleFileUpload = useCallback(async (fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      Toast.error('单个文件不能超过 10 MB');
+      return;
+    }
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      await apiJson('/files/upload', { method: 'POST', body });
+      Toast.success('文件已上传');
+      await fetchFiles();
+    } catch (error: any) {
+      Toast.error(error.message || '上传失败');
+    } finally {
+      setUploading(false);
+    }
+  }, [fetchFiles]);
+
+  const handleFileDelete = useCallback(async (id: string) => {
+    try {
+      await apiJson('/files/' + id, { method: 'DELETE' });
+      Toast.success('文件已删除');
+      await fetchFiles();
+    } catch (error: any) {
+      Toast.error(error.message || '删除文件失败');
+    }
+  }, [fetchFiles]);
+
+  const fileUrl = (id: string) => GATEWAY_URL.replace(/\/+$/, '') + '/files/' + id + '/download';
+
+  const formatSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+    return bytes + ' B';
   };
 
   if (loading) {
@@ -267,6 +323,98 @@ export const ProfilePage = () => {
                     />
                   </Tooltip>
                 </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </section>
+
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <div>
+            <h2>文件管理</h2>
+            <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
+          </div>
+          <label className="profile-upload-button">
+            <input
+              type="file"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                void handleFileUpload(event.target.files);
+                event.currentTarget.value = '';
+              }}
+            />
+            <Button type="primary" theme="solid" icon={<IconUpload />} loading={uploading}>
+              上传文件
+            </Button>
+          </label>
+        </div>
+        <Table
+          dataSource={files}
+          pagination={files.length > 8 ? { pageSize: 8 } : false}
+          rowKey="id"
+          empty={<Empty description="还没有上传过文件" />}
+          columns={[
+            {
+              title: '文件名',
+              dataIndex: 'originalName',
+              width: 260,
+              render: (value: string) => <Typography.Text strong ellipsis={{ showTooltip: true }}>{value}</Typography.Text>,
+            },
+            {
+              title: '大小',
+              dataIndex: 'sizeBytes',
+              width: 90,
+              render: (value: number) => formatSize(value),
+            },
+            {
+              title: '上传时间',
+              dataIndex: 'createdAt',
+              width: 170,
+              render: (value: string) => new Date(value).toLocaleString('zh-CN'),
+            },
+            {
+              title: '操作',
+              width: 120,
+              align: 'right' as const,
+              render: (_: unknown, record: StoredFile) => (
+                <div style={{ display: 'inline-flex', gap: 4 }}>
+                  <Tooltip content="复制下载链接">
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      icon={<IconCopy />}
+                      aria-label={'复制 ' + record.originalName + ' 链接'}
+                      onClick={() => void copyToClipboard(fileUrl(record.id))}
+                    />
+                  </Tooltip>
+                  <Tooltip content="下载">
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      icon={<IconDownload />}
+                      aria-label={'下载 ' + record.originalName}
+                      onClick={() => window.open(fileUrl(record.id), '_blank', 'noopener')}
+                    />
+                  </Tooltip>
+                  <Popconfirm
+                    title="确认删除此文件？"
+                    okText="删除"
+                    cancelText="取消"
+                    okType="danger"
+                    onConfirm={() => void handleFileDelete(record.id)}
+                  >
+                    <Tooltip content="删除文件">
+                      <Button
+                        size="small"
+                        type="danger"
+                        theme="borderless"
+                        icon={<IconDelete />}
+                        aria-label={'删除 ' + record.originalName}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
               ),
             },
           ]}

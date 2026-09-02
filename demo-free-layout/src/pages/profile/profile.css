@@ -274,3 +274,17 @@
     flex: 1 1 auto;
   }
 }
+
+/* 文件上传按钮：label 包裹原生 input，保持 Semi 按钮观感 */
+.profile-upload-button {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.profile-upload-button input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
