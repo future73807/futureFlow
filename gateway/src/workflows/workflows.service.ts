@@ -26,6 +26,10 @@ import {
   isNativeMediaNode,
   mediaIdempotencyInputName,
 } from '../converter/native-media-bridge';
+import {
+  MCP_RUN_TOKEN_INPUT,
+  collectMcpServerIds,
+} from '../converter/mcp-bridge';
 
 /**
  * 工作流服务
@@ -456,33 +460,54 @@ export class WorkflowsService {
     workflowVersion?: number,
   ): Record<string, string> {
     const mediaNodes = flowgram.nodes.filter(isNativeMediaNode);
-    if (mediaNodes.length === 0) return {};
+    const mcpNodesList = flowgram.nodes.filter((node: any) => node.type === 'mcp');
+    if (mediaNodes.length === 0 && mcpNodesList.length === 0) return {};
     if (!workflowId || !workflowVersion) {
-      throw new BadRequestException('原生媒体节点只能运行已发布的工作流版本');
+      throw new BadRequestException('原生媒体/MCP 节点只能运行已发布的工作流版本');
     }
     if (!this.jwtService) {
       throw new BadRequestException('媒体执行令牌服务未初始化');
     }
 
-    const token = this.jwtService.sign(
-      {
-        sub: user.id,
-        type: 'media_execution',
-        workflowId,
-        workflowVersion,
-        runId,
-        credentialIds: collectNativeMediaCredentialIds(flowgram),
-      },
-      { expiresIn: '15m' },
-    );
-    const inputs: Record<string, string> = { [MEDIA_RUN_TOKEN_INPUT]: token };
-    for (const node of mediaNodes) {
-      const operation = node.type === 'video'
-        ? String(node.data.media?.operation || 'create')
-        : 'create';
-      if (operation !== 'query') {
-        inputs[mediaIdempotencyInputName(node.id)] = uuidv4();
+    const inputs: Record<string, string> = {};
+    if (mediaNodes.length > 0) {
+      const token = this.jwtService.sign(
+        {
+          sub: user.id,
+          type: 'media_execution',
+          workflowId,
+          workflowVersion,
+          runId,
+          credentialIds: collectNativeMediaCredentialIds(flowgram),
+        },
+        { expiresIn: '15m' },
+      );
+      inputs[MEDIA_RUN_TOKEN_INPUT] = token;
+      for (const node of mediaNodes) {
+        const operation = node.type === 'video'
+          ? String(node.data.media?.operation || 'create')
+          : 'create';
+        if (operation !== 'query') {
+          inputs[mediaIdempotencyInputName(node.id)] = uuidv4();
+        }
       }
+    }
+    if (mcpNodesList.length > 0) {
+      const serverIds = collectMcpServerIds(flowgram);
+      if (serverIds.length === 0) {
+        throw new BadRequestException('MCP 工具节点尚未选择 MCP 服务器');
+      }
+      inputs[MCP_RUN_TOKEN_INPUT] = this.jwtService.sign(
+        {
+          sub: user.id,
+          type: 'mcp_execution',
+          workflowId,
+          workflowVersion,
+          runId,
+          serverIds,
+        },
+        { expiresIn: '15m' },
+      );
     }
     return inputs;
   }

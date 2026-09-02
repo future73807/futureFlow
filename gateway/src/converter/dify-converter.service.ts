@@ -25,6 +25,7 @@ import {
   prepareNativeMediaNodes,
   validateNativeMediaNode,
 } from './native-media-bridge';
+import { collectMcpServerIds, prepareMcpNodes } from './mcp-bridge';
 
 // Dify 0.15.x parses template selectors with these exact segment limits.
 // Enforcing them before import prevents a workflow from publishing with
@@ -81,6 +82,7 @@ export class DifyConverterService {
     flowgram = this.expandSubworkflows(flowgram);
     validateWorkflowReferences(flowgram);
     flowgram = prepareNativeMediaNodes(flowgram);
+    flowgram = prepareMcpNodes(flowgram);
     // The saved semantic media node expands into a trusted Gateway request and
     // a parser node only after the user-authored graph has passed admission.
     validateWorkflowReferences(flowgram);
@@ -122,7 +124,7 @@ export class DifyConverterService {
     // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
     if (!endNode) {
       const executableNodes = flowgram.nodes.filter((n) =>
-        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(n.type),
+        ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow', 'mcp'].includes(n.type),
       );
       if (executableNodes.length > 0) {
         const lastNode = executableNodes[executableNodes.length - 1];
@@ -397,7 +399,7 @@ export class DifyConverterService {
       this.validateBatchLoopInnerReferences(loop);
     }
     const executableNodes = json.nodes.filter((n) =>
-      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(n.type),
+      ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow', 'mcp'].includes(n.type),
     );
     if (executableNodes.length === 0) {
       throw new BadRequestException(
@@ -1400,7 +1402,7 @@ main = function(args) {
     );
     if (
       !sourceNode ||
-      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow'].includes(sourceNode.type)
+      !['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'loop', 'knowledge', 'subworkflow', 'mcp'].includes(sourceNode.type)
     ) {
       throw new BadRequestException(
         `结束节点 ${node.id} 仅能连接可输出结果的执行节点`,

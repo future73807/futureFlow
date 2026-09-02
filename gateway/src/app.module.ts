@@ -16,6 +16,7 @@ import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
 import { MediaModule } from './media/media.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { FilesModule } from './files/files.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { FilesModule } from './files/files.module';
     MediaModule,
     KnowledgeModule,
     FilesModule,
+    McpModule,
   ],
 })
 export class AppModule {}

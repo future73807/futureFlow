@@ -19,6 +19,7 @@ export enum WorkflowNodeType {
   Code = 'code',
   Knowledge = 'knowledge',
   Subworkflow = 'subworkflow',
+  Mcp = 'mcp',
   Variable = 'variable',
   Condition = 'condition',
   MultiCondition = 'multi-condition',

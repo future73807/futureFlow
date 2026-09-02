@@ -24,7 +24,7 @@ interface NodeProps {
 }
 
 const TEMPORARILY_UNAVAILABLE_TYPES = new Set(['continue', 'break']);
-const PROFESSIONAL_NODE_TYPES = new Set(['http', 'code', 'loop', 'knowledge', 'subworkflow']);
+const PROFESSIONAL_NODE_TYPES = new Set(['http', 'code', 'loop', 'knowledge', 'subworkflow', 'mcp']);
 
 const NodeIcon = ({ icon }: { icon?: string }) => {
   const [imageFailed, setImageFailed] = useState(!icon);
@@ -114,6 +114,7 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
       code: '扩展能力',
       knowledge: '扩展能力',
       subworkflow: '扩展能力',
+      mcp: '扩展能力',
       variable: '流程控制',
       condition: '流程控制',
       'multi-condition': '流程控制',
