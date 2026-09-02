@@ -142,6 +142,56 @@ async function main() {
       const onCanvas = /canvas\//.test(page.url());
       const canvasRenders = /开始|节点|画布|大语言模型|文本/.test(await bodyText(page));
       record('T4 创建画布(填名称+提交)进入画布编辑器', onCanvas && canvasRenders, page.url());
+
+      // T4b 节点面板：搜索并确认新节点（知识检索/MCP 工具/子工作流）已注册
+      const addNodeBtn = page.locator('.canvas-add-node-action, [class*="add-node"]').first();
+      const panelOpenedBy = (await addNodeBtn.count()) >= 1 ? addNodeBtn : page.getByRole('button', { name: '添加节点' }).first();
+      if ((await panelOpenedBy.count()) >= 1) {
+        await panelOpenedBy.click();
+        await page.waitForTimeout(900);
+        const searchBox = page.locator('input[placeholder="搜索节点"]').first();
+        if ((await searchBox.count()) >= 1) {
+          await searchBox.fill('知识');
+          await page.waitForTimeout(600);
+          await shot(page, 't4d_nodepanel_knowledge.png');
+          const panelText = await bodyText(page);
+          record('T4b 节点面板注册「知识检索」新节点', /知识检索/.test(panelText));
+          await searchBox.fill('MCP');
+          await page.waitForTimeout(600);
+          record('T4b 节点面板注册「MCP 工具」新节点', /MCP 工具/.test(await bodyText(page)));
+          await searchBox.fill('子工作流');
+          await page.waitForTimeout(600);
+          record('T4b 节点面板注册「子工作流」新节点', /子工作流/.test(await bodyText(page)));
+          await page.keyboard.press('Escape');
+        } else {
+          record('T4b 节点面板注册「知识检索」新节点', false, '未找到节点搜索框');
+          record('T4b 节点面板注册「MCP 工具」新节点', false, '未找到节点搜索框');
+          record('T4b 节点面板注册「子工作流」新节点', false, '未找到节点搜索框');
+        }
+      } else {
+        record('T4b 节点面板注册「知识检索」新节点', false, '未找到添加节点入口');
+        record('T4b 节点面板注册「MCP 工具」新节点', false, '未找到添加节点入口');
+        record('T4b 节点面板注册「子工作流」新节点', false, '未找到添加节点入口');
+      }
+
+      // T4c 失败分支开关：打开 LLM 节点表单侧栏，检查「失败时」开关
+      const startNode = page.locator('.node-type-start').first();
+      const llmNodeEl = page.locator('.node-type-llm').first();
+      if ((await llmNodeEl.count()) >= 1) {
+        await llmNodeEl.click();
+        await page.waitForTimeout(1200);
+        const sideText = await bodyText(page);
+        record('T4c LLM 节点表单包含「失败时」失败分支开关', /失败时/.test(sideText));
+        await shot(page, 't4e_llm_failbranch_form.png');
+        await page.keyboard.press('Escape');
+      } else if ((await startNode.count()) >= 1) {
+        await startNode.click();
+        await page.waitForTimeout(1000);
+        record('T4c LLM 节点表单包含「失败时」失败分支开关', false, '画布无 LLM 节点可点');
+      } else {
+        record('T4c LLM 节点表单包含「失败时」失败分支开关', false, '画布无节点可点');
+      }
+
       await page.goto(`${FRONT}/`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);
     } else {
@@ -186,6 +236,31 @@ async function main() {
       record('T7 点击「个人中心」渲染', /个人|邮箱|API Key|用户名/.test(await bodyText(page)), page.url());
     } else {
       record('T7 点击「个人中心」渲染', false, '未找到入口');
+    }
+
+    // T7b 个人中心-文件管理区块
+    const profileBody = await bodyText(page);
+    record(
+      'T7b 个人中心包含「文件管理」区块（M3 文件上传入口）',
+      /文件管理/.test(profileBody) && /上传文件/.test(profileBody),
+    );
+
+    // T10 深色模式切换：点击侧栏明暗切换按钮 → html[data-theme] 跟随变化
+    const themeBtn = page.getByRole('button', { name: /深色模式|浅色模式/ }).first();
+    if ((await themeBtn.count()) >= 1) {
+      const before = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
+      await themeBtn.click();
+      await page.waitForTimeout(600);
+      const after = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
+      await shot(page, 't10_theme_toggled.png');
+      record('T10 深色模式切换生效（html data-theme 翻转）', before !== after, `${before} -> ${after}`);
+      await themeBtn.click();
+      await page.waitForTimeout(400);
+      const restored = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
+      record('T10 深色模式切换可还原', restored === before, `${after} -> ${restored}`);
+    } else {
+      record('T10 深色模式切换生效（html data-theme 翻转）', false, '未找到主题切换按钮');
+      record('T10 深色模式切换可还原', false, '未找到主题切换按钮');
     }
 
     // T8 退出登录
