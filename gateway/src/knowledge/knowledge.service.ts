@@ -69,6 +69,24 @@ export class KnowledgeService {
     return owners.map((owner) => owner.datasetId);
   }
 
+  /**
+   * 校验工作流草稿中所有知识检索节点引用的知识库均归属当前用户。
+   * Dify 端 dataset 是账号级资源，若不在发布/试运行入口拦截，
+   * 恶意草稿可以跨用户检索他人知识库。
+   */
+  async assertFlowgramDatasetsOwned(userId: string, flowgram: any): Promise<void> {
+    const owned = new Set(await this.listDatasetIdsByUser(userId));
+    for (const node of flowgram?.nodes || []) {
+      if (node?.type !== 'knowledge') continue;
+      const datasetId = String(node.data?.datasetId || '').trim();
+      if (datasetId && !owned.has(datasetId)) {
+        throw new ForbiddenException(
+          `知识检索节点 ${String(node.id)} 引用的知识库不存在或不属于当前用户`,
+        );
+      }
+    }
+  }
+
   async createDataset(
     userId: string,
     name: string,

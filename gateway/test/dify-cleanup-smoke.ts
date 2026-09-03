@@ -1297,6 +1297,7 @@ async function testWorkflowSoftDeleteWaitsForCleanup() {
       {} as any,
       {} as any,
       { deleteWorkflowIntegrations: cleanup } as any,
+      { assertFlowgramDatasetsOwned: async () => undefined } as any,
       {} as any,
     );
     return { service, workflow, getSaves: () => saves };
@@ -1462,6 +1463,7 @@ function createConcurrentWorkflowService(
     { toDifyDSL: () => ({}) } as any,
     { syncPublishedWorkflow: sync } as any,
     { deleteWorkflowIntegrations: cleanup } as any,
+    { assertFlowgramDatasetsOwned: async () => undefined } as any,
     { checkNodePermissions: () => ({ allowed: true, deniedNodes: [] }) } as any,
   );
 }

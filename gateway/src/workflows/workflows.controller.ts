@@ -18,6 +18,7 @@ import { DraftRunService } from './draft-run.service';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
 import { WorkflowCrudService } from './workflow-crud.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 /**
  * 工作流控制器
@@ -37,6 +38,7 @@ export class WorkflowsController {
     private readonly difyConfig: DifyConfigService,
     private readonly workflowCrudService: WorkflowCrudService,
     private readonly draftRunService: DraftRunService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /**
@@ -113,6 +115,8 @@ export class WorkflowsController {
     }
 
     const workflow = await this.workflowCrudService.getById(id, req.user.id);
+    // 知识检索等节点引用的 Dify 资源必须归属当前用户，防止跨用户读取。
+    await this.knowledge.assertFlowgramDatasetsOwned(req.user.id, workflow.flowgramJson as FlowGramJSON);
     const sandbox = await this.draftRunService.prepareSandbox(
       req.user.id,
       workflow.flowgramJson as FlowGramJSON,

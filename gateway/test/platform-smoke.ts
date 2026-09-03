@@ -40,6 +40,7 @@ async function testControllerCompletesGenerator() {
     {} as any,
     {} as any,
     {} as any,
+    { assertFlowgramDatasetsOwned: async () => undefined } as any,
   );
   const response = {
     req: { user: { id: 'user-1', username: 'tester' } },

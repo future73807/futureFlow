@@ -66,6 +66,7 @@ function makeHarness(options: { failPrepare?: boolean }) {
     {} as any,
     crudService as any,
     draftRunService as any,
+    { assertFlowgramDatasetsOwned: async () => undefined } as any,
   );
   return { controller, runCalls, sandboxCalls };
 }

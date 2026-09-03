@@ -15,6 +15,7 @@ import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConsoleService, DifySyncResult } from '../dify/dify-console.service';
 import { DifyIntegrationService } from '../dify/dify-integration.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PermissionChecker } from '../auth/auth.module';
 
 @Injectable()
@@ -29,6 +30,7 @@ export class WorkflowCrudService {
     private readonly converter: DifyConverterService,
     private readonly difyConsole: DifyConsoleService,
     private readonly difyIntegration: DifyIntegrationService,
+    private readonly knowledge: KnowledgeService,
     private readonly permissionChecker: PermissionChecker,
   ) {}
 
@@ -134,6 +136,7 @@ export class WorkflowCrudService {
       // 完整转换是发布前的无副作用门禁；变量支配关系、End 引用和 Dify DSL
       // 结构错误必须在写入不可变快照前失败，不能留下“已发布但永远无法同步”的版本。
       await this.attachSubworkflowSnapshots(wf, manager, new Set([wf.id]));
+      await this.knowledge.assertFlowgramDatasetsOwned(userId, wf.flowgramJson as FlowGramJSON);
       this.converter.toDifyDSL(wf.flowgramJson as FlowGramJSON);
       const publishedAt = new Date();
       wf.publishedFlowgramJson = this.cloneJson(wf.flowgramJson);

@@ -14,6 +14,7 @@ import { ConverterModule } from '../converter/converter.module';
 import { DifyModule } from '../dify/dify.module';
 import { BillingModule } from '../billing/billing.module';
 import { AuthModule } from '../auth/auth.module';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AuthModule } from '../auth/auth.module';
     DifyModule,
     BillingModule,
     AuthModule,
+    KnowledgeModule,
   ],
   controllers: [WorkflowsController, WorkflowCrudController],
   providers: [
