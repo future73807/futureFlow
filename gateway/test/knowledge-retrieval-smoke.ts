@@ -87,7 +87,7 @@ function testKnowledgeExport() {
   assert.equal(node.data.type, 'knowledge-retrieval');
   assert.deepEqual(node.data.dataset_ids, [DATASET_ID]);
   assert.deepEqual(node.data.query_variable_selector, ['start_1', 'query']);
-  assert.equal(node.data.retrieval_mode, 'single');
+  assert.equal(node.data.retrieval_mode, 'multiple');
   assert.equal(node.data.multiple_retrieval_config.top_k, 4);
   const edge = dsl.workflow.graph.edges.find((candidate: any) => candidate.source === 'kb_1');
   assert.ok(edge, '知识检索节点必须存在出口连线');

@@ -39,6 +39,7 @@ async function testControllerCompletesGenerator() {
     workflowsService as any,
     {} as any,
     {} as any,
+    {} as any,
   );
   const response = {
     req: { user: { id: 'user-1', username: 'tester' } },

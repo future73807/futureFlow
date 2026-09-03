@@ -2657,7 +2657,9 @@ main = function(args) {
       selected: false,
       dataset_ids: [datasetId],
       query_variable_selector: querySelector,
-      retrieval_mode: 'single',
+      // multiple（多路）模式在 economy 关键索引下直接取 top_k，不依赖
+      // 任何 LLM；single 模式必须配置路由模型，免模型部署会立即失败。
+      retrieval_mode: 'multiple',
       multiple_retrieval_config: {
         top_k: topK,
         score_threshold: null,
