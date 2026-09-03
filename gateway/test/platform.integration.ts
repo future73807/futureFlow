@@ -24,6 +24,11 @@ import { WorkflowVersion } from '../src/database/entities/workflow-version.entit
 import { WorkflowTemplate } from '../src/database/entities/workflow-template.entity';
 import { WorkflowTrigger } from '../src/database/entities/workflow-trigger.entity';
 import { DifyIntegration } from '../src/database/entities/dify-integration.entity';
+import { DraftSandbox } from '../src/database/entities/draft-sandbox.entity';
+import { MediaCredential } from '../src/database/entities/media-credential.entity';
+import { MediaJob } from '../src/database/entities/media-job.entity';
+import { MediaAsset } from '../src/database/entities/media-asset.entity';
+import { FileUpload } from '../src/database/entities/file-upload.entity';
 import { DatabaseModule } from '../src/database/database.module';
 import { DifyModule } from '../src/dify/dify.module';
 
@@ -42,6 +47,11 @@ const entities = [
   WorkflowTemplate,
   WorkflowTrigger,
   DifyIntegration,
+  DraftSandbox,
+  MediaCredential,
+  MediaJob,
+  MediaAsset,
+  FileUpload,
 ];
 
 // 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
