@@ -14,6 +14,7 @@ import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './jwt.guard';
 import { ApiKeyService } from './api-key.service';
 import { ApiKeyController } from './api-key.controller';
+import { LoginRateLimitService } from './login-rate-limit.service';
 
 /**
  * VIP 等级与可用节点类型映射
@@ -47,7 +48,7 @@ export class PermissionChecker {
 @Module({
   imports: [TypeOrmModule.forFeature([User, ApiKey])],
   controllers: [AuthController, ApiKeyController],
-  providers: [PermissionChecker, AuthService, JwtAuthGuard, ApiKeyService],
+  providers: [PermissionChecker, AuthService, JwtAuthGuard, ApiKeyService, LoginRateLimitService],
   exports: [PermissionChecker, TypeOrmModule, AuthService, JwtAuthGuard],
 })
 export class AuthModule implements NestModule {

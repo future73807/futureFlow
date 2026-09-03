@@ -7,6 +7,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -24,8 +25,10 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Request() req: ExpressRequest) {
+    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const clientKey = `${forwarded || req.ip || 'unknown'}|${String(dto.account || '').toLowerCase()}`;
+    return this.authService.login(dto, clientKey);
   }
 
   @UseGuards(JwtAuthGuard)

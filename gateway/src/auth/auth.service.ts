@@ -12,6 +12,7 @@ import { User } from '../database/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { LoginRateLimitService } from './login-rate-limit.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +20,7 @@ export class AuthService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly loginRateLimit: LoginRateLimitService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -55,24 +57,30 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, clientKey = 'unknown') {
+    this.loginRateLimit.assertAllowed(clientKey);
+    const fail = () => this.loginRateLimit.recordFailure(clientKey);
     const user = await this.userRepo.findOne({
       where: [{ username: dto.account }, { email: dto.account }],
     });
 
     if (!user || !user.passwordHash) {
+      fail();
       throw new UnauthorizedException('账号或密码错误');
     }
 
     if (user.status !== 'active') {
+      fail();
       throw new UnauthorizedException('账号已被封禁或暂停');
     }
 
     const isValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isValid) {
+      fail();
       throw new UnauthorizedException('账号或密码错误');
     }
 
+    this.loginRateLimit.reset(clientKey);
     return {
       ...this.generateTokens(user),
       user: this.sanitizeUser(user),
