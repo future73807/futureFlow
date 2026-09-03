@@ -14,6 +14,7 @@ import { useClientContext, useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useParams } from 'react-router-dom';
 import './gateway-run.css';
 import { apiFetch, apiJson } from '../../utils/api';
+import { callSaveHook } from '../../utils/save-registry';
 import { downloadResultArchive } from '../../utils/result-archive';
 import { getFieldLabel } from '../../form-components/field-labels';
 
@@ -286,6 +287,10 @@ export const GatewayRunButton = ({
 
     try {
       if (!workflowId) throw new Error('缺少工作流标识');
+      if (mode === 'draft') {
+        // 执行前强制落盘草稿，消除 1.5 秒自动保存窗口内的旧草稿竞态。
+        await callSaveHook();
+      }
       const endpoint = mode === 'draft'
         ? `/workflows/${workflowId}/draft-run`
         : `/workflows/${workflowId}/execute`;
@@ -442,7 +447,7 @@ export const GatewayRunButton = ({
     } finally {
       abortRef.current = null;
     }
-  }, [inputFields, inputs, publishedVersion, refresh, workflowId]);
+  }, [inputFields, inputs, mode, publishedVersion, refresh, workflowId]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

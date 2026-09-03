@@ -19,6 +19,7 @@ import { useEditorProps, useThemeMode } from '../../hooks';
 import { GetGlobalVariableSchema } from '../../plugins/variable-panel-plugin';
 import { ApiError, apiJson } from '../../utils/api';
 import { normalizeCanvasLocale } from '../../utils/normalize-canvas-data';
+import { registerSaveHook } from '../../utils/save-registry';
 import { LocalizedSchemaTypeProvider } from '../../form-components/localized-materials';
 
 const AUTOSAVE_DELAY = 1500;
@@ -154,6 +155,16 @@ export const CanvasPage = () => {
   }, [id, workflowName]);
 
   saveRunnerRef.current = saveWorkflow;
+
+  // 云端试运行等组件执行前通过该钩子强制落盘草稿，避免自动保存延迟造成旧草稿竞态。
+  useEffect(() => {
+    registerSaveHook(async () => {
+      if (revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current) {
+        await saveRunnerRef.current(false);
+      }
+    });
+    return () => registerSaveHook(null);
+  }, []);
 
   useEffect(() => {
     if (changeRevision === savedRevisionRef.current) return;
