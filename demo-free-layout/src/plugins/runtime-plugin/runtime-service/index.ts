@@ -141,6 +141,24 @@ export class WorkflowRuntimeService {
       return;
     }
 
+    // 云端专属节点只在 Dify 引擎上存在语义；本地 QuickJS 运行时无法执行，
+    // 提前拦截并引导用户改用「云端试运行」或发布后运行。
+    const cloudOnlyLabels: Record<string, string> = {
+      [WorkflowNodeType.Knowledge]: '知识检索',
+      [WorkflowNodeType.Subworkflow]: '子工作流',
+      [WorkflowNodeType.Mcp]: 'MCP 工具',
+    };
+    const cloudOnlyNodes = (schema.nodes || [])
+      .map((node: any) => node?.type)
+      .filter((type: string) => cloudOnlyLabels[type]);
+    if (cloudOnlyNodes.length > 0) {
+      const labels = [...new Set(cloudOnlyNodes.map((type: string) => cloudOnlyLabels[type]))].join('、');
+      this.resultEmitter.fire({
+        errors: [`工作流包含${labels}节点，本地试运行不支持；请使用工具栏「云端试运行」真实执行，或发布后在云端运行`],
+      });
+      return;
+    }
+
     const validateResult = await this.runtimeClient.TaskValidate({
       schema: JSON.stringify(schema),
       inputs,
