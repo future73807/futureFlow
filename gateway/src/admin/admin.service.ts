@@ -9,6 +9,7 @@ import { BalanceLog } from '../database/entities/balance-log.entity';
 import { DifyIntegrationService } from '../dify/dify-integration.service';
 import { FileStorageService } from '../files/file-storage.service';
 import { MediaAssetService } from '../media/media-asset.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 import { DraftSandbox } from '../database/entities/draft-sandbox.entity';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class AdminService {
     private readonly difyIntegration: DifyIntegrationService,
     private readonly fileStorage: FileStorageService,
     private readonly mediaAssets: MediaAssetService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /** 仪表盘统计 */
@@ -167,6 +169,10 @@ export class AdminService {
     for (const sandbox of sandboxes) {
       // 草稿云端试运行的沙箱应用。
       await this.difyIntegration.deleteAppById(sandbox.appId);
+    }
+    for (const datasetId of await this.knowledge.listDatasetIdsByUser(userId)) {
+      // 用户创建的 Dify 知识库（含文档）。
+      await this.knowledge.deleteDataset(userId, datasetId, true);
     }
     // 生成类媒体与用户上传文件：DB 行随用户级联删除，物理文件需显式移除。
     await this.mediaAssets.removeAllByUser(userId);

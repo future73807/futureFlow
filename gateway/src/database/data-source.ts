@@ -24,6 +24,8 @@ import { McpServer } from './entities/mcp-server.entity';
 import { AddMcpServers1722470400000 } from './migrations/1722470400000-add-mcp-servers';
 import { DraftSandbox } from './entities/draft-sandbox.entity';
 import { AddDraftSandboxes1722566400000 } from './migrations/1722566400000-add-draft-sandboxes';
+import { KnowledgeDatasetOwner } from './entities/knowledge-dataset-owner.entity';
+import { AddKnowledgeDatasetOwners1722652800000 } from './migrations/1722652800000-add-knowledge-dataset-owners';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -70,6 +72,7 @@ export default new DataSource({
     FileUpload,
     McpServer,
     DraftSandbox,
+    KnowledgeDatasetOwner,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
@@ -80,6 +83,7 @@ export default new DataSource({
     AddFileUploads1722384000000,
     AddMcpServers1722470400000,
     AddDraftSandboxes1722566400000,
+    AddKnowledgeDatasetOwners1722652800000,
   ],
   synchronize: false,
   logging: false,

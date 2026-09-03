@@ -15,6 +15,7 @@ import { AdminModule } from '../src/admin/admin.module';
 import { AuthModule } from '../src/auth/auth.module';
 import { BillingModule } from '../src/billing/billing.module';
 import { ConverterModule } from '../src/converter/converter.module';
+import { KnowledgeModule } from '../src/knowledge/knowledge.module';
 import { BalanceLog } from '../src/database/entities/balance-log.entity';
 import { ApiKey } from '../src/database/entities/api-key.entity';
 import { User } from '../src/database/entities/user.entity';
@@ -25,6 +26,7 @@ import { WorkflowTemplate } from '../src/database/entities/workflow-template.ent
 import { WorkflowTrigger } from '../src/database/entities/workflow-trigger.entity';
 import { DifyIntegration } from '../src/database/entities/dify-integration.entity';
 import { DraftSandbox } from '../src/database/entities/draft-sandbox.entity';
+import { KnowledgeDatasetOwner } from '../src/database/entities/knowledge-dataset-owner.entity';
 import { MediaCredential } from '../src/database/entities/media-credential.entity';
 import { MediaJob } from '../src/database/entities/media-job.entity';
 import { MediaAsset } from '../src/database/entities/media-asset.entity';
@@ -52,6 +54,7 @@ const entities = [
   MediaJob,
   MediaAsset,
   FileUpload,
+  KnowledgeDatasetOwner,
 ];
 
 // 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
@@ -125,6 +128,7 @@ async function createTestApp() {
       WorkflowsModule,
       WorkflowTemplateModule,
       WorkflowTriggerModule,
+      KnowledgeModule,
       AdminModule,
     ],
   })

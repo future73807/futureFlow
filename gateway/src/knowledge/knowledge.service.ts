@@ -1,6 +1,9 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { DifyConsoleAuthorization, DifyIntegrationService } from '../dify/dify-integration.service';
+import { KnowledgeDatasetOwner } from '../database/entities/knowledge-dataset-owner.entity';
 
 export interface KnowledgeDatasetSummary {
   id: string;
@@ -36,25 +39,42 @@ export class KnowledgeService {
   constructor(
     private readonly dify: DifyIntegrationService,
     private readonly config: ConfigService,
+    @InjectRepository(KnowledgeDatasetOwner)
+    private readonly ownerRepo: Repository<KnowledgeDatasetOwner>,
   ) {}
 
   async isEnabled(): Promise<boolean> {
     return this.dify.resolveConsoleAuthorization() !== null;
   }
 
-  async listDatasets(): Promise<KnowledgeDatasetSummary[]> {
+  async listDatasets(userId: string): Promise<KnowledgeDatasetSummary[]> {
     const data = await this.consoleJson<any>('/datasets?page=1&limit=100');
     const rows = Array.isArray(data?.data) ? data.data : [];
-    return rows.map((row: any) => ({
-      id: String(row.id || ''),
-      name: String(row.name || ''),
-      description: String(row.description || ''),
-      documentCount: Number(row.document_count || 0),
-      wordCount: Number(row.word_count || 0),
-    }));
+    const owners = await this.ownerRepo.find({ where: { userId } });
+    const ownedIds = new Set(owners.map((owner) => owner.datasetId));
+    return rows
+      .filter((row: any) => ownedIds.has(String(row.id || '')))
+      .map((row: any) => ({
+        id: String(row.id || ''),
+        name: String(row.name || ''),
+        description: String(row.description || ''),
+        documentCount: Number(row.document_count || 0),
+        wordCount: Number(row.word_count || 0),
+      }));
   }
 
-  async createDataset(name: string, description: string): Promise<KnowledgeDatasetSummary> {
+  /** 删除用户前清理其名下全部 Dify 知识库（不经归属校验）。 */
+  async listDatasetIdsByUser(userId: string): Promise<string[]> {
+    const owners = await this.ownerRepo.find({ where: { userId } });
+    return owners.map((owner) => owner.datasetId);
+  }
+
+  async createDataset(
+    userId: string,
+    name: string,
+    description: string,
+    requireAdmin = false,
+  ): Promise<KnowledgeDatasetSummary> {
     const row = await this.consoleJson<any>('/datasets', {
       method: 'POST',
       body: {
@@ -68,6 +88,10 @@ export class KnowledgeService {
     if (!row?.id) {
       throw new ServiceUnavailableException('Dify 未返回新建知识库的 ID');
     }
+    await this.ownerRepo.save(this.ownerRepo.create({
+      datasetId: String(row.id),
+      userId,
+    }));
     return {
       id: String(row.id),
       name: String(row.name || name),
@@ -77,11 +101,14 @@ export class KnowledgeService {
     };
   }
 
-  async deleteDataset(datasetId: string): Promise<void> {
+  async deleteDataset(userId: string, datasetId: string, requireAdmin = false): Promise<void> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
     await this.consoleJson(`/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' });
+    await this.ownerRepo.delete({ datasetId });
   }
 
-  async listDocuments(datasetId: string): Promise<KnowledgeDocumentSummary[]> {
+  async listDocuments(userId: string, datasetId: string, requireAdmin = false): Promise<KnowledgeDocumentSummary[]> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
     const data = await this.datasetApiJson<any>(
       `/datasets/${encodeURIComponent(datasetId)}/documents?page=1&limit=100`,
     );
@@ -96,7 +123,14 @@ export class KnowledgeService {
     }));
   }
 
-  async createDocumentByText(datasetId: string, name: string, text: string): Promise<KnowledgeDocumentSummary> {
+  async createDocumentByText(
+    userId: string,
+    datasetId: string,
+    name: string,
+    text: string,
+    requireAdmin = false,
+  ): Promise<KnowledgeDocumentSummary> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
     const row = await this.datasetApiJson<any>(
       `/datasets/${encodeURIComponent(datasetId)}/document/create-by-text`,
       {
@@ -121,11 +155,31 @@ export class KnowledgeService {
     };
   }
 
-  async deleteDocument(datasetId: string, documentId: string): Promise<void> {
+  async deleteDocument(
+    userId: string,
+    datasetId: string,
+    documentId: string,
+    requireAdmin = false,
+  ): Promise<void> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
     await this.datasetApiJson(
       `/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(documentId)}`,
       { method: 'DELETE' },
     );
+  }
+
+  /** 归属校验：历史无主知识库仅管理员可继续操作。 */
+  private async assertOwned(userId: string, datasetId: string, requireAdmin: boolean): Promise<void> {
+    const owner = await this.ownerRepo.findOne({ where: { datasetId } });
+    if (!owner) {
+      if (!requireAdmin) {
+        throw new ForbiddenException('知识库不存在或无权访问');
+      }
+      return;
+    }
+    if (owner.userId !== userId && !requireAdmin) {
+      throw new ForbiddenException('只能访问自己创建的知识库');
+    }
   }
 
   /**

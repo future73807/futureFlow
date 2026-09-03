@@ -13,6 +13,7 @@ import { AdminController } from './admin.controller';
 import { DifyModule } from '../dify/dify.module';
 import { MediaModule } from '../media/media.module';
 import { FilesModule } from '../files/files.module';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { FilesModule } from '../files/files.module';
     DifyModule,
     MediaModule,
     FilesModule,
+    KnowledgeModule,
   ],
   controllers: [AdminController],
   providers: [AdminGuard, AdminService],

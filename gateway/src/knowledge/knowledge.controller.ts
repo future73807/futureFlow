@@ -43,6 +43,16 @@ export class KnowledgeController {
     }
   }
 
+  private currentUserId(req: any): string {
+    const userId = req?.user?.id;
+    if (!userId) throw new BadRequestException('未认证');
+    return String(userId);
+  }
+
+  private isAdmin(req: any): boolean {
+    return req?.user?.role === 'admin';
+  }
+
   @Get('status')
   async status(@Request() req: any) {
     return {
@@ -52,45 +62,58 @@ export class KnowledgeController {
   }
 
   @Get('datasets')
-  listDatasets() {
-    return this.knowledge.listDatasets();
+  listDatasets(@Request() req: any) {
+    return this.knowledge.listDatasets(this.currentUserId(req));
   }
 
   @Post('datasets')
-  createDataset(@Body() dto: CreateKnowledgeDatasetDto) {
-    return this.knowledge.createDataset(dto.name.trim(), dto.description?.trim() || '');
+  createDataset(@Request() req: any, @Body() dto: CreateKnowledgeDatasetDto) {
+    return this.knowledge.createDataset(
+      this.currentUserId(req),
+      dto.name.trim(),
+      dto.description?.trim() || '',
+      this.isAdmin(req),
+    );
   }
 
   @Delete('datasets/:datasetId')
-  async deleteDataset(@Param('datasetId') datasetId: string) {
+  async deleteDataset(@Request() req: any, @Param('datasetId') datasetId: string) {
     this.assertDatasetId(datasetId);
-    await this.knowledge.deleteDataset(datasetId);
+    await this.knowledge.deleteDataset(this.currentUserId(req), datasetId, this.isAdmin(req));
     return { ok: true };
   }
 
   @Get('datasets/:datasetId/documents')
-  listDocuments(@Param('datasetId') datasetId: string) {
+  listDocuments(@Request() req: any, @Param('datasetId') datasetId: string) {
     this.assertDatasetId(datasetId);
-    return this.knowledge.listDocuments(datasetId);
+    return this.knowledge.listDocuments(this.currentUserId(req), datasetId, this.isAdmin(req));
   }
 
   @Post('datasets/:datasetId/documents')
   createDocument(
+    @Request() req: any,
     @Param('datasetId') datasetId: string,
     @Body() dto: CreateKnowledgeDocumentDto,
   ) {
     this.assertDatasetId(datasetId);
-    return this.knowledge.createDocumentByText(datasetId, dto.name.trim(), dto.text);
+    return this.knowledge.createDocumentByText(
+      this.currentUserId(req),
+      datasetId,
+      dto.name.trim(),
+      dto.text,
+      this.isAdmin(req),
+    );
   }
 
   @Delete('datasets/:datasetId/documents/:documentId')
   async deleteDocument(
+    @Request() req: any,
     @Param('datasetId') datasetId: string,
     @Param('documentId') documentId: string,
   ) {
     this.assertDatasetId(datasetId);
     this.assertDocumentId(documentId);
-    await this.knowledge.deleteDocument(datasetId, documentId);
+    await this.knowledge.deleteDocument(this.currentUserId(req), datasetId, documentId, this.isAdmin(req));
     return { ok: true };
   }
 }
