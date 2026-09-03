@@ -10,7 +10,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconClose, IconDownload, IconPlay } from '@douyinfe/semi-icons';
-import { useRefresh } from '@flowgram.ai/free-layout-editor';
+import { useClientContext, useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useParams } from 'react-router-dom';
 import './gateway-run.css';
 import { apiFetch, apiJson } from '../../utils/api';
@@ -168,9 +168,17 @@ const NODE_STATUS_LABELS: Record<NodeStatus['status'], string> = {
   failed: '执行失败',
 };
 
-export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
+export const GatewayRunButton = ({
+  disabled,
+  mode = 'published',
+}: {
+  disabled?: boolean;
+  /** published：执行不可变发布版本；draft：把当前草稿导入用户沙箱应用真实执行。 */
+  mode?: 'published' | 'draft';
+}) => {
   const { id: workflowId } = useParams<{ id: string }>();
   const refresh = useRefresh();
+  const clientContext = useClientContext();
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<RunResult>(initialState);
   const [inputs, setInputs] = useState<Record<string, string | number | boolean>>({});
@@ -190,14 +198,29 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
 
     try {
       if (!workflowId) throw new Error('缺少工作流标识');
-      const workflow = await apiJson<PublishedWorkflowSnapshot>(`/workflows/${workflowId}`);
-      const snapshot = workflow.publishedFlowgramJson;
-      if (!snapshot || !workflow.publishedVersion) {
-        throw new Error('当前工作流尚未发布，请先保存并发布后再运行');
+
+      let snapshot: PublishedWorkflowSnapshot['publishedFlowgramJson'];
+      let publishedVersion: number | null = null;
+      let workflowName = '工作流结果';
+      if (mode === 'draft') {
+        // 云端试运行执行服务器上保存的草稿；画布有 1.5 秒自动保存，
+        // 打开面板时读编辑器当前内存态，与即将导入的草稿一致。
+        const json = clientContext.document.toJSON() as any;
+        snapshot = { nodes: json?.nodes || [] };
+        const current = await apiJson<PublishedWorkflowSnapshot>(`/workflows/${workflowId}`).catch(() => null);
+        workflowName = current?.name?.trim() || '草稿云端试运行';
+      } else {
+        const workflow = await apiJson<PublishedWorkflowSnapshot>(`/workflows/${workflowId}`);
+        snapshot = workflow.publishedFlowgramJson;
+        workflowName = workflow.name?.trim() || '工作流结果';
+        publishedVersion = workflow.publishedVersion || null;
+        if (!snapshot || !publishedVersion) {
+          throw new Error('当前工作流尚未发布，请先保存并发布后再运行');
+        }
       }
 
-      const startNode = snapshot.nodes?.find((node) => node.type === 'start');
-      if (!startNode) throw new Error('已发布版本缺少开始节点');
+      const startNode = snapshot?.nodes?.find((node) => node.type === 'start');
+      if (!startNode) throw new Error(mode === 'draft' ? '草稿缺少开始节点' : '已发布版本缺少开始节点');
       const schema = startNode.data?.outputs;
       const required = new Set(schema?.required || []);
       const nextInputs: Record<string, string | number | boolean> = {};
@@ -222,8 +245,13 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
         } satisfies PublishedInputField;
       });
 
-      setPublishedVersion(workflow.publishedVersion);
-      setPublishedWorkflowName(workflow.name?.trim() || '工作流结果');
+      if (mode === 'draft') {
+        // draft 模式没有发布版本号；用 0 作为「草稿就绪」标记以启用运行按钮。
+        setPublishedVersion(0);
+      } else {
+        setPublishedVersion(publishedVersion);
+      }
+      setPublishedWorkflowName(workflowName);
       setSensitiveInputKeys(collectArchiveSensitiveInputKeys(snapshot));
       setInputFields(nextFields);
       setInputs(nextInputs);
@@ -233,11 +261,11 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
       setSensitiveInputKeys([]);
       setInputFields([]);
       setInputs({});
-      setInputError(error?.message || '读取已发布版本失败');
+      setInputError(error?.message || (mode === 'draft' ? '读取草稿失败' : '读取已发布版本失败'));
     } finally {
       setPreparing(false);
     }
-  }, [workflowId]);
+  }, [clientContext, mode, workflowId]);
 
   const handleRun = useCallback(async () => {
     const missingField = inputFields.find((field) => {
@@ -258,9 +286,12 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
 
     try {
       if (!workflowId) throw new Error('缺少工作流标识');
-      const response = await apiFetch(`/workflows/${workflowId}/execute`, {
+      const endpoint = mode === 'draft'
+        ? `/workflows/${workflowId}/draft-run`
+        : `/workflows/${workflowId}/execute`;
+      const response = await apiFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ inputs, publishedVersion }),
+        body: JSON.stringify(mode === 'draft' ? { inputs } : { inputs, publishedVersion }),
         signal: controller.signal,
       });
 
@@ -476,18 +507,18 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
   return (
     <>
       <Button
-        aria-label="运行已发布版本"
-        className="gateway-run-action"
+        aria-label={mode === 'draft' ? '云端试运行' : '运行已发布版本'}
+        className={mode === 'draft' ? 'gateway-run-action gateway-draft-run-action' : 'gateway-run-action'}
         icon={<IconPlay aria-hidden="true" size="small" />}
         disabled={disabled || result.status === 'running'}
         onClick={() => void handleOpen()}
       >
-        运行已发布版本
+        {mode === 'draft' ? '云端试运行' : '运行已发布版本'}
       </Button>
 
       <SideSheet
         className="gateway-run-sheet"
-        title="已发布版本运行结果"
+        title={mode === 'draft' ? '草稿云端试运行结果' : '已发布版本运行结果'}
         visible={visible}
         onCancel={() => setVisible(false)}
         width={500}
@@ -499,13 +530,17 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
               <div>
                 <h3>运行输入</h3>
                 <p>
-                  {publishedVersion
-                    ? `正在运行已发布的 v${publishedVersion}，输入不会修改画布。`
-                    : '读取已发布版本的开始节点参数。'}
+                  {mode === 'draft'
+                    ? '将把当前保存的草稿导入你的专属沙箱应用，用本地 Dify 真实执行；画布改动会在点击前自动保存。'
+                    : publishedVersion
+                      ? `正在运行已发布的 v${publishedVersion}，输入不会修改画布。`
+                      : '读取已发布版本的开始节点参数。'}
                 </p>
               </div>
               {preparing ? (
-                <div className="gateway-preparing"><Spin /> 正在读取已发布版本</div>
+                <div className="gateway-preparing">
+                  <Spin /> {mode === 'draft' ? '正在读取草稿' : '正在读取已发布版本'}
+                </div>
               ) : (
                 inputFields.map((field) => (
                   <label className="gateway-input-field" key={field.name}>
@@ -526,7 +561,7 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
                 </div>
               )}
               <Button
-                aria-label="开始运行已发布版本"
+                aria-label={mode === 'draft' ? '开始云端试运行' : '开始运行已发布版本'}
                 block
                 theme="solid"
                 type="primary"
@@ -535,7 +570,7 @@ export const GatewayRunButton = ({ disabled }: { disabled?: boolean }) => {
                 disabled={!publishedVersion || preparing}
                 onClick={() => void handleRun()}
               >
-                开始运行
+                {mode === 'draft' ? '开始云端试运行' : '开始运行'}
               </Button>
             </section>
           )}

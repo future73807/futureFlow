@@ -88,6 +88,7 @@ export const DemoTools = () => {
         <div className="canvas-tool-group canvas-tool-group-primary">
           <AddNode disabled={playground.config.readonly} />
           <TestRunButton disabled={playground.config.readonly} />
+          <GatewayRunButton mode="draft" disabled={playground.config.readonly} />
           <GatewayRunButton disabled={playground.config.readonly} />
         </div>
       </ToolSection>
