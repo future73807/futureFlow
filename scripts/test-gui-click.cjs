@@ -249,6 +249,12 @@ async function main() {
       /文件管理/.test(profileBody) && /上传文件/.test(profileBody),
     );
 
+    // T7c 个人中心-知识库管理区块
+    record(
+      'T7c 个人中心包含「知识库」管理区块（建库/管理文档入口）',
+      /知识库/.test(profileBody) && /创建知识库/.test(profileBody),
+    );
+
     // T10 深色模式切换：点击侧栏明暗切换按钮 → html[data-theme] 跟随变化
     const themeBtn = page.getByRole('button', { name: /深色模式|浅色模式/ }).first();
     if ((await themeBtn.count()) >= 1) {

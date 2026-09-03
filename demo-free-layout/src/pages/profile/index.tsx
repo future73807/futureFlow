@@ -7,8 +7,10 @@ import {
   Form,
   Modal,
   Popconfirm,
+  SideSheet,
   Spin,
   Table,
+  Tag,
   Toast,
   Tooltip,
   Typography,
@@ -45,6 +47,23 @@ interface StoredFile {
   createdAt: string;
 }
 
+interface KnowledgeDataset {
+  id: string;
+  name: string;
+  description: string;
+  documentCount: number;
+  wordCount: number;
+}
+
+interface KnowledgeDocument {
+  id: string;
+  name: string;
+  indexingStatus: string;
+  enabled: boolean;
+  wordCount: number;
+  error: string | null;
+}
+
 export const ProfilePage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -58,6 +77,25 @@ export const ProfilePage = () => {
   const [newKey, setNewKey] = useState<string | null>(null);
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [datasets, setDatasets] = useState<KnowledgeDataset[] | null>(null);
+  const [createDatasetVisible, setCreateDatasetVisible] = useState(false);
+  const [docSheetDataset, setDocSheetDataset] = useState<KnowledgeDataset | null>(null);
+  const [datasetDocs, setDatasetDocs] = useState<KnowledgeDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [addingDoc, setAddingDoc] = useState(false);
+
+  const fetchDatasets = useCallback(async () => {
+    setDatasets(await apiJson<KnowledgeDataset[]>('/knowledge/datasets'));
+  }, []);
+
+  const fetchDatasetDocs = useCallback(async (datasetId: string) => {
+    setDocsLoading(true);
+    try {
+      setDatasetDocs(await apiJson<KnowledgeDocument[]>(`/knowledge/datasets/${datasetId}/documents`));
+    } finally {
+      setDocsLoading(false);
+    }
+  }, []);
 
   const fetchFiles = useCallback(async () => {
     setFiles(await apiJson<StoredFile[]>('/files'));
@@ -77,13 +115,13 @@ export const ProfilePage = () => {
         return;
       }
       setCurrentUser(profile);
-      await Promise.all([fetchApiKeys(), fetchFiles().catch(() => undefined)]);
+      await Promise.all([fetchApiKeys(), fetchFiles().catch(() => undefined), fetchDatasets().catch(() => undefined)]);
     } catch (error: any) {
       setLoadError(error.message || '加载个人中心失败，请确认网关服务已启动');
     } finally {
       setLoading(false);
     }
-  }, [fetchApiKeys, navigate]);
+  }, [fetchApiKeys, fetchDatasets, navigate]);
   useEffect(() => {
     void loadPage();
   }, [loadPage]);
@@ -180,6 +218,66 @@ export const ProfilePage = () => {
       Toast.error(error.message || '删除文件失败');
     }
   }, [fetchFiles]);
+
+  const handleCreateDataset = useCallback(async (values: { name?: string; description?: string }) => {
+    try {
+      await apiJson('/knowledge/datasets', {
+        method: 'POST',
+        body: JSON.stringify({ name: values.name?.trim() || '', description: values.description?.trim() || '' }),
+      });
+      Toast.success('知识库已创建');
+      setCreateDatasetVisible(false);
+      await fetchDatasets();
+    } catch (error: any) {
+      Toast.error(error.message || '创建知识库失败');
+    }
+  }, [fetchDatasets]);
+
+  const openDatasetDocs = useCallback(async (dataset: KnowledgeDataset) => {
+    setDocSheetDataset(dataset);
+    await fetchDatasetDocs(dataset.id);
+  }, [fetchDatasetDocs]);
+
+  const handleAddDoc = useCallback(async (values: { name?: string; text?: string }) => {
+    if (!docSheetDataset) return;
+    setAddingDoc(true);
+    try {
+      await apiJson(`/knowledge/datasets/${docSheetDataset.id}/documents`, {
+        method: 'POST',
+        body: JSON.stringify({ name: values.name?.trim() || '未命名文档', text: values.text || '' }),
+      });
+      Toast.success('文档已提交，索引完成后可被知识检索节点使用');
+      await fetchDatasetDocs(docSheetDataset.id);
+      await fetchDatasets();
+    } catch (error: any) {
+      Toast.error(error.message || '添加文档失败');
+    } finally {
+      setAddingDoc(false);
+    }
+  }, [docSheetDataset, fetchDatasetDocs, fetchDatasets]);
+
+  const handleDeleteDataset = useCallback(async (id: string) => {
+    try {
+      await apiJson('/knowledge/datasets/' + id, { method: 'DELETE' });
+      Toast.success('知识库已删除');
+      if (docSheetDataset?.id === id) setDocSheetDataset(null);
+      await fetchDatasets();
+    } catch (error: any) {
+      Toast.error(error.message || '删除知识库失败');
+    }
+  }, [docSheetDataset, fetchDatasets]);
+
+  const handleDeleteDoc = useCallback(async (documentId: string) => {
+    if (!docSheetDataset) return;
+    try {
+      await apiJson(`/knowledge/datasets/${docSheetDataset.id}/documents/${documentId}`, { method: 'DELETE' });
+      Toast.success('文档已删除');
+      await fetchDatasetDocs(docSheetDataset.id);
+      await fetchDatasets();
+    } catch (error: any) {
+      Toast.error(error.message || '删除文档失败');
+    }
+  }, [docSheetDataset, fetchDatasetDocs, fetchDatasets]);
 
   const fileUrl = (id: string) => GATEWAY_URL.replace(/\/+$/, '') + '/files/' + id + '/download';
 
@@ -421,6 +519,165 @@ export const ProfilePage = () => {
         />
       </section>
 
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <div>
+            <h2>知识库</h2>
+            <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
+          </div>
+          <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
+            创建知识库
+          </Button>
+        </div>
+        <Table
+          dataSource={datasets || []}
+          loading={datasets === null}
+          pagination={false}
+          rowKey="id"
+          empty={<Empty description="还没有知识库" />}
+          columns={[
+            {
+              title: '名称',
+              dataIndex: 'name',
+              render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+            },
+            {
+              title: '描述',
+              dataIndex: 'description',
+              ellipsis: true,
+              render: (value: string) => value || '-',
+            },
+            {
+              title: '文档数',
+              dataIndex: 'documentCount',
+              width: 90,
+            },
+            {
+              title: '操作',
+              width: 150,
+              align: 'right' as const,
+              render: (_: unknown, record: KnowledgeDataset) => (
+                <div style={{ display: 'inline-flex', gap: 4 }}>
+                  <Button
+                    size="small"
+                    theme="borderless"
+                    onClick={() => void openDatasetDocs(record)}
+                  >
+                    管理文档
+                  </Button>
+                  <Popconfirm
+                    title="删除知识库将同时删除其中全部文档，确认？"
+                    okText="删除"
+                    cancelText="取消"
+                    okType="danger"
+                    onConfirm={() => void handleDeleteDataset(record.id)}
+                  >
+                    <Tooltip content="删除知识库">
+                      <Button
+                        size="small"
+                        type="danger"
+                        theme="borderless"
+                        icon={<IconDelete />}
+                        aria-label={'删除 ' + record.name}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
+              ),
+            },
+          ]}
+        />
+      </section>
+
+      <SideSheet
+        title={docSheetDataset ? `文档管理 · ${docSheetDataset.name}` : '文档管理'}
+        visible={Boolean(docSheetDataset)}
+        onCancel={() => setDocSheetDataset(null)}
+        width={560}
+        footer={null}
+      >
+        {docSheetDataset && (
+          <>
+            <Form onSubmit={handleAddDoc} initValues={{ name: '' }} key={docSheetDataset.id}>
+              <Form.Input
+                field="name"
+                label="文档名称"
+                placeholder="例如：产品说明"
+                rules={[{ required: true, message: '请输入文档名称' }]}
+              />
+              <Form.TextArea
+                field="text"
+                label="文档内容"
+                placeholder="粘贴要被检索的文本内容"
+                rows={5}
+                rules={[{ required: true, message: '请输入文档内容' }]}
+              />
+              <Button
+                type="primary"
+                theme="solid"
+                htmlType="submit"
+                loading={addingDoc}
+                style={{ marginTop: 8 }}
+              >
+                添加文档
+              </Button>
+            </Form>
+            <div style={{ margin: '20px 0 8px' }}>
+              <Typography.Title heading={6} style={{ marginTop: 0 }}>文档列表</Typography.Title>
+            </div>
+            {docsLoading ? (
+              <div className="profile-state"><Spin size="small" /></div>
+            ) : (
+              <Table
+                dataSource={datasetDocs}
+                pagination={datasetDocs.length > 8 ? { pageSize: 8 } : false}
+                rowKey="id"
+                empty={<Empty description="还没有文档" />}
+                columns={[
+                  {
+                    title: '文档名',
+                    dataIndex: 'name',
+                    ellipsis: true,
+                  },
+                  {
+                    title: '索引状态',
+                    dataIndex: 'indexingStatus',
+                    width: 110,
+                    render: (value: string) => (
+                      <Tag size="small" color={value === 'completed' ? 'green' : value === 'error' ? 'red' : 'blue'}>
+                        {value === 'completed' ? '已完成' : value === 'error' ? '失败' : value || '排队中'}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: '操作',
+                    width: 72,
+                    align: 'right' as const,
+                    render: (_: unknown, record: KnowledgeDocument) => (
+                      <Popconfirm
+                        title="确认删除此文档？"
+                        okText="删除"
+                        cancelText="取消"
+                        okType="danger"
+                        onConfirm={() => void handleDeleteDoc(record.id)}
+                      >
+                        <Button
+                          size="small"
+                          type="danger"
+                          theme="borderless"
+                          icon={<IconDelete />}
+                          aria-label={'删除 ' + record.name}
+                        />
+                      </Popconfirm>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </>
+        )}
+      </SideSheet>
+
       <Modal title="编辑个人资料" visible={editVisible} onCancel={() => setEditVisible(false)} footer={null}>
         <p className="modal-copy">修改后会立即更新当前账户和左侧个人中心。</p>
         <Form onSubmit={handleUpdateProfile} initValues={{ username: user.username, email: user.email }}>
@@ -458,6 +715,29 @@ export const ProfilePage = () => {
             <Button onClick={() => setCreateVisible(false)}>取消</Button>
             <Button type="primary" theme="solid" htmlType="submit" icon={<IconKey />}>
               创建 Key
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal title="创建知识库" visible={createDatasetVisible} onCancel={() => setCreateDatasetVisible(false)} footer={null}>
+        <p className="modal-copy">创建后即可在画布「知识检索」节点中选择。</p>
+        <Form onSubmit={handleCreateDataset}>
+          <Form.Input
+            field="name"
+            label="名称"
+            placeholder="例如：产品文档库"
+            rules={[{ required: true, message: '请输入知识库名称' }]}
+          />
+          <Form.Input
+            field="description"
+            label="描述"
+            placeholder="可选"
+          />
+          <div className="modal-actions">
+            <Button onClick={() => setCreateDatasetVisible(false)}>取消</Button>
+            <Button type="primary" theme="solid" htmlType="submit">
+              创建
             </Button>
           </div>
         </Form>
