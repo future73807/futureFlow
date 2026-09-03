@@ -38,6 +38,11 @@ export interface WorkflowExecutionResult {
 export interface DifyExecutionTarget {
   workflowId?: string;
   workflowVersion?: number;
+  /**
+   * 草稿云端试运行：直接指定沙箱应用的 Service API Key。
+   * Key 只在内存中从草稿沙箱服务传给客户端，不进入 DSL 或运行存档。
+   */
+  apiKey?: string;
 }
 
 /**
@@ -159,7 +164,13 @@ export class DifyClientService {
     const url = `${apiBase}/workflows/run`;
 
     this.logger.log(
-      `调用 Dify 工作流: ${url}, user=${user}, target=${target.workflowId ? `${target.workflowId}@v${target.workflowVersion}` : 'legacy'}`,
+      `调用 Dify 工作流: ${url}, user=${user}, target=${
+        target.apiKey
+          ? 'draft-sandbox'
+          : target.workflowId
+            ? `${target.workflowId}@v${target.workflowVersion}`
+            : 'legacy'
+      }`,
     );
 
     let response: Response;
@@ -424,6 +435,10 @@ export class DifyClientService {
   }
 
   private async resolveApiKey(target: DifyExecutionTarget = {}): Promise<string> {
+    if (target.apiKey) {
+      // 草稿沙箱目标：调用方已完成归属校验并解析好应用 Key。
+      return target.apiKey;
+    }
     if (target.workflowId && target.workflowVersion) {
       // Never fall back to a global app for a published workflow. Doing so
       // could execute a different workflow after an unrelated import.

@@ -55,6 +55,7 @@ export class AuthModule implements NestModule {
     consumer.apply(AuthMiddleware).forRoutes(
       'workflows/run',
       { path: 'workflows/:id/execute', method: RequestMethod.POST },
+      { path: 'workflows/:id/draft-run', method: RequestMethod.POST },
     );
   }
 }

@@ -247,6 +247,7 @@ export class WorkflowCrudService {
       items: items.map((run) => ({
         id: run.id,
         status: run.status,
+        source: run.source,
         totalTokens: run.totalTokens,
         totalSteps: run.totalSteps,
         estimatedCost: Number(run.estimatedCost || 0),

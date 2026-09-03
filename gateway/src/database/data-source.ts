@@ -22,6 +22,8 @@ import { FileUpload } from './entities/file-upload.entity';
 import { AddFileUploads1722384000000 } from './migrations/1722384000000-add-file-uploads';
 import { McpServer } from './entities/mcp-server.entity';
 import { AddMcpServers1722470400000 } from './migrations/1722470400000-add-mcp-servers';
+import { DraftSandbox } from './entities/draft-sandbox.entity';
+import { AddDraftSandboxes1722566400000 } from './migrations/1722566400000-add-draft-sandboxes';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -67,6 +69,7 @@ export default new DataSource({
     MediaAsset,
     FileUpload,
     McpServer,
+    DraftSandbox,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
@@ -76,6 +79,7 @@ export default new DataSource({
     AddNativeMedia1722297600000,
     AddFileUploads1722384000000,
     AddMcpServers1722470400000,
+    AddDraftSandboxes1722566400000,
   ],
   synchronize: false,
   logging: false,

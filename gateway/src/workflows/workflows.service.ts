@@ -81,6 +81,8 @@ export class WorkflowsService {
       triggerId?: string;
       idempotencyKey?: string;
       workflowVersion?: number;
+      /** 草稿云端试运行：沙箱应用 Service API Key（内存传递）。 */
+      sandboxApiKey?: string;
       /** The HTTP client left; stop waiting on Dify and refund the reservation. */
       abortSignal?: AbortSignal;
     } = {},
@@ -108,7 +110,9 @@ export class WorkflowsService {
     const hasWorkflowVersion = !!(workflowId && executionContext.workflowVersion);
     const difyTarget = hasWorkflowVersion
       ? { workflowId, workflowVersion: executionContext.workflowVersion }
-      : {};
+      : executionContext.sandboxApiKey
+        ? { apiKey: executionContext.sandboxApiKey }
+        : {};
     const difyConfigured = await this.difyClient.isConfigured(difyTarget);
 
     if (!difyConfigured) {
@@ -202,6 +206,7 @@ export class WorkflowsService {
           runId,
           workflowId,
           executionContext.workflowVersion,
+          executionContext.source,
         ),
       };
       const sensitiveValues = this.collectSensitiveExecutionValues(
@@ -458,11 +463,16 @@ export class WorkflowsService {
     runId: string,
     workflowId?: string,
     workflowVersion?: number,
+    source?: string,
   ): Record<string, string> {
     const mediaNodes = flowgram.nodes.filter(isNativeMediaNode);
     const mcpNodesList = flowgram.nodes.filter((node: any) => node.type === 'mcp');
     if (mediaNodes.length === 0 && mcpNodesList.length === 0) return {};
-    if (!workflowId || !workflowVersion) {
+    // 草稿云端试运行在用户专属沙箱应用中执行，令牌使用占位版本号 1
+    // （仅用于令牌作用域校验，不代表已发布版本）。
+    const tokenWorkflowVersion = workflowVersion
+      ?? (source === 'draft-run' ? 1 : undefined);
+    if (!workflowId || !tokenWorkflowVersion) {
       throw new BadRequestException('原生媒体/MCP 节点只能运行已发布的工作流版本');
     }
     if (!this.jwtService) {
@@ -476,7 +486,7 @@ export class WorkflowsService {
           sub: user.id,
           type: 'media_execution',
           workflowId,
-          workflowVersion,
+          workflowVersion: tokenWorkflowVersion,
           runId,
           credentialIds: collectNativeMediaCredentialIds(flowgram),
         },
@@ -502,7 +512,7 @@ export class WorkflowsService {
           sub: user.id,
           type: 'mcp_execution',
           workflowId,
-          workflowVersion,
+          workflowVersion: tokenWorkflowVersion,
           runId,
           serverIds,
         },

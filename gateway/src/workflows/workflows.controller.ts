@@ -14,6 +14,7 @@ import {
 import type { Response, Request as ExpressRequest } from 'express';
 import { WorkflowsService } from './workflows.service';
 import { RunPublishedWorkflowDto } from './dto/run-workflow.dto';
+import { DraftRunService } from './draft-run.service';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
 import { WorkflowCrudService } from './workflow-crud.service';
@@ -22,7 +23,8 @@ import { WorkflowCrudService } from './workflow-crud.service';
  * 工作流控制器
  *
  * 路由:
- *   POST /workflows/run       — 已停用的旧草稿直跑入口
+ *   POST /workflows/run         — 已停用的旧草稿直跑入口
+ *   POST /workflows/:id/draft-run — 草稿云端试运行（导入用户沙箱应用后真实执行）
  *   GET  /workflows/health    — 网关健康检查
  * 管理员 Dify 诊断统一由受保护的 /admin/dify/status 提供。
  */
@@ -34,6 +36,7 @@ export class WorkflowsController {
     private readonly workflowsService: WorkflowsService,
     private readonly difyConfig: DifyConfigService,
     private readonly workflowCrudService: WorkflowCrudService,
+    private readonly draftRunService: DraftRunService,
   ) {}
 
   /**
@@ -91,6 +94,43 @@ export class WorkflowsController {
     );
   }
 
+  /**
+   * 草稿云端试运行：把当前草稿转换为 Dify DSL，导入并发布到该用户专属的
+   * 沙箱应用后真实执行（SSE）。DSL 摘要一致时复用上次导入，不重复发布。
+   */
+  @Post(':id/draft-run')
+  @HttpCode(200)
+  async draftRun(
+    @Param('id') id: string,
+    @Body() dto: RunPublishedWorkflowDto,
+    @Res() res: Response,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const req = res.req as ExpressRequest & { user: any };
+    if (!req.user) {
+      res.status(401).json({ error: '未认证' });
+      return;
+    }
+
+    const workflow = await this.workflowCrudService.getById(id, req.user.id);
+    const sandbox = await this.draftRunService.prepareSandbox(
+      req.user.id,
+      workflow.flowgramJson as FlowGramJSON,
+    );
+    return this.streamWorkflow(
+      workflow.flowgramJson as FlowGramJSON,
+      dto.inputs || {},
+      req.user,
+      res,
+      id,
+      {
+        source: 'draft-run',
+        idempotencyKey,
+        sandboxApiKey: sandbox.apiKey,
+      },
+    );
+  }
+
   private async streamWorkflow(
     flowgram: FlowGramJSON,
     inputs: Record<string, string | number | boolean>,
@@ -102,6 +142,7 @@ export class WorkflowsController {
       triggerId?: string;
       idempotencyKey?: string;
       workflowVersion?: number;
+      sandboxApiKey?: string;
       abortSignal?: AbortSignal;
     } = {},
   ) {
