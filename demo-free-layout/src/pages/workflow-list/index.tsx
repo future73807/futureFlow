@@ -37,6 +37,7 @@ interface Workflow {
 interface WorkflowRun {
   id: string;
   status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  source?: string | null;
   totalTokens: number;
   totalSteps: number;
   estimatedCost: number;
@@ -46,6 +47,14 @@ interface WorkflowRun {
   createdAt: string;
   finishedAt?: string;
 }
+
+const RUN_SOURCE_LABELS: Record<string, string> = {
+  api: 'API 调用',
+  'draft-run': '云端试运行',
+  webhook: 'Webhook',
+  schedule: '定时调度',
+  manual: '手动运行',
+};
 
 interface WorkflowTemplate {
   id: string;
@@ -1015,6 +1024,11 @@ export const WorkflowListPage = () => {
                   </Typography.Text>
                 </RunHeader>
                 <RunMeta>
+                  {run.source && (
+                    <Tag size="small" style={{ marginRight: 6 }}>
+                      {RUN_SOURCE_LABELS[run.source] || run.source}
+                    </Tag>
+                  )}
                   {run.totalTokens} 令牌 · {run.totalSteps} 步 · {run.elapsedTime?.toFixed(2) || '0.00'} 秒 · ¥{Number(run.actualCost || 0).toFixed(4)}
                 </RunMeta>
                 {run.errorMessage && <RunError>{run.errorMessage}</RunError>}
