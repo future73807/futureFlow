@@ -29,6 +29,7 @@ import './profile.css';
 import { fetchProfile, setUser } from '../../utils/auth';
 import { apiJson } from '../../utils/api';
 import { GATEWAY_URL } from '../../utils/config';
+import { invalidateDatasetCache } from '../../nodes/knowledge/components/dataset-select';
 
 interface ApiKey {
   id: string;
@@ -86,6 +87,8 @@ export const ProfilePage = () => {
 
   const fetchDatasets = useCallback(async () => {
     setDatasets(await apiJson<KnowledgeDataset[]>('/knowledge/datasets'));
+    // 通知画布内知识检索节点的下拉缓存失效。
+    invalidateDatasetCache();
   }, []);
 
   const fetchDatasetDocs = useCallback(async (datasetId: string) => {

@@ -18,20 +18,30 @@ interface DatasetOption {
   documentCount: number;
 }
 
-let cachedDatasets: DatasetOption[] | null = null;
+let cachedDatasets: { list: DatasetOption[]; at: number } | null = null;
+const CACHE_TTL_MS = 30_000;
+
+/** 外部（如个人中心）增删知识库后调用，使画布内的下拉缓存失效。 */
+export function invalidateDatasetCache(): void {
+  cachedDatasets = null;
+}
 
 export function DatasetSelect() {
   const { readonly } = useNodeRenderContext();
-  const [datasets, setDatasets] = useState<DatasetOption[] | null>(cachedDatasets);
+  const [datasets, setDatasets] = useState<DatasetOption[] | null>(
+    cachedDatasets?.list ?? null,
+  );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (cachedDatasets) return;
+    if (cachedDatasets && Date.now() - cachedDatasets.at < CACHE_TTL_MS) {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     apiJson<DatasetOption[]>('/knowledge/datasets')
       .then((list) => {
-        cachedDatasets = list;
+        cachedDatasets = { list, at: Date.now() };
         if (!cancelled) setDatasets(list);
       })
       .catch((error: any) => {
