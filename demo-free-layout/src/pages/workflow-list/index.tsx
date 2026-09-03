@@ -63,6 +63,8 @@ interface WorkflowTrigger {
   type: 'webhook' | 'schedule';
   status: 'active' | 'paused';
   intervalMinutes?: number | null;
+  scheduleType?: 'interval' | 'daily';
+  dailyTime?: string | null;
   nextRunAt?: string | null;
   lastRunStatus?: string | null;
 }
@@ -337,7 +339,7 @@ export const WorkflowListPage = () => {
     }
   }, []);
 
-  const createTrigger = useCallback(async (type: 'webhook' | 'schedule') => {
+  const createTrigger = useCallback(async (type: 'webhook' | 'schedule-daily') => {
     if (!triggerWorkflow) return;
     setTriggerCreating(true);
     try {
@@ -346,7 +348,7 @@ export const WorkflowListPage = () => {
         body: JSON.stringify(
           type === 'webhook'
             ? { name: 'Webhook 触发器', type }
-            : { name: '每小时定时触发', type, intervalMinutes: 60 },
+            : { name: '每天 09:00 定时触发', type: 'schedule', scheduleType: 'daily', dailyTime: '09:00' },
         ),
       });
       setTriggers((items) => [result.trigger, ...items]);
@@ -1078,7 +1080,7 @@ export const WorkflowListPage = () => {
         </Typography.Text>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <Button theme="solid" type="primary" loading={triggerCreating} onClick={() => void createTrigger('webhook')}>创建 Webhook</Button>
-          <Button loading={triggerCreating} onClick={() => void createTrigger('schedule')}>创建每小时定时触发</Button>
+          <Button loading={triggerCreating} onClick={() => void createTrigger('schedule-daily')}>创建每日定时（09:00）</Button>
         </div>
         {newWebhookUrl && (
           <>
@@ -1099,7 +1101,11 @@ export const WorkflowListPage = () => {
                   <Tag size="small" color={trigger.type === 'webhook' ? 'blue' : 'orange'}>{trigger.type === 'webhook' ? 'Webhook' : '定时'}</Tag>
                 </RunHeader>
                 <RunMeta>
-                  {trigger.type === 'schedule' ? `每 ${trigger.intervalMinutes} 分钟 · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}` : '使用专属安全地址调用'}
+                  {trigger.type === 'schedule'
+                    ? (trigger.scheduleType === 'daily' && trigger.dailyTime
+                      ? `每天 ${trigger.dailyTime} · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}`
+                      : `每 ${trigger.intervalMinutes} 分钟 · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}`)
+                    : '使用专属安全地址调用'}
                   {trigger.lastRunStatus ? ` · 上次 ${trigger.lastRunStatus}` : ''}
                 </RunMeta>
                 <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>

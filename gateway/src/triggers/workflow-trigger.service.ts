@@ -44,11 +44,25 @@ export class WorkflowTriggerService {
     const workflow = await this.getOwnedPublishedWorkflow(userId, workflowId);
     const name = this.normalizeName(dto.name);
     this.validateInputs(workflow, dto.staticInputs, dto.type === 'schedule');
-    if (dto.type === 'schedule' && !dto.intervalMinutes) {
-      throw new BadRequestException('定时触发器必须设置 intervalMinutes');
+    const scheduleType = dto.type === 'schedule'
+      ? (dto.scheduleType || (dto.intervalMinutes ? 'interval' : 'daily'))
+      : undefined;
+    if (dto.type === 'schedule') {
+      if (scheduleType === 'daily') {
+        if (!dto.dailyTime) {
+          throw new BadRequestException('每日调度必须设置 dailyTime（HH:MM）');
+        }
+        if (dto.intervalMinutes !== undefined) {
+          throw new BadRequestException('每日调度不能同时设置 intervalMinutes');
+        }
+      } else if (!dto.intervalMinutes) {
+        throw new BadRequestException('定时触发器必须设置 intervalMinutes 或选择每日调度');
+      } else if (dto.dailyTime) {
+        throw new BadRequestException('固定间隔调度不能设置 dailyTime');
+      }
     }
-    if (dto.type === 'webhook' && dto.intervalMinutes !== undefined) {
-      throw new BadRequestException('Webhook 触发器不能设置 intervalMinutes');
+    if (dto.type === 'webhook' && (dto.intervalMinutes !== undefined || dto.scheduleType || dto.dailyTime)) {
+      throw new BadRequestException('Webhook 触发器不能设置调度参数');
     }
     if (dto.intervalMinutes && dto.intervalMinutes > 43_200) {
       throw new BadRequestException('intervalMinutes 不能超过 30 天');
@@ -60,10 +74,14 @@ export class WorkflowTriggerService {
       name,
       type: dto.type,
       staticInputs: dto.staticInputs || {},
-      intervalMinutes: dto.type === 'schedule' ? dto.intervalMinutes! : null,
+      scheduleType: scheduleType ?? 'interval',
+      dailyTime: dto.type === 'schedule' && scheduleType === 'daily' ? dto.dailyTime! : null,
+      intervalMinutes: dto.type === 'schedule' && scheduleType === 'interval' ? dto.intervalMinutes! : null,
       nextRunAt:
         dto.type === 'schedule'
-          ? this.nextRun(dto.intervalMinutes!, new Date())
+          ? this.nextRun(scheduleType === 'daily'
+            ? { type: 'daily', time: dto.dailyTime! }
+            : { type: 'interval', minutes: dto.intervalMinutes! }, new Date())
           : null,
     });
 
@@ -94,14 +112,39 @@ export class WorkflowTriggerService {
       this.validateInputs(workflow, dto.staticInputs, trigger.type === 'schedule');
       trigger.staticInputs = dto.staticInputs;
     }
-    if (dto.intervalMinutes !== undefined) {
-      if (trigger.type !== 'schedule') throw new BadRequestException('Webhook 触发器不能设置执行间隔');
-      if (dto.intervalMinutes > 43_200) throw new BadRequestException('intervalMinutes 不能超过 30 天');
-      trigger.intervalMinutes = dto.intervalMinutes;
-      trigger.nextRunAt = this.nextRun(dto.intervalMinutes, new Date());
+    if (dto.intervalMinutes !== undefined || dto.scheduleType !== undefined || dto.dailyTime !== undefined) {
+      if (trigger.type !== 'schedule') throw new BadRequestException('Webhook 触发器不能设置调度参数');
+      const nextScheduleType = dto.scheduleType
+        ?? (trigger.scheduleType === 'daily' && dto.intervalMinutes === undefined ? 'daily' : 'interval');
+      if (nextScheduleType === 'daily') {
+        if (dto.intervalMinutes !== undefined) throw new BadRequestException('每日调度不能同时设置 intervalMinutes');
+        const dailyTime = dto.dailyTime ?? trigger.dailyTime;
+        if (!dailyTime) throw new BadRequestException('每日调度必须设置 dailyTime（HH:MM）');
+        trigger.scheduleType = 'daily';
+        trigger.dailyTime = dailyTime;
+        trigger.intervalMinutes = null;
+        trigger.nextRunAt = this.nextRun({ type: 'daily', time: dailyTime }, new Date());
+      } else {
+        if (dto.intervalMinutes === undefined && trigger.intervalMinutes === null) {
+          throw new BadRequestException('固定间隔调度必须设置 intervalMinutes');
+        }
+        if (dto.intervalMinutes !== undefined && dto.intervalMinutes > 43_200) {
+          throw new BadRequestException('intervalMinutes 不能超过 30 天');
+        }
+        if (dto.dailyTime) throw new BadRequestException('固定间隔调度不能设置 dailyTime');
+        trigger.scheduleType = 'interval';
+        trigger.dailyTime = null;
+        trigger.intervalMinutes = dto.intervalMinutes ?? trigger.intervalMinutes;
+        trigger.nextRunAt = this.nextRun(
+          { type: 'interval', minutes: trigger.intervalMinutes! },
+          new Date(),
+        );
+      }
     }
     if (trigger.type === 'schedule' && trigger.status === 'active' && !trigger.nextRunAt) {
-      trigger.nextRunAt = this.nextRun(trigger.intervalMinutes!, new Date());
+      trigger.nextRunAt = trigger.scheduleType === 'daily' && trigger.dailyTime
+        ? this.nextRun({ type: 'daily', time: trigger.dailyTime }, new Date())
+        : this.nextRun({ type: 'interval', minutes: trigger.intervalMinutes! }, new Date());
     }
     return this.serialize(await this.triggerRepo.save(trigger));
   }
@@ -142,7 +185,9 @@ export class WorkflowTriggerService {
     });
     const claimed: WorkflowTrigger[] = [];
     for (const trigger of due) {
-      const nextRunAt = this.nextRun(trigger.intervalMinutes!, now);
+      const nextRunAt = trigger.scheduleType === 'daily' && trigger.dailyTime
+        ? this.nextRun({ type: 'daily', time: trigger.dailyTime }, now)
+        : this.nextRun({ type: 'interval', minutes: trigger.intervalMinutes! }, now);
       const result = await this.triggerRepo
         .createQueryBuilder()
         .update(WorkflowTrigger)
@@ -268,8 +313,20 @@ export class WorkflowTriggerService {
     return safe;
   }
 
-  private nextRun(intervalMinutes: number, from: Date) {
-    return new Date(from.getTime() + intervalMinutes * 60_000);
+  private nextRun(
+    schedule: { type: 'interval'; minutes: number } | { type: 'daily'; time: string },
+    from: Date,
+  ): Date {
+    if (schedule.type === 'interval') {
+      return new Date(from.getTime() + schedule.minutes * 60_000);
+    }
+    const [hour, minute] = schedule.time.split(':').map(Number);
+    const next = new Date(from);
+    next.setHours(hour, minute, 0, 0);
+    if (next.getTime() <= from.getTime()) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
   }
 
   private generateSecret() {

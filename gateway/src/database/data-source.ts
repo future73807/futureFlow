@@ -26,6 +26,7 @@ import { DraftSandbox } from './entities/draft-sandbox.entity';
 import { AddDraftSandboxes1722566400000 } from './migrations/1722566400000-add-draft-sandboxes';
 import { KnowledgeDatasetOwner } from './entities/knowledge-dataset-owner.entity';
 import { AddKnowledgeDatasetOwners1722652800000 } from './migrations/1722652800000-add-knowledge-dataset-owners';
+import { AddTriggerDailySchedule1722739200000 } from './migrations/1722739200000-add-trigger-daily-schedule';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -84,6 +85,7 @@ export default new DataSource({
     AddMcpServers1722470400000,
     AddDraftSandboxes1722566400000,
     AddKnowledgeDatasetOwners1722652800000,
+    AddTriggerDailySchedule1722739200000,
   ],
   synchronize: false,
   logging: false,

@@ -49,6 +49,14 @@ export class WorkflowTrigger {
   @Column({ type: 'int', nullable: true })
   intervalMinutes: number | null;
 
+  /** interval = 固定分钟间隔；daily = 每天在 dailyTime（网关本地时区）执行一次。 */
+  @Column({ type: 'varchar', length: 16, default: 'interval' })
+  scheduleType: 'interval' | 'daily';
+
+  /** HH:MM（00:00-23:59），仅 scheduleType=daily 时使用。 */
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  dailyTime: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   staticInputs: Record<string, string | number | boolean> | null;
 
