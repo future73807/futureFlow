@@ -42,6 +42,10 @@ export class WorkflowTriggerService {
 
   async create(userId: string, workflowId: string, dto: CreateWorkflowTriggerDto) {
     const workflow = await this.getOwnedPublishedWorkflow(userId, workflowId);
+    const existingCount = await this.triggerRepo.count({ where: { userId, workflowId } });
+    if (existingCount >= 10) {
+      throw new BadRequestException('每个工作流最多配置 10 个触发器，请先删除不需要的触发器');
+    }
     const name = this.normalizeName(dto.name);
     this.validateInputs(workflow, dto.staticInputs, dto.type === 'schedule');
     const scheduleType = dto.type === 'schedule'
