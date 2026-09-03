@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select, Toast } from '@douyinfe/semi-ui';
+import { Select, Toast, Typography } from '@douyinfe/semi-ui';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { Feedback, FormItem } from '../../../form-components';
@@ -57,24 +57,35 @@ export function DatasetSelect() {
 
   return (
     <Field<string> name="datasetId" defaultValue="">
-      {({ field, fieldState }) => (
-        <FormItem name="知识库" required vertical type="string">
-          <Select
-            value={field.value || undefined}
-            placeholder={loading ? '正在加载知识库…' : '选择要检索的知识库'}
-            style={{ width: '100%' }}
-            size="small"
-            disabled={readonly}
-            showClear
-            optionList={(datasets || []).map((item) => ({
-              label: `${item.name}（${item.documentCount} 个文档）`,
-              value: item.id,
-            }))}
-            onChange={(value) => field.onChange(String(value || ''))}
-          />
-          <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
-        </FormItem>
-      )}
+      {({ field, fieldState }) => {
+        const value = field.value || '';
+        const missing = Boolean(
+          value && datasets && !datasets.some((item) => item.id === value),
+        );
+        return (
+          <FormItem name="知识库" required vertical type="string">
+            <Select
+              value={value || undefined}
+              placeholder={loading ? '正在加载知识库…' : '选择要检索的知识库'}
+              style={{ width: '100%' }}
+              size="small"
+              disabled={readonly}
+              showClear
+              optionList={(datasets || []).map((item) => ({
+                label: `${item.name}（${item.documentCount} 个文档）`,
+                value: item.id,
+              }))}
+              onChange={(next) => field.onChange(String(next || ''))}
+            />
+            {missing && (
+              <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                所选知识库已被删除或无权访问，请重新选择
+              </Typography.Text>
+            )}
+            <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
+          </FormItem>
+        );
+      }}
     </Field>
   );
 }
