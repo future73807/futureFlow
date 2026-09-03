@@ -192,6 +192,10 @@ async function main() {
         record('T4c LLM 节点表单包含「失败时」失败分支开关', false, '画布无节点可点');
       }
 
+      // T4f 云端试运行入口：工具栏应存在「云端试运行」按钮（草稿直连 Dify）
+      const draftRunBtn = page.getByRole('button', { name: '云端试运行' }).first();
+      record('T4f 工具栏提供「云端试运行」按钮（草稿真实执行入口）', (await draftRunBtn.count()) >= 1);
+
       await page.goto(`${FRONT}/`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);
     } else {
