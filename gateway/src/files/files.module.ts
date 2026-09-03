@@ -9,5 +9,6 @@ import { FileStorageService } from './file-storage.service';
   imports: [AuthModule, TypeOrmModule.forFeature([FileUpload])],
   controllers: [FilesController],
   providers: [FileStorageService],
+  exports: [FileStorageService],
 })
 export class FilesModule {}

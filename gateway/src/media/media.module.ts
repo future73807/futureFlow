@@ -37,6 +37,6 @@ import { MediaExecutionGuard } from './media-execution.guard';
     ProviderRegistry,
     MediaExecutionGuard,
   ],
-  exports: [MediaCredentialService, MediaJobService],
+  exports: [MediaCredentialService, MediaJobService, MediaAssetService],
 })
 export class MediaModule {}

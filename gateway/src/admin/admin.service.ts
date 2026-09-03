@@ -6,6 +6,10 @@ import { ApiKey } from '../database/entities/api-key.entity';
 import { Workflow } from '../database/entities/workflow.entity';
 import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { BalanceLog } from '../database/entities/balance-log.entity';
+import { DifyIntegrationService } from '../dify/dify-integration.service';
+import { FileStorageService } from '../files/file-storage.service';
+import { MediaAssetService } from '../media/media-asset.service';
+import { DraftSandbox } from '../database/entities/draft-sandbox.entity';
 
 @Injectable()
 export class AdminService {
@@ -21,6 +25,9 @@ export class AdminService {
     @InjectRepository(BalanceLog)
     private readonly balanceLogRepo: Repository<BalanceLog>,
     private readonly dataSource: DataSource,
+    private readonly difyIntegration: DifyIntegrationService,
+    private readonly fileStorage: FileStorageService,
+    private readonly mediaAssets: MediaAssetService,
   ) {}
 
   /** 仪表盘统计 */
@@ -146,6 +153,24 @@ export class AdminService {
     if (user.role === 'admin') {
       throw new BadRequestException('不能删除管理员账号');
     }
+
+    // 外部资源先清理：失败则中止删除，避免留下半清理状态。
+    const ownedWorkflows = await this.workflowRepo.find({ where: { userId } });
+    for (const workflow of ownedWorkflows) {
+      // 已发布版本在 Dify 端的专属应用与绑定记录。
+      await this.difyIntegration.deleteWorkflowIntegrations(workflow.id);
+    }
+    const sandboxes = await this.dataSource.getRepository(DraftSandbox).find({
+      where: { userId },
+      select: ['id', 'userId', 'appId'],
+    });
+    for (const sandbox of sandboxes) {
+      // 草稿云端试运行的沙箱应用。
+      await this.difyIntegration.deleteAppById(sandbox.appId);
+    }
+    // 生成类媒体与用户上传文件：DB 行随用户级联删除，物理文件需显式移除。
+    await this.mediaAssets.removeAllByUser(userId);
+    await this.fileStorage.removeAllByUser(userId);
 
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(BalanceLog, { userId });

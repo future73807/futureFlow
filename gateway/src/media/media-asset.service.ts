@@ -218,6 +218,23 @@ export class MediaAssetService {
     return { asset, absolutePath, size: metadata.size };
   }
 
+  /** 删除用户前清理其全部媒体资产：DB 行随用户级联删除，物理文件需在此显式移除。 */
+  async removeAllByUser(userId: string): Promise<number> {
+    const rows = await this.assets
+      .createQueryBuilder('asset')
+      .addSelect('asset.localPath')
+      .where('asset.userId = :userId', { userId })
+      .getMany();
+    let removed = 0;
+    for (const row of rows) {
+      const absolutePath = resolve(this.root, row.localPath);
+      if (!absolutePath.startsWith(this.root)) continue;
+      await unlink(absolutePath).catch(() => undefined);
+      removed += 1;
+    }
+    return removed;
+  }
+
   async findByJob(userId: string, jobId: string): Promise<MediaAsset | null> {
     return this.assets.findOne({ where: { userId, jobId } });
   }

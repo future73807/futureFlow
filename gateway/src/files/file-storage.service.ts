@@ -117,6 +117,23 @@ export class FileStorageService {
     return this.repo.count();
   }
 
+  /** 删除用户前清理其全部上传文件：DB 行随用户级联删除，物理文件需在此显式移除。 */
+  async removeAllByUser(userId: string): Promise<number> {
+    const rows = await this.repo.find({
+      where: { userId },
+      select: ['id', 'userId', 'localPath'],
+    });
+    let removed = 0;
+    for (const row of rows) {
+      const absolutePath = isAbsolute(row.localPath) ? row.localPath : join(this.root, row.localPath);
+      const checked = resolve(absolutePath);
+      if (!checked.startsWith(this.root)) continue;
+      await unlink(checked).catch(() => undefined);
+      removed += 1;
+    }
+    return removed;
+  }
+
   private safeExtension(originalName: string): string {
     const base = originalName.split(/[\\/]/).pop() || '';
     const dot = base.lastIndexOf('.');

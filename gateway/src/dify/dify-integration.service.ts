@@ -590,6 +590,45 @@ export class DifyIntegrationService implements OnModuleInit {
     await this.integrationRepo.delete({ workflowId: normalizedWorkflowId });
   }
 
+  /**
+   * 删除任意受管 Dify 应用（按 appId），用于草稿沙箱等非工作流绑定资源的清理。
+   * 授权失效时自动刷新并重试一次；404 视为已删除。
+   */
+  async deleteAppById(appId: string): Promise<void> {
+    const normalized = String(appId || '').trim();
+    if (!normalized) {
+      throw new BadRequestException('待清理的 Dify 应用 ID 不能为空');
+    }
+    let authorization = await this.resolveConsoleAuthorization(
+      this.config.get<string>('DIFY_CONSOLE_TOKEN', ''),
+      this.config.get<string>('DIFY_CONSOLE_BASE', ''),
+    );
+    if (!authorization) {
+      throw new ServiceUnavailableException(
+        '清理 Dify 应用需要有效的 Console 授权，请重新授权后重试',
+      );
+    }
+    let response = await this.deleteConsoleApp(authorization, normalized);
+    if (response.status === 401 || response.status === 403) {
+      const refreshed = await this.refreshConsoleAuthorization();
+      if (refreshed) {
+        authorization = refreshed;
+        response = await this.deleteConsoleApp(authorization, normalized);
+      }
+    }
+    if (response.status === 401 || response.status === 403) {
+      await this.markConsoleAuthorizationExpired();
+      throw new ServiceUnavailableException(
+        'Dify Console 授权已失效或权限不足，请重新授权后重试清理',
+      );
+    }
+    if (![200, 204, 404].includes(response.status)) {
+      throw new ServiceUnavailableException(
+        `Dify 应用清理失败（HTTP ${response.status}），请稍后重试`,
+      );
+    }
+  }
+
   async rotateServiceApiKey(input: DifyBootstrapInput & {
     workflowId?: string;
     workflowVersion?: number;
