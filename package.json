@@ -33,7 +33,8 @@
     "verify": "pnpm run ts-check && pnpm run test:archive && pnpm run test:media-credential-ui && pnpm --filter futureflow-gateway test:batch-loop && pnpm run test:batch-loop-runtime && pnpm run test:condition-runtime && pnpm run test:http-runtime && pnpm run test:platform && pnpm run build:gateway && pnpm run build:frontend",
     "test:e2e": "node scripts/e2e-full-test.cjs",
     "test:gui-click": "node scripts/test-gui-click.cjs",
-    "test:new-modules": "node scripts/test-new-modules-api.cjs"
+    "test:new-modules": "node scripts/test-new-modules-api.cjs",
+    "test:draft-run-online": "node scripts/test-draft-run-online.cjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
