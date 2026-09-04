@@ -82,6 +82,11 @@ export function DatasetSelect() {
                 所选知识库已被删除或无权访问，请重新选择
               </Typography.Text>
             )}
+            {!loading && datasets && datasets.length === 0 && (
+              <Typography.Text type="tertiary" style={{ fontSize: 12 }}>
+                还没有知识库：请到「个人中心 → 知识库」创建后回到画布刷新本节点。
+              </Typography.Text>
+            )}
             <Feedback errors={fieldState?.errors} warnings={fieldState?.warnings} />
           </FormItem>
         );
