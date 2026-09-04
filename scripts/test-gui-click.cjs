@@ -26,7 +26,17 @@ const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
 const ADMIN = process.env.ADMIN_USERNAME || 'admin';
-const FRONT = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+// 默认前端地址从仓库根目录 .env 的 FRONTEND_PORT 读取（缺省 3000）。
+function resolveFrontendBase() {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/+$/, '');
+  try {
+    const env = require('node:fs').readFileSync(join(__dirname, '..', '.env'), 'utf8');
+    const port = env.match(/^FRONTEND_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+  } catch { /* fall through */ }
+  return 'http://localhost:3000';
+}
+const FRONT = resolveFrontendBase();
 const HEADLESS = !process.argv.includes('--headless=false');
 const PW = process.argv.find((a) => !a.startsWith('-') && !a.endsWith('.cjs') && a !== process.argv[0] && a !== process.argv[1]);
 const SHOT_DIR = process.env.GUI_SHOT_DIR

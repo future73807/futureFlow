@@ -8,7 +8,22 @@
  */
 'use strict';
 
-const BASE = process.env.GATEWAY_URL || 'http://localhost:3001';
+const fs = require('node:fs');
+const { join } = require('node:path');
+
+// 默认网关地址从仓库根目录 .env 读取，避免端口调整后脚本失联。
+function resolveGatewayBase() {
+  if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');
+  try {
+    const env = fs.readFileSync(join(process.cwd(), '.env'), 'utf8');
+    const port = env.match(/^GATEWAY_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+    const url = env.match(/^PUBLIC_GATEWAY_URL=(.*)$/m)?.[1]?.trim();
+    if (url) return url.replace(/\/+$/, '');
+  } catch { /* fall through */ }
+  return 'http://localhost:3001';
+}
+const BASE = resolveGatewayBase();
 const PASSWORD = process.argv[2] || 'futureFlow@';
 
 const results = [];
