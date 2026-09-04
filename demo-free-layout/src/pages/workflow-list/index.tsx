@@ -385,7 +385,10 @@ export const WorkflowListPage = () => {
 
   const updateTrigger = useCallback(async (
     trigger: WorkflowTrigger,
-    patch: Partial<Pick<WorkflowTrigger, 'status'>> & { scheduleType?: 'interval' | 'daily'; dailyTime?: string },
+    patch: Partial<Pick<WorkflowTrigger, 'status' | 'intervalMinutes'>> & {
+      scheduleType?: 'interval' | 'daily';
+      dailyTime?: string;
+    },
   ) => {
     if (!triggerWorkflow) return;
     setTriggerUpdatingId(trigger.id);
