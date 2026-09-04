@@ -729,7 +729,7 @@ export const ProfilePage = () => {
         title={docSheetDataset ? `文档管理 · ${docSheetDataset.name}` : '文档管理'}
         visible={Boolean(docSheetDataset)}
         onCancel={() => setDocSheetDataset(null)}
-        width={560}
+        width={Math.min(560, typeof window !== 'undefined' ? window.innerWidth - 24 : 560)}
         footer={null}
       >
         {docSheetDataset && (

@@ -696,6 +696,7 @@ const RunsView = ({
       },
     },
     { title: '用户', dataIndex: 'username', width: 100 },
+    { title: '来源', dataIndex: 'source', width: 100, render: (v: string) => v || '-' },
     {
       title: 'Token',
       dataIndex: 'totalTokens',
