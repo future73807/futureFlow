@@ -100,6 +100,32 @@ export const ProfilePage = () => {
     }
   }, []);
 
+  // 存在尚未完成索引的文档时自动轮询状态（最多 60 秒），完成后停止。
+  useEffect(() => {
+    if (!docSheetDataset) return;
+    const pending = datasetDocs.some(
+      (doc) => doc.indexingStatus !== 'completed' && doc.indexingStatus !== 'error',
+    );
+    if (!pending) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(async () => {
+      if (Date.now() - startedAt > 60_000) {
+        window.clearInterval(timer);
+        return;
+      }
+      try {
+        const docs = await apiJson<KnowledgeDocument[]>(`/knowledge/datasets/${docSheetDataset.id}/documents`);
+        setDatasetDocs(docs);
+        if (!docs.some((doc) => doc.indexingStatus !== 'completed' && doc.indexingStatus !== 'error')) {
+          window.clearInterval(timer);
+        }
+      } catch {
+        // 轮询失败静默忽略，下一次 tick 重试。
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [docSheetDataset, datasetDocs]);
+
   const fetchFiles = useCallback(async () => {
     setFiles(await apiJson<StoredFile[]>('/files'));
   }, []);
