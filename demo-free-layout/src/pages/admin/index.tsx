@@ -19,6 +19,7 @@ import {
   Popconfirm,
   Empty,
   Select,
+  Input,
 } from '@douyinfe/semi-ui';
 import {
   IconDelete,
@@ -72,6 +73,7 @@ export const AdminPage = () => {
   // 分页
   const [page, setPage] = useState(1);
   const pageSize = 20;
+  const [userSearch, setUserSearch] = useState('');
 
   const loadStats = useCallback(async () => {
     try {
@@ -89,7 +91,7 @@ export const AdminPage = () => {
         if (key === 'dashboard') {
           await loadStats();
         } else if (key === 'users') {
-          const data = await listUsers(p, pageSize);
+          const data = await listUsers(p, pageSize, userSearch);
           setUsers(data);
         } else if (key === 'apikeys') {
           const data = await listApiKeys(p, pageSize);
@@ -110,7 +112,7 @@ export const AdminPage = () => {
         setLoading(false);
       }
     },
-    [loadStats],
+    [loadStats, userSearch],
   );
 
   useEffect(() => {
@@ -146,6 +148,17 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconUser />} text="用户管理" />} itemKey="users">
+          <div style={{ marginBottom: 12 }}>
+            <Input
+              placeholder="搜索用户名或邮箱"
+              value={userSearch}
+              showClear
+              style={{ width: 280 }}
+              onChange={(value: string) => setUserSearch(value)}
+              onEnterPress={() => { setPage(1); loadTab('users', 1); }}
+              showClearOnlyWhenHasValue
+            />
+          </div>
           <UsersView
             data={users}
             loading={loading}

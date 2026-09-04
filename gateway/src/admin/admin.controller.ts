@@ -109,8 +109,16 @@ export class AdminController {
   // ============ 用户管理 ============
 
   @Get('users')
-  async listUsers(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listUsers(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
+  async listUsers(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+    @Query('q') q = '',
+  ) {
+    return this.adminService.listUsers(
+      parsePage(page, 1, 100000),
+      parsePage(pageSize, 20, 100),
+      String(q || '').slice(0, 100),
+    );
   }
 
   @Patch('users/:id/balance')

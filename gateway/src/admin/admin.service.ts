@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, ILike, Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import { ApiKey } from '../database/entities/api-key.entity';
 import { Workflow } from '../database/entities/workflow.entity';
@@ -78,12 +78,21 @@ export class AdminService {
   }
 
   /** 用户列表（分页） */
-  async listUsers(page = 1, pageSize = 20) {
-    const [items, total] = await this.userRepo.findAndCount({
+  async listUsers(page = 1, pageSize = 20, search = '') {
+    const keyword = String(search || '').trim();
+    const findOptions: any = {
       order: { createdAt: 'DESC' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-    });
+    };
+    if (keyword) {
+      // 参数化模糊匹配，关键词经 TypeORM 参数绑定，无注入面。
+      findOptions.where = [
+        { username: ILike(`%${keyword}%`) },
+        { email: ILike(`%${keyword}%`) },
+      ];
+    }
+    const [items, total] = await this.userRepo.findAndCount(findOptions);
     return {
       items: items.map((u) => this.sanitizeUser(u)),
       total,

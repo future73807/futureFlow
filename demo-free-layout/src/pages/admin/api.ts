@@ -17,8 +17,10 @@ export function getStats() {
 
 // ============ 用户管理 ============
 
-export function listUsers(page = 1, pageSize = 20) {
-  return adminFetch(`/users?page=${page}&pageSize=${pageSize}`);
+export function listUsers(page = 1, pageSize = 20, search = '') {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (search.trim()) query.set('q', search.trim());
+  return adminFetch(`/users?${query.toString()}`);
 }
 
 export function adjustBalance(userId: string, delta: number, remark: string) {
