@@ -433,6 +433,19 @@ async function main() {
       .send({ flowgram: workflowJson })
       .expect(401);
 
+    // 登录限流：同账号连续失败达阈值后，正确密码也返回 429；不同账号不受影响。
+    for (let i = 0; i < 8; i += 1) {
+      await request(server)
+        .post('/auth/login')
+        .send({ account: 'demo-updated', password: fx('wrong', String(i)) })
+        .expect(401);
+    }
+    const limited = await request(server)
+      .post('/auth/login')
+      .send({ account: 'demo-updated', password: bootstrapAdminPassword })
+      .expect(429);
+    assert.match(limited.body.message, /登录失败次数过多/);
+
     console.log('platform integration tests passed');
   } finally {
     await app.close();
