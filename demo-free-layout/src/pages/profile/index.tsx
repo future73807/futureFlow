@@ -65,6 +65,14 @@ interface KnowledgeDocument {
   error: string | null;
 }
 
+interface McpServerRow {
+  id: string;
+  name: string;
+  url: string;
+  hasToken: boolean;
+  createdAt: string;
+}
+
 export const ProfilePage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -84,6 +92,12 @@ export const ProfilePage = () => {
   const [datasetDocs, setDatasetDocs] = useState<KnowledgeDocument[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [addingDoc, setAddingDoc] = useState(false);
+  const [mcpServers, setMcpServers] = useState<McpServerRow[] | null>(null);
+  const [createMcpVisible, setCreateMcpVisible] = useState(false);
+
+  const fetchMcpServers = useCallback(async () => {
+    setMcpServers(await apiJson<McpServerRow[]>('/mcp/servers'));
+  }, []);
 
   const fetchDatasets = useCallback(async () => {
     setDatasets(await apiJson<KnowledgeDataset[]>('/knowledge/datasets'));
@@ -144,13 +158,18 @@ export const ProfilePage = () => {
         return;
       }
       setCurrentUser(profile);
-      await Promise.all([fetchApiKeys(), fetchFiles().catch(() => undefined), fetchDatasets().catch(() => undefined)]);
+      await Promise.all([
+        fetchApiKeys(),
+        fetchFiles().catch(() => undefined),
+        fetchDatasets().catch(() => undefined),
+        fetchMcpServers().catch(() => undefined),
+      ]);
     } catch (error: any) {
       setLoadError(error.message || '加载个人中心失败，请确认网关服务已启动');
     } finally {
       setLoading(false);
     }
-  }, [fetchApiKeys, fetchDatasets, navigate]);
+  }, [fetchApiKeys, fetchDatasets, fetchMcpServers, navigate]);
   useEffect(() => {
     void loadPage();
   }, [loadPage]);
@@ -307,6 +326,34 @@ export const ProfilePage = () => {
       Toast.error(error.message || '删除文档失败');
     }
   }, [docSheetDataset, fetchDatasetDocs, fetchDatasets]);
+
+  const handleCreateMcp = useCallback(async (values: { name?: string; url?: string; token?: string }) => {
+    try {
+      await apiJson('/mcp/servers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: values.name?.trim() || '',
+          url: values.url?.trim() || '',
+          token: values.token?.trim() || undefined,
+        }),
+      });
+      Toast.success('MCP 服务器已注册');
+      setCreateMcpVisible(false);
+      await fetchMcpServers();
+    } catch (error: any) {
+      Toast.error(error.message || '注册 MCP 服务器失败');
+    }
+  }, [fetchMcpServers]);
+
+  const handleDeleteMcp = useCallback(async (id: string) => {
+    try {
+      await apiJson('/mcp/servers/' + id, { method: 'DELETE' });
+      Toast.success('MCP 服务器已删除');
+      await fetchMcpServers();
+    } catch (error: any) {
+      Toast.error(error.message || '删除 MCP 服务器失败');
+    }
+  }, [fetchMcpServers]);
 
   const fileUrl = (id: string) => GATEWAY_URL.replace(/\/+$/, '') + '/files/' + id + '/download';
 
@@ -618,6 +665,66 @@ export const ProfilePage = () => {
         />
       </section>
 
+      <section className="profile-section">
+        <div className="profile-section-header">
+          <div>
+            <h2>MCP 服务器</h2>
+            <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
+          </div>
+          <Button icon={<IconPlus />} onClick={() => setCreateMcpVisible(true)}>
+            注册服务器
+          </Button>
+        </div>
+        <Table
+          dataSource={mcpServers || []}
+          loading={mcpServers === null}
+          pagination={false}
+          rowKey="id"
+          empty={<Empty description="还没有注册 MCP 服务器" />}
+          columns={[
+            {
+              title: '名称',
+              dataIndex: 'name',
+              render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+            },
+            {
+              title: '地址',
+              dataIndex: 'url',
+              ellipsis: true,
+              render: (value: string) => <Typography.Text copyable={{ content: value }}>{value}</Typography.Text>,
+            },
+            {
+              title: '令牌',
+              dataIndex: 'hasToken',
+              width: 90,
+              render: (value: boolean) => <Tag size="small" color={value ? 'green' : 'grey'}>{value ? '已配置' : '无'}</Tag>,
+            },
+            {
+              title: '操作',
+              width: 80,
+              align: 'right' as const,
+              render: (_: unknown, record: McpServerRow) => (
+                <Popconfirm
+                  title="确认删除此 MCP 服务器？"
+                  okText="删除"
+                  cancelText="取消"
+                  okType="danger"
+                  onConfirm={() => void handleDeleteMcp(record.id)}
+                >
+                  <Button
+                    size="small"
+                    type="danger"
+                    theme="borderless"
+                    icon={<IconDelete />}
+                    aria-label={'删除 ' + record.name}
+                  />
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </section>
+
       <SideSheet
         title={docSheetDataset ? `文档管理 · ${docSheetDataset.name}` : '文档管理'}
         visible={Boolean(docSheetDataset)}
@@ -744,6 +851,35 @@ export const ProfilePage = () => {
             <Button onClick={() => setCreateVisible(false)}>取消</Button>
             <Button type="primary" theme="solid" htmlType="submit" icon={<IconKey />}>
               创建 Key
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal title="注册 MCP 服务器" visible={createMcpVisible} onCancel={() => setCreateMcpVisible(false)} footer={null}>
+        <p className="modal-copy">地址需为 streamable HTTP 方式的 MCP 端点（HTTP/S）。Bearer 令牌可选，加密保存后不再回显。</p>
+        <Form onSubmit={handleCreateMcp}>
+          <Form.Input
+            field="name"
+            label="名称"
+            placeholder="例如：文档检索 MCP"
+            rules={[{ required: true, message: '请输入名称' }]}
+          />
+          <Form.Input
+            field="url"
+            label="端点地址"
+            placeholder="http://host:port/mcp"
+            rules={[{ required: true, message: '请输入端点地址' }]}
+          />
+          <Form.Input
+            field="token"
+            label="Bearer 令牌"
+            placeholder="可选；服务器需要认证时填写"
+          />
+          <div className="modal-actions">
+            <Button onClick={() => setCreateMcpVisible(false)}>取消</Button>
+            <Button type="primary" theme="solid" htmlType="submit">
+              注册
             </Button>
           </div>
         </Form>
