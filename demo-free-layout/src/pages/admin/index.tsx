@@ -245,6 +245,14 @@ const DashboardView = ({ stats, loading }: { stats: Stats | null; loading: boole
           <StatValue>{stats.runCount}</StatValue>
         </StatCard>
         <StatCard>
+          <StatLabel>知识库</StatLabel>
+          <StatValue>{stats.datasetCount ?? 0}</StatValue>
+        </StatCard>
+        <StatCard>
+          <StatLabel>上传文件</StatLabel>
+          <StatValue>{stats.fileCount ?? 0}</StatValue>
+        </StatCard>
+        <StatCard>
           <StatLabel>Token 消耗</StatLabel>
           <StatValue $accent>{stats.totalTokens.toLocaleString()}</StatValue>
         </StatCard>

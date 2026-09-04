@@ -34,11 +34,13 @@ export class AdminService {
 
   /** 仪表盘统计 */
   async getStats() {
-    const [userCount, apiKeyCount, workflowCount, runCount] = await Promise.all([
+    const [userCount, apiKeyCount, workflowCount, runCount, datasetCount, fileCount] = await Promise.all([
       this.userRepo.count(),
       this.apiKeyRepo.count({ where: { revoked: false } }),
       this.workflowRepo.count({ where: { status: 'active' } }),
       this.runRepo.count(),
+      this.dataSource.getRepository('KnowledgeDatasetOwner').count(),
+      this.dataSource.getRepository('FileUpload').count(),
     ]);
 
     // 最近 7 天每日运行数
@@ -67,6 +69,8 @@ export class AdminService {
       apiKeyCount,
       workflowCount,
       runCount,
+      datasetCount,
+      fileCount,
       totalTokens: parseInt(agg?.totalTokens || '0', 10),
       totalCost: parseFloat(agg?.totalCost || '0'),
       recentRuns: recentRuns.map((r) => ({
