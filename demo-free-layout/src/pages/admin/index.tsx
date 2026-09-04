@@ -156,7 +156,6 @@ export const AdminPage = () => {
               style={{ width: 280 }}
               onChange={(value: string) => setUserSearch(value)}
               onEnterPress={() => { setPage(1); loadTab('users', 1); }}
-              showClearOnlyWhenHasValue
             />
           </div>
           <UsersView
