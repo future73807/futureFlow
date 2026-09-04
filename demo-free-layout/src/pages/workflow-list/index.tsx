@@ -163,6 +163,7 @@ export const WorkflowListPage = () => {
   const [triggersLoading, setTriggersLoading] = useState(false);
   const [triggerCreating, setTriggerCreating] = useState(false);
   const [triggerUpdatingId, setTriggerUpdatingId] = useState<string | null>(null);
+  const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>({});
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
   const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
@@ -383,7 +384,7 @@ export const WorkflowListPage = () => {
 
   const updateTrigger = useCallback(async (
     trigger: WorkflowTrigger,
-    patch: Partial<Pick<WorkflowTrigger, 'status'>>,
+    patch: Partial<Pick<WorkflowTrigger, 'status'>> & { scheduleType?: 'interval' | 'daily'; dailyTime?: string },
   ) => {
     if (!triggerWorkflow) return;
     setTriggerUpdatingId(trigger.id);
@@ -1117,7 +1118,41 @@ export const WorkflowListPage = () => {
                 <RunMeta>
                   {trigger.type === 'schedule'
                     ? (trigger.scheduleType === 'daily' && trigger.dailyTime
-                      ? `每天 ${trigger.dailyTime} · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}`
+                      ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span>每天</span>
+                          <input
+                            type="time"
+                            defaultValue={trigger.dailyTime}
+                            disabled={trigger.status !== 'active'}
+                            aria-label="修改每日执行时间"
+                            style={{
+                              border: '1px solid var(--ff-border-strong)',
+                              borderRadius: 4,
+                              padding: '1px 4px',
+                              fontSize: 12,
+                            }}
+                            onChange={(event) => setDailyTimeEdits((prev) => ({
+                              ...prev,
+                              [trigger.id]: event.target.value,
+                            }))}
+                          />
+                          <span>· 下次 {trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}</span>
+                          {dailyTimeEdits[trigger.id] && dailyTimeEdits[trigger.id] !== trigger.dailyTime && (
+                            <Button
+                              size="small"
+                              theme="borderless"
+                              loading={triggerUpdatingId === trigger.id}
+                              onClick={() => void updateTrigger(trigger, {
+                                scheduleType: 'daily',
+                                dailyTime: dailyTimeEdits[trigger.id],
+                              })}
+                            >
+                              保存时间
+                            </Button>
+                          )}
+                        </span>
+                      )
                       : `每 ${trigger.intervalMinutes} 分钟 · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}`)
                     : '使用专属安全地址调用'}
                   {trigger.lastRunStatus ? ` · 上次 ${trigger.lastRunStatus}` : ''}
