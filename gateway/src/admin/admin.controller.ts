@@ -166,8 +166,18 @@ export class AdminController {
   // ============ 运行记录 ============
 
   @Get('runs')
-  async listRuns(@Query('page') page = '1', @Query('pageSize') pageSize = '20') {
-    return this.adminService.listRuns(parsePage(page, 1, 100000), parsePage(pageSize, 20, 100));
+  async listRuns(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+    @Query('source') source = '',
+    @Query('workflowId') workflowId = '',
+  ) {
+    return this.adminService.listRuns(
+      parsePage(page, 1, 100000),
+      parsePage(pageSize, 20, 100),
+      String(source || '').slice(0, 40),
+      String(workflowId || '').slice(0, 64),
+    );
   }
 
   // ============ 余额流水 ============

@@ -74,6 +74,7 @@ export const AdminPage = () => {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [userSearch, setUserSearch] = useState('');
+  const [runSource, setRunSource] = useState('');
 
   const loadStats = useCallback(async () => {
     try {
@@ -100,7 +101,7 @@ export const AdminPage = () => {
           const data = await listWorkflows(p, pageSize);
           setWorkflows(data);
         } else if (key === 'runs') {
-          const data = await listRuns(p, pageSize);
+          const data = await listRuns(p, pageSize, runSource);
           setRuns(data);
         } else if (key === 'logs') {
           const data = await listBalanceLogs(p, 50);
@@ -112,7 +113,7 @@ export const AdminPage = () => {
         setLoading(false);
       }
     },
-    [loadStats, userSearch],
+    [loadStats, userSearch, runSource],
   );
 
   useEffect(() => {
@@ -190,6 +191,24 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconActivity />} text="运行记录" />} itemKey="runs">
+          <div style={{ marginBottom: 12 }}>
+            <Select
+              value={runSource || 'all'}
+              style={{ width: 200 }}
+              onChange={(value) => {
+                setRunSource(value === 'all' ? '' : String(value));
+                setPage(1);
+                loadTab('runs', 1);
+              }}
+              optionList={[
+                { label: '全部来源', value: 'all' },
+                { label: 'API 调用', value: 'api' },
+                { label: '云端试运行', value: 'draft-run' },
+                { label: 'Webhook', value: 'webhook' },
+                { label: '定时调度', value: 'schedule' },
+              ]}
+            />
+          </div>
           <RunsView
             data={runs}
             loading={loading}

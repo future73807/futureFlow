@@ -263,8 +263,12 @@ export class AdminService {
   }
 
   /** 工作流运行记录 */
-  async listRuns(page = 1, pageSize = 20) {
+  async listRuns(page = 1, pageSize = 20, source = '', workflowId = '') {
+    const where: Record<string, unknown> = {};
+    if (source) where.source = source;
+    if (workflowId) where.workflowId = workflowId;
     const [items, total] = await this.runRepo.findAndCount({
+      where,
       relations: ['user'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * pageSize,
@@ -274,6 +278,7 @@ export class AdminService {
       items: items.map((r) => ({
         id: r.id,
         status: r.status,
+        source: r.source,
         totalTokens: r.totalTokens,
         totalSteps: r.totalSteps,
         estimatedCost: parseFloat(r.estimatedCost?.toString() || '0'),

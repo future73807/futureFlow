@@ -66,8 +66,10 @@ export function listWorkflows(page = 1, pageSize = 20) {
 
 // ============ 运行记录 ============
 
-export function listRuns(page = 1, pageSize = 20) {
-  return adminFetch(`/runs?page=${page}&pageSize=${pageSize}`);
+export function listRuns(page = 1, pageSize = 20, source = '') {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (source) query.set('source', source);
+  return adminFetch(`/runs?${query.toString()}`);
 }
 
 // ============ 余额流水 ============
