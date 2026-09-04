@@ -6,9 +6,19 @@ interface FailureWindow {
   blockedUntil: number;
 }
 
+interface AttemptWindow {
+  count: number;
+  firstAt: number;
+  blockedUntil: number;
+}
+
 const WINDOW_MS = 15 * 60_000;
 const MAX_FAILURES = 8;
 const BLOCK_MS = 15 * 60_000;
+
+const REGISTER_WINDOW_MS = 60 * 60_000;
+const MAX_REGISTER_ATTEMPTS = 20;
+const REGISTER_BLOCK_MS = 60 * 60_000;
 
 /**
  * 登录暴力破解防护：按「来源 IP + 账号」组合限流。
@@ -18,7 +28,41 @@ const BLOCK_MS = 15 * 60_000;
 @Injectable()
 export class LoginRateLimitService {
   private readonly failures = new Map<string, FailureWindow>();
+  private readonly registerAttempts = new Map<string, AttemptWindow>();
   private lastSweepAt = 0;
+
+  /** 注册防刷：同一来源 1 小时窗口内每次注册尝试都计数，上限 20 次。 */
+  assertRegisterAllowed(key: string): void {
+    this.sweepIfDue();
+    const window = this.registerAttempts.get(key);
+    if (!window) return;
+    if (window.blockedUntil > Date.now()) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((window.blockedUntil - Date.now()) / 1000));
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: `注册尝试过于频繁，请约 ${Math.ceil(retryAfterSeconds / 60)} 分钟后再试`,
+          error: 'Too Many Requests',
+          retryAfterSeconds,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  recordRegisterAttempt(key: string): void {
+    this.sweepIfDue();
+    const now = Date.now();
+    const window = this.registerAttempts.get(key);
+    if (!window || now - window.firstAt > REGISTER_WINDOW_MS) {
+      this.registerAttempts.set(key, { count: 1, firstAt: now, blockedUntil: 0 });
+      return;
+    }
+    window.count += 1;
+    if (window.count >= MAX_REGISTER_ATTEMPTS) {
+      window.blockedUntil = now + REGISTER_BLOCK_MS;
+    }
+  }
 
   assertAllowed(key: string): void {
     this.sweepIfDue();
@@ -63,6 +107,11 @@ export class LoginRateLimitService {
     for (const [key, window] of this.failures) {
       if (now - window.firstAt > WINDOW_MS && window.blockedUntil <= now) {
         this.failures.delete(key);
+      }
+    }
+    for (const [key, window] of this.registerAttempts) {
+      if (now - window.firstAt > REGISTER_WINDOW_MS && window.blockedUntil <= now) {
+        this.registerAttempts.delete(key);
       }
     }
   }

@@ -23,12 +23,15 @@ export class AuthService {
     private readonly loginRateLimit: LoginRateLimitService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, clientKey = 'unknown') {
+    // 注册防刷：同一来源 1 小时窗口内每次尝试都计数（上限 20 次）。
+    this.loginRateLimit.assertRegisterAllowed(`register|${clientKey}`);
+    this.loginRateLimit.recordRegisterAttempt(`register|${clientKey}`);
     const existingUsername = await this.userRepo.findOne({
       where: { username: dto.username },
     });
     if (existingUsername) {
-      throw new ConflictException('用户名已存在');
+      throw new ConflictException('用户名已被注册');
     }
 
     const existingEmail = await this.userRepo.findOne({
