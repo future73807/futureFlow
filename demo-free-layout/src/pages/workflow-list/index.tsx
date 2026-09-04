@@ -589,6 +589,30 @@ export const WorkflowListPage = () => {
     }
   }, []);
 
+  // 运行历史中存在进行中的运行时自动轮询刷新（最多 2 分钟），结束后停止。
+  useEffect(() => {
+    if (!runsWorkflow) return;
+    const active = runs.some((run) => run.status === 'running' || run.status === 'pending');
+    if (!active) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(async () => {
+      if (Date.now() - startedAt > 120_000 || runsWorkflow?.id === undefined) {
+        window.clearInterval(timer);
+        return;
+      }
+      try {
+        const result = await apiJson<{ items: WorkflowRun[] }>(`/workflows/${runsWorkflow.id}/runs`);
+        setRuns(result.items);
+        if (!result.items.some((run) => run.status === 'running' || run.status === 'pending')) {
+          window.clearInterval(timer);
+        }
+      } catch {
+        // 轮询失败静默忽略，下一次 tick 重试。
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [runsWorkflow, runs]);
+
   const handleOpenVersions = useCallback(async (workflow: Workflow) => {
     setVersionsWorkflow(workflow);
     setVersionsLoading(true);
