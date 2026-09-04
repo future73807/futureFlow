@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -109,6 +110,10 @@ export class McpController {
   @Post('proxy')
   @UseGuards(McpExecutionGuard)
   proxy(@Request() req: any, @Body() dto: McpProxyDto) {
+    // 工具参数体积上限：防止超大 payload 打满网关与上游 MCP 服务器。
+    if (dto.arguments !== undefined && JSON.stringify(dto.arguments).length > 65_536) {
+      throw new BadRequestException('MCP 工具参数序列化后不能超过 64 KB');
+    }
     const scope = req.mcpExecution;
     return this.mcp.callTool(
       this.currentUserId(req),
