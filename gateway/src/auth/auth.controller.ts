@@ -8,6 +8,7 @@ import {
   Request,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -17,7 +18,24 @@ import { VIP_NODE_PERMISSIONS } from './auth.module';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
+
+  /**
+   * 限流键的客户端地址默认取 socket 地址（不可伪造）；仅当部署方显式
+   * 设置 TRUST_PROXY_HEADERS=true（确认存在可信反向代理）时才改用
+   * X-Forwarded-For，否则攻击者可伪造该头绕过登录限流。
+   */
+  private clientAddress(req: ExpressRequest): string {
+    const trustProxy = this.config.get<string>('TRUST_PROXY_HEADERS') === 'true';
+    if (trustProxy) {
+      const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      if (forwarded) return forwarded;
+    }
+    return req.ip || 'unknown';
+  }
 
   @Post('register')
   async register(@Body() dto: RegisterDto) {
@@ -26,8 +44,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() dto: LoginDto, @Request() req: ExpressRequest) {
-    const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-    const clientKey = `${forwarded || req.ip || 'unknown'}|${String(dto.account || '').toLowerCase()}`;
+    const clientKey = `${this.clientAddress(req)}|${String(dto.account || '').toLowerCase()}`;
     return this.authService.login(dto, clientKey);
   }
 
