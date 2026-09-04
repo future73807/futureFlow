@@ -164,6 +164,7 @@ export const WorkflowListPage = () => {
   const [triggerCreating, setTriggerCreating] = useState(false);
   const [triggerUpdatingId, setTriggerUpdatingId] = useState<string | null>(null);
   const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>({});
+  const [intervalEdits, setIntervalEdits] = useState<Record<string, string>>({});
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
   const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
@@ -1177,7 +1178,48 @@ export const WorkflowListPage = () => {
                           )}
                         </span>
                       )
-                      : `每 ${trigger.intervalMinutes} 分钟 · 下次 ${trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}`)
+                      : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span>每</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={43200}
+                            defaultValue={trigger.intervalMinutes ?? 60}
+                            disabled={trigger.status !== 'active'}
+                            aria-label="修改执行间隔（分钟）"
+                            style={{
+                              width: 64,
+                              border: '1px solid var(--ff-border-strong)',
+                              borderRadius: 4,
+                              padding: '1px 4px',
+                              fontSize: 12,
+                            }}
+                            onChange={(event) => setIntervalEdits((prev) => ({
+                              ...prev,
+                              [trigger.id]: event.target.value,
+                            }))}
+                          />
+                          <span>分钟 · 下次 {trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}</span>
+                          {intervalEdits[trigger.id] && String(trigger.intervalMinutes) !== intervalEdits[trigger.id] && (
+                            <Button
+                              size="small"
+                              theme="borderless"
+                              loading={triggerUpdatingId === trigger.id}
+                              onClick={() => {
+                                const minutes = Number(intervalEdits[trigger.id]);
+                                if (!Number.isInteger(minutes) || minutes < 1 || minutes > 43200) {
+                                  Toast.error('执行间隔必须是 1 到 43200 之间的整数分钟');
+                                  return;
+                                }
+                                void updateTrigger(trigger, { intervalMinutes: minutes });
+                              }}
+                            >
+                              保存间隔
+                            </Button>
+                          )}
+                        </span>
+                      ))
                     : '使用专属安全地址调用'}
                   {trigger.lastRunStatus ? ` · 上次 ${trigger.lastRunStatus}` : ''}
                 </RunMeta>
