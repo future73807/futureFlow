@@ -72,8 +72,9 @@ interface WorkflowTrigger {
   type: 'webhook' | 'schedule';
   status: 'active' | 'paused';
   intervalMinutes?: number | null;
-  scheduleType?: 'interval' | 'daily';
+  scheduleType?: 'interval' | 'daily' | 'cron';
   dailyTime?: string | null;
+  cronExpression?: string | null;
   nextRunAt?: string | null;
   lastRunStatus?: string | null;
 }
@@ -165,6 +166,7 @@ export const WorkflowListPage = () => {
   const [triggerUpdatingId, setTriggerUpdatingId] = useState<string | null>(null);
   const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>({});
   const [intervalEdits, setIntervalEdits] = useState<Record<string, string>>({});
+  const [cronEdits, setCronEdits] = useState<Record<string, string>>({});
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
   const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
@@ -350,17 +352,18 @@ export const WorkflowListPage = () => {
     }
   }, []);
 
-  const createTrigger = useCallback(async (type: 'webhook' | 'schedule-daily') => {
+  const createTrigger = useCallback(async (type: 'webhook' | 'schedule-daily' | 'schedule-cron') => {
     if (!triggerWorkflow) return;
     setTriggerCreating(true);
     try {
+      const body = type === 'webhook'
+        ? { name: 'Webhook 触发器', type }
+        : type === 'schedule-daily'
+          ? { name: '每天 09:00 定时触发', type: 'schedule', scheduleType: 'daily', dailyTime: '09:00' }
+          : { name: '每周一 09:00 Cron 触发', type: 'schedule', scheduleType: 'cron', cronExpression: '0 9 * * 1' };
       const result = await apiJson<any>(`/workflows/${triggerWorkflow.id}/triggers`, {
         method: 'POST',
-        body: JSON.stringify(
-          type === 'webhook'
-            ? { name: 'Webhook 触发器', type }
-            : { name: '每天 09:00 定时触发', type: 'schedule', scheduleType: 'daily', dailyTime: '09:00' },
-        ),
+        body: JSON.stringify(body),
       });
       setTriggers((items) => [result.trigger, ...items]);
       if (result.webhookUrl) setNewWebhookUrl(result.webhookUrl);
@@ -386,8 +389,9 @@ export const WorkflowListPage = () => {
   const updateTrigger = useCallback(async (
     trigger: WorkflowTrigger,
     patch: Partial<Pick<WorkflowTrigger, 'status' | 'intervalMinutes'>> & {
-      scheduleType?: 'interval' | 'daily';
+      scheduleType?: 'interval' | 'daily' | 'cron';
       dailyTime?: string;
+      cronExpression?: string;
     },
   ) => {
     if (!triggerWorkflow) return;
@@ -1124,6 +1128,7 @@ export const WorkflowListPage = () => {
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <Button theme="solid" type="primary" loading={triggerCreating} onClick={() => void createTrigger('webhook')}>创建 Webhook</Button>
           <Button loading={triggerCreating} onClick={() => void createTrigger('schedule-daily')}>创建每日定时（09:00）</Button>
+          <Button loading={triggerCreating} onClick={() => void createTrigger('schedule-cron')}>创建 Cron 调度</Button>
         </div>
         {newWebhookUrl && (
           <>
@@ -1145,7 +1150,52 @@ export const WorkflowListPage = () => {
                 </RunHeader>
                 <RunMeta>
                   {trigger.type === 'schedule'
-                    ? (trigger.scheduleType === 'daily' && trigger.dailyTime
+                    ? (trigger.scheduleType === 'cron'
+                      ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span>Cron</span>
+                          <input
+                            defaultValue={trigger.cronExpression ?? ''}
+                            disabled={trigger.status !== 'active'}
+                            aria-label="修改 Cron 表达式"
+                            placeholder="分 时 日 月 周"
+                            style={{
+                              width: 120,
+                              border: '1px solid var(--ff-border-strong)',
+                              borderRadius: 4,
+                              padding: '1px 4px',
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                            }}
+                            onChange={(event) => setCronEdits((prev) => ({
+                              ...prev,
+                              [trigger.id]: event.target.value,
+                            }))}
+                          />
+                          <span>· 下次 {trigger.nextRunAt ? new Date(trigger.nextRunAt).toLocaleString('zh-CN') : '-'}</span>
+                          {cronEdits[trigger.id] && cronEdits[trigger.id] !== trigger.cronExpression && (
+                            <Button
+                              size="small"
+                              theme="borderless"
+                              loading={triggerUpdatingId === trigger.id}
+                              onClick={() => {
+                                const expression = cronEdits[trigger.id].trim();
+                                if (expression.split(/\s+/).length !== 5) {
+                                  Toast.error('Cron 表达式必须是 5 个字段（分 时 日 月 周）');
+                                  return;
+                                }
+                                void updateTrigger(trigger, {
+                                  scheduleType: 'cron',
+                                  cronExpression: expression,
+                                });
+                              }}
+                            >
+                              保存表达式
+                            </Button>
+                          )}
+                        </span>
+                      )
+                      : trigger.scheduleType === 'daily' && trigger.dailyTime
                       ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           <span>每天</span>

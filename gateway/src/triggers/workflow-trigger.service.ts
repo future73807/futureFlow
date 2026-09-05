@@ -11,6 +11,7 @@ import { LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import { Workflow } from '../database/entities/workflow.entity';
 import { WorkflowTrigger } from '../database/entities/workflow-trigger.entity';
+import { nextCronDate, parseCron, validateCron } from './cron.parser';
 import { CreateWorkflowTriggerDto, UpdateWorkflowTriggerDto } from './dto/workflow-trigger.dto';
 
 export interface RunnableTrigger {
@@ -49,23 +50,34 @@ export class WorkflowTriggerService {
     const name = this.normalizeName(dto.name);
     this.validateInputs(workflow, dto.staticInputs, dto.type === 'schedule');
     const scheduleType = dto.type === 'schedule'
-      ? (dto.scheduleType || (dto.intervalMinutes ? 'interval' : 'daily'))
+      ? (dto.scheduleType || (dto.intervalMinutes ? 'interval' : dto.cronExpression ? 'cron' : 'daily'))
       : undefined;
     if (dto.type === 'schedule') {
       if (scheduleType === 'daily') {
         if (!dto.dailyTime) {
           throw new BadRequestException('每日调度必须设置 dailyTime（HH:MM）');
         }
-        if (dto.intervalMinutes !== undefined) {
-          throw new BadRequestException('每日调度不能同时设置 intervalMinutes');
+        if (dto.intervalMinutes !== undefined || dto.cronExpression) {
+          throw new BadRequestException('每日调度不能同时设置 intervalMinutes 或 cronExpression');
+        }
+      } else if (scheduleType === 'cron') {
+        if (!dto.cronExpression) {
+          throw new BadRequestException('cron 调度必须设置 cronExpression');
+        }
+        if (dto.intervalMinutes !== undefined || dto.dailyTime) {
+          throw new BadRequestException('cron 调度不能同时设置 intervalMinutes 或 dailyTime');
+        }
+        const cronError = validateCron(dto.cronExpression);
+        if (cronError) {
+          throw new BadRequestException(`cronExpression 无效：${cronError}`);
         }
       } else if (!dto.intervalMinutes) {
-        throw new BadRequestException('定时触发器必须设置 intervalMinutes 或选择每日调度');
-      } else if (dto.dailyTime) {
-        throw new BadRequestException('固定间隔调度不能设置 dailyTime');
+        throw new BadRequestException('定时触发器必须设置 intervalMinutes 或选择每日/cron 调度');
+      } else if (dto.dailyTime || dto.cronExpression) {
+        throw new BadRequestException('固定间隔调度不能设置 dailyTime 或 cronExpression');
       }
     }
-    if (dto.type === 'webhook' && (dto.intervalMinutes !== undefined || dto.scheduleType || dto.dailyTime)) {
+    if (dto.type === 'webhook' && (dto.intervalMinutes !== undefined || dto.scheduleType || dto.dailyTime || dto.cronExpression)) {
       throw new BadRequestException('Webhook 触发器不能设置调度参数');
     }
     if (dto.intervalMinutes && dto.intervalMinutes > 43_200) {
@@ -80,12 +92,11 @@ export class WorkflowTriggerService {
       staticInputs: dto.staticInputs || {},
       scheduleType: scheduleType ?? 'interval',
       dailyTime: dto.type === 'schedule' && scheduleType === 'daily' ? dto.dailyTime! : null,
+      cronExpression: dto.type === 'schedule' && scheduleType === 'cron' ? dto.cronExpression!.trim() : null,
       intervalMinutes: dto.type === 'schedule' && scheduleType === 'interval' ? dto.intervalMinutes! : null,
       nextRunAt:
         dto.type === 'schedule'
-          ? this.nextRun(scheduleType === 'daily'
-            ? { type: 'daily', time: dto.dailyTime! }
-            : { type: 'interval', minutes: dto.intervalMinutes! }, new Date())
+          ? this.nextRun(this.scheduleSpec(scheduleType!, dto, null), new Date())
           : null,
     });
 
@@ -116,18 +127,39 @@ export class WorkflowTriggerService {
       this.validateInputs(workflow, dto.staticInputs, trigger.type === 'schedule');
       trigger.staticInputs = dto.staticInputs;
     }
-    if (dto.intervalMinutes !== undefined || dto.scheduleType !== undefined || dto.dailyTime !== undefined) {
+    if (
+      dto.intervalMinutes !== undefined
+      || dto.scheduleType !== undefined
+      || dto.dailyTime !== undefined
+      || dto.cronExpression !== undefined
+    ) {
       if (trigger.type !== 'schedule') throw new BadRequestException('Webhook 触发器不能设置调度参数');
       const nextScheduleType = dto.scheduleType
-        ?? (trigger.scheduleType === 'daily' && dto.intervalMinutes === undefined ? 'daily' : 'interval');
+        ?? (trigger.scheduleType === 'daily' && dto.intervalMinutes === undefined ? 'daily' : trigger.scheduleType === 'cron' && dto.intervalMinutes === undefined ? 'cron' : 'interval');
       if (nextScheduleType === 'daily') {
-        if (dto.intervalMinutes !== undefined) throw new BadRequestException('每日调度不能同时设置 intervalMinutes');
+        if (dto.intervalMinutes !== undefined || dto.cronExpression) {
+          throw new BadRequestException('每日调度不能同时设置 intervalMinutes 或 cronExpression');
+        }
         const dailyTime = dto.dailyTime ?? trigger.dailyTime;
         if (!dailyTime) throw new BadRequestException('每日调度必须设置 dailyTime（HH:MM）');
         trigger.scheduleType = 'daily';
         trigger.dailyTime = dailyTime;
         trigger.intervalMinutes = null;
+        trigger.cronExpression = null;
         trigger.nextRunAt = this.nextRun({ type: 'daily', time: dailyTime }, new Date());
+      } else if (nextScheduleType === 'cron') {
+        if (dto.intervalMinutes !== undefined || dto.dailyTime) {
+          throw new BadRequestException('cron 调度不能同时设置 intervalMinutes 或 dailyTime');
+        }
+        const expression = dto.cronExpression ?? trigger.cronExpression;
+        if (!expression) throw new BadRequestException('cron 调度必须设置 cronExpression');
+        const cronError = validateCron(expression);
+        if (cronError) throw new BadRequestException(`cronExpression 无效：${cronError}`);
+        trigger.scheduleType = 'cron';
+        trigger.cronExpression = expression;
+        trigger.dailyTime = null;
+        trigger.intervalMinutes = null;
+        trigger.nextRunAt = this.nextRun({ type: 'cron', expression }, new Date());
       } else {
         if (dto.intervalMinutes === undefined && trigger.intervalMinutes === null) {
           throw new BadRequestException('固定间隔调度必须设置 intervalMinutes');
@@ -135,9 +167,10 @@ export class WorkflowTriggerService {
         if (dto.intervalMinutes !== undefined && dto.intervalMinutes > 43_200) {
           throw new BadRequestException('intervalMinutes 不能超过 30 天');
         }
-        if (dto.dailyTime) throw new BadRequestException('固定间隔调度不能设置 dailyTime');
+        if (dto.dailyTime || dto.cronExpression) throw new BadRequestException('固定间隔调度不能设置 dailyTime 或 cronExpression');
         trigger.scheduleType = 'interval';
         trigger.dailyTime = null;
+        trigger.cronExpression = null;
         trigger.intervalMinutes = dto.intervalMinutes ?? trigger.intervalMinutes;
         trigger.nextRunAt = this.nextRun(
           { type: 'interval', minutes: trigger.intervalMinutes! },
@@ -146,9 +179,7 @@ export class WorkflowTriggerService {
       }
     }
     if (trigger.type === 'schedule' && trigger.status === 'active' && !trigger.nextRunAt) {
-      trigger.nextRunAt = trigger.scheduleType === 'daily' && trigger.dailyTime
-        ? this.nextRun({ type: 'daily', time: trigger.dailyTime }, new Date())
-        : this.nextRun({ type: 'interval', minutes: trigger.intervalMinutes! }, new Date());
+      trigger.nextRunAt = this.nextRun(this.scheduleSpec(trigger.scheduleType, trigger, null), new Date());
     }
     return this.serialize(await this.triggerRepo.save(trigger));
   }
@@ -189,9 +220,7 @@ export class WorkflowTriggerService {
     });
     const claimed: WorkflowTrigger[] = [];
     for (const trigger of due) {
-      const nextRunAt = trigger.scheduleType === 'daily' && trigger.dailyTime
-        ? this.nextRun({ type: 'daily', time: trigger.dailyTime }, now)
-        : this.nextRun({ type: 'interval', minutes: trigger.intervalMinutes! }, now);
+      const nextRunAt = this.nextRun(this.scheduleSpec(trigger.scheduleType, trigger, null), now);
       const result = await this.triggerRepo
         .createQueryBuilder()
         .update(WorkflowTrigger)
@@ -317,12 +346,36 @@ export class WorkflowTriggerService {
     return safe;
   }
 
+  /** 由调度类型与配置（DTO 或已存实体）解析出 nextRun 计算所需的规范描述。 */
+  private scheduleSpec(
+    scheduleType: 'interval' | 'daily' | 'cron',
+    source: { intervalMinutes?: number | null; dailyTime?: string | null; cronExpression?: string | null },
+    override: { intervalMinutes?: number | null } | null,
+  ): { type: 'interval'; minutes: number } | { type: 'daily'; time: string } | { type: 'cron'; expression: string } {
+    if (scheduleType === 'daily') {
+      const time = source.dailyTime;
+      if (!time) throw new BadRequestException('每日调度缺少 dailyTime');
+      return { type: 'daily', time };
+    }
+    if (scheduleType === 'cron') {
+      const expression = source.cronExpression;
+      if (!expression) throw new BadRequestException('cron 调度缺少 cronExpression');
+      return { type: 'cron', expression };
+    }
+    const minutes = (override?.intervalMinutes ?? source.intervalMinutes) as number | undefined | null;
+    if (!minutes) throw new BadRequestException('固定间隔调度缺少 intervalMinutes');
+    return { type: 'interval', minutes };
+  }
+
   private nextRun(
-    schedule: { type: 'interval'; minutes: number } | { type: 'daily'; time: string },
+    schedule: { type: 'interval'; minutes: number } | { type: 'daily'; time: string } | { type: 'cron'; expression: string },
     from: Date,
   ): Date {
     if (schedule.type === 'interval') {
       return new Date(from.getTime() + schedule.minutes * 60_000);
+    }
+    if (schedule.type === 'cron') {
+      return nextCronDate(parseCron(schedule.expression), from);
     }
     const [hour, minute] = schedule.time.split(':').map(Number);
     const next = new Date(from);

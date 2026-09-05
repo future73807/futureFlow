@@ -24,7 +24,8 @@
     "test:fuzz": "ts-node --transpile-only -r tsconfig-paths/register test/platform-fuzz.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
-    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js"
+    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
+    "test:cron": "ts-node -r tsconfig-paths/register test/cron-parser-smoke.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

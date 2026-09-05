@@ -11,8 +11,8 @@ export class CreateWorkflowTriggerDto {
   type: 'webhook' | 'schedule';
 
   @IsOptional()
-  @IsIn(['interval', 'daily'])
-  scheduleType?: 'interval' | 'daily';
+  @IsIn(['interval', 'daily', 'cron'])
+  scheduleType?: 'interval' | 'daily' | 'cron';
 
   @IsOptional()
   @IsInt()
@@ -23,6 +23,12 @@ export class CreateWorkflowTriggerDto {
   @IsOptional()
   @Matches(DAILY_TIME_PATTERN, { message: 'dailyTime 必须是 HH:MM 格式（00:00-23:59）' })
   dailyTime?: string;
+
+  /** scheduleType=cron 时的完整 5 字段 cron 表达式（分 时 日 月 周）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  cronExpression?: string;
 
   @IsOptional()
   @IsObject()
@@ -40,8 +46,8 @@ export class UpdateWorkflowTriggerDto {
   status?: 'active' | 'paused';
 
   @IsOptional()
-  @IsIn(['interval', 'daily'])
-  scheduleType?: 'interval' | 'daily';
+  @IsIn(['interval', 'daily', 'cron'])
+  scheduleType?: 'interval' | 'daily' | 'cron';
 
   @IsOptional()
   @IsInt()
@@ -51,6 +57,11 @@ export class UpdateWorkflowTriggerDto {
   @IsOptional()
   @Matches(DAILY_TIME_PATTERN, { message: 'dailyTime 必须是 HH:MM 格式（00:00-23:59）' })
   dailyTime?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  cronExpression?: string;
 
   @IsOptional()
   @IsObject()

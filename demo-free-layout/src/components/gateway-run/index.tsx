@@ -285,6 +285,18 @@ export const GatewayRunButton = ({
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // 云端试运行在执行前要做沙箱准备（草稿→DSL→导入 Dify→发布），
+    // 首次或草稿变更时可能需要数秒；给出阶段性提示避免像卡死。
+    let preparingHint: number | undefined;
+    if (mode === 'draft') {
+      preparingHint = window.setTimeout(() => {
+        setResult((previous) => ({
+          ...previous,
+          text: previous.text + '正在把草稿导入沙箱应用（首次或草稿变更时需要数秒）…\n',
+        }));
+      }, 1200);
+    }
+
     try {
       if (!workflowId) throw new Error('缺少工作流标识');
       if (mode === 'draft') {
@@ -445,6 +457,7 @@ export const GatewayRunButton = ({
         }));
       }
     } finally {
+      if (preparingHint !== undefined) window.clearTimeout(preparingHint);
       abortRef.current = null;
     }
   }, [inputFields, inputs, mode, publishedVersion, refresh, workflowId]);
