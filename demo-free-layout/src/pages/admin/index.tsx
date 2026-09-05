@@ -297,7 +297,10 @@ const TrendChart = ({ data }: { data: { date: string; count: number; tokens: num
   return (
     <ChartWrap>
       {data.map((d) => (
-        <Bar key={d.date}>
+        <Bar
+          key={d.date}
+          title={`${d.date} · ${d.count} 次运行 · ${Number(d.tokens || 0).toLocaleString()} tokens`}
+        >
           <BarFill style={{ height: `${(d.count / maxCount) * 100}%` }} />
           <BarLabel>{d.date.slice(5)}</BarLabel>
           <BarCount>{d.count}</BarCount>
