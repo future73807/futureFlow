@@ -265,6 +265,12 @@ async function main() {
       /知识库/.test(profileBody) && /创建知识库/.test(profileBody),
     );
 
+    // T7d 个人中心-MCP 服务器管理区块
+    record(
+      'T7d 个人中心包含「MCP 服务器」管理区块（注册入口）',
+      /MCP 服务器/.test(profileBody) && /注册服务器/.test(profileBody),
+    );
+
     // T10 深色模式切换：点击侧栏明暗切换按钮 → html[data-theme] 跟随变化
     const themeBtn = page.getByRole('button', { name: /深色模式|浅色模式/ }).first();
     if ((await themeBtn.count()) >= 1) {
