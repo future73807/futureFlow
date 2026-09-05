@@ -9,6 +9,7 @@ import { WebhookController } from './webhook.controller';
 import { WorkflowTriggerController } from './workflow-trigger.controller';
 import { WorkflowTriggerSchedulerService } from './workflow-trigger-scheduler.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
+import { WebhookRateLimitService } from './webhook-rate-limit.service';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { WorkflowTriggerService } from './workflow-trigger.service';
     WorkflowsModule,
   ],
   controllers: [WorkflowTriggerController, WebhookController],
-  providers: [WorkflowTriggerService, WorkflowTriggerSchedulerService],
+  providers: [WorkflowTriggerService, WorkflowTriggerSchedulerService, WebhookRateLimitService],
 })
 export class WorkflowTriggerModule {}

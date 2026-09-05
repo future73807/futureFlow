@@ -2,6 +2,7 @@ import { Body, Controller, Headers, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
+import { WebhookRateLimitService } from './webhook-rate-limit.service';
 
 /** Public token URL. The high-entropy token is hashed at rest and can rotate. */
 @Controller('webhooks')
@@ -9,6 +10,7 @@ export class WebhookController {
   constructor(
     private readonly triggers: WorkflowTriggerService,
     private readonly workflows: WorkflowsService,
+    private readonly rateLimit: WebhookRateLimitService,
   ) {}
 
   @Post(':secret')
@@ -23,6 +25,8 @@ export class WebhookController {
     try {
       const runnable = await this.triggers.resolveWebhook(secret);
       triggerId = runnable.trigger.id;
+      // 无需认证的公网入口：按触发器限流兜底，防泄漏地址被无限刷调用消耗计费。
+      this.rateLimit.assertAllowed(triggerId);
       const bodyInputs = body?.inputs && typeof body.inputs === 'object' ? body.inputs : {};
       const inputs = { ...(runnable.trigger.staticInputs || {}), ...bodyInputs };
       const stream = this.workflows.runWorkflow(

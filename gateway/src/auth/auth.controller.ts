@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './jwt.guard';
 import { VIP_NODE_PERMISSIONS } from './auth.module';
 
@@ -58,6 +59,12 @@ export class AuthController {
   @Patch('profile')
   async updateProfile(@Request() req, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(req.user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('password')
+  async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
   }
 
   @UseGuards(JwtAuthGuard)

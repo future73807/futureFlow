@@ -120,6 +120,21 @@ export class AuthService {
     return this.sanitizeUser(await this.userRepo.save(user));
   }
 
+  /** 修改密码：验证当前密码后重置哈希；用户在其他端的会话保持有效（JWT 无状态）。 */
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      throw new NotFoundException('用户不存在');
+    }
+    const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValid) {
+      throw new UnauthorizedException('当前密码错误');
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.save(user);
+    return { ok: true };
+  }
+
   private generateTokens(user: User) {
     const payload = {
       sub: user.id,

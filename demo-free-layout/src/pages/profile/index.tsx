@@ -83,6 +83,8 @@ export const ProfilePage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [files, setFiles] = useState<StoredFile[]>([]);
@@ -219,6 +221,25 @@ export const ProfilePage = () => {
       Toast.error(error.message || '保存个人信息失败');
     } finally {
       setSavingProfile(false);
+    }
+  }, []);
+
+  const handlePasswordChange = useCallback(async (values: { currentPassword?: string; newPassword?: string }) => {
+    setSavingPassword(true);
+    try {
+      await apiJson('/auth/password', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          currentPassword: values.currentPassword || '',
+          newPassword: values.newPassword || '',
+        }),
+      });
+      Toast.success('密码已修改');
+      setPasswordVisible(false);
+    } catch (error: any) {
+      Toast.error(error.message || '修改密码失败');
+    } finally {
+      setSavingPassword(false);
     }
   }, []);
 
@@ -422,9 +443,12 @@ export const ProfilePage = () => {
           <h1>个人中心</h1>
           <p>管理账户资料、访问密钥和工作流额度。</p>
         </div>
-        <Button icon={<IconEdit />} onClick={() => setEditVisible(true)}>
-          编辑资料
-        </Button>
+        <div style={{ display: 'inline-flex', gap: 8 }}>
+          <Button onClick={() => setPasswordVisible(true)}>修改密码</Button>
+          <Button icon={<IconEdit />} onClick={() => setEditVisible(true)}>
+            编辑资料
+          </Button>
+        </div>
       </header>
 
       <section className="profile-identity">
@@ -976,6 +1000,34 @@ export const ProfilePage = () => {
             <Button onClick={() => setCreateMcpVisible(false)}>取消</Button>
             <Button type="primary" theme="solid" htmlType="submit">
               注册
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal title="修改密码" visible={passwordVisible} onCancel={() => setPasswordVisible(false)} footer={null}>
+        <p className="modal-copy">修改后请在新会话中使用新密码登录（当前会话保持有效）。</p>
+        <Form onSubmit={handlePasswordChange}>
+          <Form.Input
+            field="currentPassword"
+            label="当前密码"
+            mode="password"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          />
+          <Form.Input
+            field="newPassword"
+            label="新密码"
+            mode="password"
+            placeholder="至少 8 个字符"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 8, message: '新密码至少 8 个字符' },
+            ]}
+          />
+          <div className="modal-actions">
+            <Button onClick={() => setPasswordVisible(false)}>取消</Button>
+            <Button type="primary" theme="solid" htmlType="submit" loading={savingPassword}>
+              修改密码
             </Button>
           </div>
         </Form>
