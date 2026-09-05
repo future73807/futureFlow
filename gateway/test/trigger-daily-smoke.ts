@@ -28,6 +28,7 @@ function makeService() {
     },
     async find() { return rows; },
     async findOne(opts: any) { return rows.find((r) => r.id === opts.where.id) || null; },
+    async count() { return 0; },
     async remove(row: any) {
       const index = rows.findIndex((r) => r.id === row.id);
       if (index >= 0) rows.splice(index, 1);
