@@ -35,8 +35,15 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('媒体执行令牌不能访问此接口');
       }
       const user = await this.userRepo.findOne({ where: { id: payload.sub } });
-      if (!user || user.status !== 'active' || user.id !== payload.sub) {
-        throw new UnauthorizedException('用户不存在或已被封禁');
+      // tokenVersion 校验：改密码后旧 token 的 tv 落后即强制下线。
+      // 旧 token 无 tv 字段，视为版本 0，与存量用户默认值兼容。
+      if (
+        !user
+        || user.status !== 'active'
+        || user.id !== payload.sub
+        || user.tokenVersion !== (payload.tv ?? 0)
+      ) {
+        throw new UnauthorizedException('登录状态已失效，请重新登录');
       }
       req.user = user;
       req.auth = payload;

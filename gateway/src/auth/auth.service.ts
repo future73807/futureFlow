@@ -120,7 +120,7 @@ export class AuthService {
     return this.sanitizeUser(await this.userRepo.save(user));
   }
 
-  /** 修改密码：验证当前密码后重置哈希；用户在其他端的会话保持有效（JWT 无状态）。 */
+  /** 修改密码：验证当前密码后重置哈希，并自增 token 版本号强制全部旧会话下线。 */
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user || !user.passwordHash) {
@@ -131,8 +131,14 @@ export class AuthService {
       throw new UnauthorizedException('当前密码错误');
     }
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await this.userRepo.save(user);
-    return { ok: true };
+    // 签发一个携带新版本号的新 token，让当前会话无缝续期；
+    // 其他端的旧 token 版本号落后，会在守卫处被拒。
+    return {
+      ...this.generateTokens(user),
+      user: this.sanitizeUser(user),
+    };
   }
 
   private generateTokens(user: User) {
@@ -142,6 +148,7 @@ export class AuthService {
       vipLevel: user.vipLevel,
       role: user.role,
       status: user.status,
+      tv: user.tokenVersion || 0,
     };
 
     return {

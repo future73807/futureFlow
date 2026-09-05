@@ -42,7 +42,8 @@ export class AuthMiddleware implements NestMiddleware {
       const user = await this.userRepository.findOne({
         where: { id: payload.sub },
       });
-      if (user && user.status === 'active') {
+      // tokenVersion 校验与 jwt.guard 同语义：改密码后旧 JWT 立即失效。
+      if (user && user.status === 'active' && user.tokenVersion === (payload.tv ?? 0)) {
         req.user = user;
         return next();
       }

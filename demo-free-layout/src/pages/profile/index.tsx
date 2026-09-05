@@ -27,7 +27,7 @@ import {
   IconUser,
 } from '@douyinfe/semi-icons';
 import './profile.css';
-import { fetchProfile, setUser } from '../../utils/auth';
+import { fetchProfile, setUser, setToken } from '../../utils/auth';
 import { apiJson } from '../../utils/api';
 import { GATEWAY_URL } from '../../utils/config';
 import { invalidateDatasetCache } from '../../nodes/knowledge/components/dataset-select';
@@ -232,14 +232,22 @@ export const ProfilePage = () => {
   const handlePasswordChange = useCallback(async (values: { currentPassword?: string; newPassword?: string }) => {
     setSavingPassword(true);
     try {
-      await apiJson('/auth/password', {
+      const result = await apiJson<{ accessToken: string; user: any }>('/auth/password', {
         method: 'PATCH',
         body: JSON.stringify({
           currentPassword: values.currentPassword || '',
           newPassword: values.newPassword || '',
         }),
       });
-      Toast.success('密码已修改');
+      // 后端已自增 token 版本号：旧 token 全部失效，改用签发的新 token 续期当前会话。
+      if (result.accessToken) {
+        setToken(result.accessToken);
+        if (result.user) {
+          setUser(result.user);
+          setCurrentUser(result.user);
+        }
+      }
+      Toast.success('密码已修改，其他设备已强制下线');
       setPasswordVisible(false);
     } catch (error: any) {
       Toast.error(error.message || '修改密码失败');

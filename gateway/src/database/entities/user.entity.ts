@@ -36,6 +36,10 @@ export class User {
   @Column({ type: 'varchar', default: 'user' })
   role: string; // user / admin
 
+  /** 每次修改密码自增；JWT 携带签发时的值，不一致即强制下线。 */
+  @Column({ type: 'int', default: 0 })
+  tokenVersion: number;
+
   @Column({ type: 'varchar', default: 'active' })
   status: string; // active / banned / suspended
 

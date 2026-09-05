@@ -28,6 +28,7 @@ import { KnowledgeDatasetOwner } from './entities/knowledge-dataset-owner.entity
 import { AddKnowledgeDatasetOwners1722652800000 } from './migrations/1722652800000-add-knowledge-dataset-owners';
 import { AddTriggerDailySchedule1722739200000 } from './migrations/1722739200000-add-trigger-daily-schedule';
 import { AddTriggerCronExpression1722912000000 } from './migrations/1722912000000-add-trigger-cron-expression';
+import { AddUserTokenVersion1723004800000 } from './migrations/1723004800000-add-user-token-version';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -88,6 +89,7 @@ export default new DataSource({
     AddKnowledgeDatasetOwners1722652800000,
     AddTriggerDailySchedule1722739200000,
     AddTriggerCronExpression1722912000000,
+    AddUserTokenVersion1723004800000,
   ],
   synchronize: false,
   logging: false,
