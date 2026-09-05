@@ -360,6 +360,16 @@ export const ProfilePage = () => {
     }
   }, [fetchMcpServers]);
 
+  const testMcpConnection = useCallback(async (row: McpServerRow) => {
+    Toast.info(`正在测试 ${row.name} …`);
+    try {
+      const tools = await apiJson<Array<{ name: string }>>(`/mcp/servers/${row.id}/tools`, { method: 'POST' });
+      Toast.success(`连接成功，发现 ${tools.length} 个工具`);
+    } catch (error: any) {
+      Toast.error(error.message || '连接失败');
+    }
+  }, []);
+
   const runHitTest = useCallback(async () => {
     if (!docSheetDataset || !hitQuery.trim()) return;
     setHitTesting(true);
@@ -724,24 +734,33 @@ export const ProfilePage = () => {
             },
             {
               title: '操作',
-              width: 80,
+              width: 150,
               align: 'right' as const,
               render: (_: unknown, record: McpServerRow) => (
-                <Popconfirm
-                  title="确认删除此 MCP 服务器？"
-                  okText="删除"
-                  cancelText="取消"
-                  okType="danger"
-                  onConfirm={() => void handleDeleteMcp(record.id)}
-                >
+                <div style={{ display: 'inline-flex', gap: 4 }}>
                   <Button
                     size="small"
-                    type="danger"
                     theme="borderless"
-                    icon={<IconDelete />}
-                    aria-label={'删除 ' + record.name}
-                  />
-                </Popconfirm>
+                    onClick={() => void testMcpConnection(record)}
+                  >
+                    测试连接
+                  </Button>
+                  <Popconfirm
+                    title="确认删除此 MCP 服务器？"
+                    okText="删除"
+                    cancelText="取消"
+                    okType="danger"
+                    onConfirm={() => void handleDeleteMcp(record.id)}
+                  >
+                    <Button
+                      size="small"
+                      type="danger"
+                      theme="borderless"
+                      icon={<IconDelete />}
+                      aria-label={'删除 ' + record.name}
+                    />
+                  </Popconfirm>
+                </div>
               ),
             },
           ]}

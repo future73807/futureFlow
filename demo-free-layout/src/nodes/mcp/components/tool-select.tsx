@@ -6,7 +6,8 @@
 import { useEffect, useState } from 'react';
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select } from '@douyinfe/semi-ui';
+import { Button, Select, Typography } from '@douyinfe/semi-ui';
+import { IconRefresh } from '@douyinfe/semi-icons';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { Feedback, FormItem } from '../../../form-components';
@@ -22,6 +23,7 @@ export function ToolSelect() {
   const [tools, setTools] = useState<ToolOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const serverId = (node.form?.values as any)?.serverId;
 
@@ -44,7 +46,7 @@ export function ToolSelect() {
     return () => {
       cancelled = true;
     };
-  }, [serverId]);
+  }, [serverId, reloadTick]);
 
   return (
     <Field<string> name="tool" defaultValue="">
@@ -70,8 +72,21 @@ export function ToolSelect() {
           {!serverId || tools.length > 0 || loadError ? null : (
             <Feedback errors={fieldState?.errors} />
           )}
+          {!serverId || tools.length > 0 || loadError ? null : (
+            <Feedback errors={fieldState?.errors} />
+          )}
           {loadError && (
-            <Feedback errors={[{ name: 'tools', message: loadError } as any]} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Typography.Text type="danger" style={{ fontSize: 12 }}>{loadError}</Typography.Text>
+              <Button
+                size="small"
+                theme="borderless"
+                icon={<IconRefresh />}
+                onClick={() => setReloadTick((tick) => tick + 1)}
+              >
+                重试
+              </Button>
+            </div>
           )}
         </FormItem>
       )}
