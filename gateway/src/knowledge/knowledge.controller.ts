@@ -116,4 +116,20 @@ export class KnowledgeController {
     await this.knowledge.deleteDocument(this.currentUserId(req), datasetId, documentId, this.isAdmin(req));
     return { ok: true };
   }
+
+  /** 召回测试：验证知识库对给定查询能命中的内容片段。 */
+  @Post('datasets/:datasetId/hit-test')
+  hitTest(
+    @Request() req: any,
+    @Param('datasetId') datasetId: string,
+    @Body() body: { query?: string; topK?: number },
+  ) {
+    this.assertDatasetId(datasetId);
+    const query = String(body?.query || '').trim();
+    if (!query) {
+      throw new BadRequestException('检索语句不能为空');
+    }
+    const topK = Number.isInteger(body?.topK) ? Math.min(10, Math.max(1, Number(body.topK))) : 4;
+    return this.knowledge.hitTest(this.currentUserId(req), datasetId, query, topK, this.isAdmin(req));
+  }
 }

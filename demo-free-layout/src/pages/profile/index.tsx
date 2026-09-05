@@ -5,6 +5,7 @@ import {
   Button,
   Empty,
   Form,
+  Input,
   Modal,
   Popconfirm,
   SideSheet,
@@ -92,6 +93,10 @@ export const ProfilePage = () => {
   const [datasetDocs, setDatasetDocs] = useState<KnowledgeDocument[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [addingDoc, setAddingDoc] = useState(false);
+  const [hitQuery, setHitQuery] = useState('');
+  const [hitTesting, setHitTesting] = useState(false);
+  const [hitResults, setHitResults] = useState<Array<{ content: string; score: number | null; documentName: string }> | null>(null);
+  const [hitError, setHitError] = useState<string | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerRow[] | null>(null);
   const [createMcpVisible, setCreateMcpVisible] = useState(false);
 
@@ -354,6 +359,24 @@ export const ProfilePage = () => {
       Toast.error(error.message || '删除 MCP 服务器失败');
     }
   }, [fetchMcpServers]);
+
+  const runHitTest = useCallback(async () => {
+    if (!docSheetDataset || !hitQuery.trim()) return;
+    setHitTesting(true);
+    setHitError(null);
+    try {
+      const results = await apiJson<Array<{ content: string; score: number | null; documentName: string }>>(
+        `/knowledge/datasets/${docSheetDataset.id}/hit-test`,
+        { method: 'POST', body: JSON.stringify({ query: hitQuery.trim(), topK: 4 }) },
+      );
+      setHitResults(results);
+      if (results.length === 0) Toast.info('没有命中的内容片段');
+    } catch (error: any) {
+      setHitError(error.message || '试检索失败');
+    } finally {
+      setHitTesting(false);
+    }
+  }, [docSheetDataset, hitQuery]);
 
   const fileUrl = (id: string) => GATEWAY_URL.replace(/\/+$/, '') + '/files/' + id + '/download';
 
@@ -758,6 +781,60 @@ export const ProfilePage = () => {
                 添加文档
               </Button>
             </Form>
+            <div style={{ margin: '20px 0 8px' }}>
+              <Typography.Title heading={6} style={{ marginTop: 0 }}>文档列表</Typography.Title>
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              <Input
+                placeholder="试检索：输入查询验证召回效果"
+                value={hitQuery}
+                showClear
+                onChange={(value: string) => { setHitQuery(value); setHitResults(null); }}
+                onEnterPress={() => void runHitTest()}
+              />
+              <Button
+                theme="solid"
+                loading={hitTesting}
+                disabled={!hitQuery.trim()}
+                onClick={() => void runHitTest()}
+              >
+                试检索
+              </Button>
+            </div>
+            {hitError && (
+              <Typography.Text type="danger" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                {hitError}
+              </Typography.Text>
+            )}
+            {hitResults && (
+              <div style={{ marginBottom: 12 }}>
+                {hitResults.length === 0 ? (
+                  <Typography.Text type="tertiary" style={{ fontSize: 12 }}>没有命中的内容片段。</Typography.Text>
+                ) : hitResults.map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '8px 10px',
+                      marginBottom: 6,
+                      border: '1px solid var(--ff-border)',
+                      borderRadius: 8,
+                      background: 'var(--ff-surface-muted)',
+                      fontSize: 12,
+                      lineHeight: '18px',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {item.documentName && (
+                      <div style={{ color: 'var(--ff-primary)', fontWeight: 600, marginBottom: 2 }}>
+                        {item.documentName}{item.score !== null ? ` · 相关度 ${(item.score * 100).toFixed(0)}%` : ''}
+                      </div>
+                    )}
+                    {item.content}
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ margin: '20px 0 8px' }}>
               <Typography.Title heading={6} style={{ marginTop: 0 }}>文档列表</Typography.Title>
             </div>

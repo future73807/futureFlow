@@ -186,6 +186,43 @@ export class KnowledgeService {
     );
   }
 
+  /** 知识库召回测试：走 Console hit-testing，返回命中的内容片段。 */
+  async hitTest(
+    userId: string,
+    datasetId: string,
+    query: string,
+    topK: number,
+    requireAdmin = false,
+  ): Promise<Array<{ content: string; score: number | null; documentName: string }>> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
+    const data = await this.consoleJson<any>(
+      `/datasets/${encodeURIComponent(datasetId)}/hit-testing`,
+      {
+        method: 'POST',
+        body: {
+          query,
+          retrieval_model: {
+            // economy 关键词索引必须显式用 keyword_search；默认的
+            // semantic_search 需要 embedding 默认模型，免模型部署会失败。
+            search_method: 'keyword_search',
+            top_k: topK,
+            score_threshold: null,
+            score_threshold_enabled: false,
+            reranking_enable: false,
+            reranking_model: { reranking_provider_name: '', reranking_model_name: '' },
+          },
+        },
+        timeoutMs: 30_000,
+      },
+    );
+    const records = Array.isArray(data?.records) ? data.records : [];
+    return records.map((record: any) => ({
+      content: String(record?.segment?.content || ''),
+      score: typeof record?.score === 'number' ? record.score : null,
+      documentName: String(record?.segment?.document?.name || ''),
+    }));
+  }
+
   /** 归属校验：历史无主知识库仅管理员可继续操作。 */
   private async assertOwned(userId: string, datasetId: string, requireAdmin: boolean): Promise<void> {
     const owner = await this.ownerRepo.findOne({ where: { datasetId } });

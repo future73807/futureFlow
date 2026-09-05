@@ -13,6 +13,12 @@ export default defineConfig({
     // stack to run beside an existing developer session during verification.
     port: Number(process.env.FRONTEND_PORT || 3000),
   },
+  performance: {
+    // 按体验拆包：框架/依赖/公共代码分离，改善缓存命中并避免单包过大。
+    chunkSplit: {
+      strategy: 'split-by-experience',
+    },
+  },
   plugins: [pluginReact(), pluginLess()],
   source: {
     define: {
