@@ -25,18 +25,27 @@ export class ApiKeyController {
       name: k.name,
       keyPrefix: k.keyPrefix,
       lastUsedAt: k.lastUsedAt,
+      expiresAt: k.expiresAt,
       createdAt: k.createdAt,
     }));
   }
 
   @Post()
-  async create(@Body() body: { name?: string }, @Request() req) {
-    const result = await this.apiKeyService.create(req.user.id, body.name || 'default');
+  async create(
+    @Body() body: { name?: string; expiresInDays?: number },
+    @Request() req,
+  ) {
+    const result = await this.apiKeyService.create(
+      req.user.id,
+      body.name || 'default',
+      body.expiresInDays === undefined ? undefined : Number(body.expiresInDays),
+    );
     // 创建时返回完整明文，仅此一次
     return {
       id: result.apiKey.id,
       name: result.apiKey.name,
       keyPrefix: result.apiKey.keyPrefix,
+      expiresAt: result.apiKey.expiresAt,
       plaintext: result.plaintext,
       message: '请妥善保存，此密钥仅显示一次',
     };

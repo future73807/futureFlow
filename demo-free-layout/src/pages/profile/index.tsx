@@ -37,6 +37,7 @@ interface ApiKey {
   name: string;
   keyPrefix: string;
   lastUsedAt: string | null;
+  expiresAt?: string | null;
   createdAt: string;
 }
 
@@ -189,11 +190,15 @@ export const ProfilePage = () => {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const handleCreateKey = useCallback(async (values: { name?: string }) => {
+  const handleCreateKey = useCallback(async (values: { name?: string; expiresInDays?: string }) => {
     try {
-      const data = await apiJson<{ plaintext: string }>('/user/api-keys', {
+      const expiresInDays = values.expiresInDays ? Number(values.expiresInDays) : undefined;
+      const data = await apiJson<{ plaintext: string; expiresAt?: string }>('/user/api-keys', {
         method: 'POST',
-        body: JSON.stringify({ name: values.name?.trim() || 'default' }),
+        body: JSON.stringify({
+          name: values.name?.trim() || 'default',
+          ...(expiresInDays !== undefined && Number.isInteger(expiresInDays) ? { expiresInDays } : {}),
+        }),
       });
       setNewKey(data.plaintext);
       setCreateVisible(false);
@@ -526,6 +531,21 @@ export const ProfilePage = () => {
               title: '最后使用',
               dataIndex: 'lastUsedAt',
               render: (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '从未使用',
+            },
+            {
+              title: '有效期',
+              dataIndex: 'expiresAt',
+              width: 130,
+              render: (value: string | null) => {
+                if (!value) return '永久';
+                const expired = new Date(value).getTime() <= Date.now();
+                const days = Math.ceil((new Date(value).getTime() - Date.now()) / 24 / 60 / 60_000);
+                return (
+                  <Tag size="small" color={expired ? 'red' : days <= 7 ? 'orange' : 'green'}>
+                    {expired ? '已过期' : `${days} 天后到期`}
+                  </Tag>
+                );
+              },
             },
             {
               title: '创建时间',
@@ -966,6 +986,19 @@ export const ProfilePage = () => {
             prefix={<IconKey />}
             placeholder="例如：生产环境"
             rules={[{ required: true, message: '请输入 Key 名称' }]}
+          />
+          <Form.Select
+            field="expiresInDays"
+            label="有效期"
+            placeholder="永久（可选设置过期）"
+            optionList={[
+              { label: '永久', value: '' },
+              { label: '30 天', value: '30' },
+              { label: '90 天', value: '90' },
+              { label: '180 天', value: '180' },
+              { label: '365 天', value: '365' },
+            ]}
+            style={{ width: '100%' }}
           />
           <div className="modal-actions">
             <Button onClick={() => setCreateVisible(false)}>取消</Button>

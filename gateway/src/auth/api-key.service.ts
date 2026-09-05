@@ -19,10 +19,21 @@ export class ApiKeyService {
     });
   }
 
-  async create(userId: string, name: string): Promise<{ apiKey: ApiKey; plaintext: string }> {
+  async create(
+    userId: string,
+    name: string,
+    expiresInDays?: number,
+  ): Promise<{ apiKey: ApiKey; plaintext: string }> {
     const normalizedName = name.trim() || 'default';
     if (normalizedName.length > 64) {
       throw new BadRequestException('API Key 名称不能超过 64 个字符');
+    }
+    let expiresAt: Date | undefined;
+    if (expiresInDays !== undefined) {
+      if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 3650) {
+        throw new BadRequestException('有效期必须是 1 到 3650 之间的整数天（不填为永久）');
+      }
+      expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60_000);
     }
 
     // 生成 API Key: ff-<32 hex chars>
@@ -36,6 +47,7 @@ export class ApiKeyService {
       name: normalizedName,
       keyPrefix,
       keyHash,
+      ...(expiresAt ? { expiresAt } : {}),
     });
     await this.apiKeyRepo.save(apiKey);
     return { apiKey, plaintext };

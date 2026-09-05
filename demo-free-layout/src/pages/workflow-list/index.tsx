@@ -75,6 +75,7 @@ interface WorkflowTrigger {
   scheduleType?: 'interval' | 'daily' | 'cron';
   dailyTime?: string | null;
   cronExpression?: string | null;
+  staticInputs?: Record<string, string | number | boolean> | null;
   nextRunAt?: string | null;
   lastRunStatus?: string | null;
 }
@@ -167,6 +168,10 @@ export const WorkflowListPage = () => {
   const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>({});
   const [intervalEdits, setIntervalEdits] = useState<Record<string, string>>({});
   const [cronEdits, setCronEdits] = useState<Record<string, string>>({});
+  const [staticInputsEdit, setStaticInputsEdit] = useState<{
+    trigger: WorkflowTrigger;
+    values: Record<string, string | number | boolean>;
+  } | null>(null);
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
   const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
@@ -392,6 +397,7 @@ export const WorkflowListPage = () => {
       scheduleType?: 'interval' | 'daily' | 'cron';
       dailyTime?: string;
       cronExpression?: string;
+      staticInputs?: Record<string, string | number | boolean>;
     },
   ) => {
     if (!triggerWorkflow) return;
@@ -1285,6 +1291,15 @@ export const WorkflowListPage = () => {
                   >
                     {trigger.status === 'active' ? '暂停' : '启用'}
                   </Button>
+                  {trigger.staticInputs && Object.keys(trigger.staticInputs).length > 0 && (
+                    <Button
+                      theme="borderless"
+                      size="small"
+                      onClick={() => setStaticInputsEdit({ trigger, values: { ...trigger.staticInputs } })}
+                    >
+                      编辑入参
+                    </Button>
+                  )}
                   {trigger.type === 'webhook' && (
                     <Button
                       theme="borderless"
@@ -1300,6 +1315,43 @@ export const WorkflowListPage = () => {
               </RunRow>
             ))}
           </RunHistory>
+        )}
+      </Modal>
+      <Modal
+        title={`编辑静态入参 · ${staticInputsEdit?.trigger.name || ''}`}
+        visible={!!staticInputsEdit}
+        onCancel={() => setStaticInputsEdit(null)}
+        footer={null}
+        style={{ width: 560 }}
+      >
+        {staticInputsEdit && (
+          <Form
+            key={staticInputsEdit.trigger.id}
+            onSubmit={(values: Record<string, any>) => {
+              void (async () => {
+                await updateTrigger(staticInputsEdit.trigger, { staticInputs: values });
+                Toast.success('静态入参已更新');
+                setTriggers((items) => items.map((item) => (
+                  item.id === staticInputsEdit.trigger.id
+                    ? { ...item, staticInputs: values }
+                    : item
+                )));
+                setStaticInputsEdit(null);
+              })();
+            }}
+            initValues={staticInputsEdit.values}
+          >
+            {Object.entries(staticInputsEdit.values).map(([name]) => (
+              <Form.Input key={name} field={name} label={name} />
+            ))}
+            {Object.keys(staticInputsEdit.values).length === 0 && (
+              <Typography.Text type="tertiary">此触发器没有静态入参。</Typography.Text>
+            )}
+            <div className="modal-actions">
+              <Button onClick={() => setStaticInputsEdit(null)}>取消</Button>
+              <Button type="primary" theme="solid" htmlType="submit">保存</Button>
+            </div>
+          </Form>
         )}
       </Modal>
     </PageContainer>
