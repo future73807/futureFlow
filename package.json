@@ -15,6 +15,7 @@
     "dev": "pnpm run gateway & pnpm run frontend",
     "dev:concurrent": "concurrently -n GATEWAY,FRONTEND -c blue,green \"pnpm:gateway\" \"pnpm:frontend\"",
     "start": "node scripts/start-full-stack.cjs",
+    "start:gateway:prod": "pnpm --filter futureflow-gateway run migration:run:prod && pnpm --filter futureflow-gateway start:prod",
     "env:init": "node scripts/init-env.cjs",
     "quickstart": "pnpm run env:init && pnpm install --prod=false && pnpm run start",
     "build:gateway": "pnpm --filter futureflow-gateway build",
