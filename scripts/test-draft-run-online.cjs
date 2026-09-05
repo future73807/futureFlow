@@ -137,7 +137,9 @@ async function main() {
   if (!token) process.exit(1);
 
   // 1. 建知识库 + 文档（云端专属节点的前置数据）。
-  const ds = await json('POST', '/knowledge/datasets', token, { name: '试运行验收库', description: 'draft-run e2e' });
+  // 唯一后缀：Dify dataset 名称全局唯一，历史残留（如网关中断导致清理未执行）会引发 409。
+  const uniqueSuffix = Date.now().toString(36);
+  const ds = await json('POST', '/knowledge/datasets', token, { name: `试运行验收库-${uniqueSuffix}`, description: 'draft-run e2e' });
   record('创建知识库', ds.status === 201 && Boolean(ds.data.id), JSON.stringify(ds.data).slice(0, 100));
   const doc = await json('POST', `/knowledge/datasets/${ds.data.id}/documents`, token, {
     name: '说明.txt',
