@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import logoUrl from '../../assets/logo.svg';
+import logoUrl from '../../assets/logo-mono.svg';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Toast } from '@douyinfe/semi-ui';
 import { IconLock, IconMail, IconUser } from '@douyinfe/semi-icons';
@@ -48,7 +48,7 @@ export const LoginRegisterPage = () => {
       <section className="auth-surface" aria-labelledby="auth-title">
         <div className="auth-brand">
           <span className="auth-brand-mark" aria-hidden="true">
-            <img src={logoUrl} width={28} height={28} alt="" />
+            <img src={logoUrl} width={34} height={34} alt="" />
           </span>
           <strong>futureFlow</strong>
         </div>
