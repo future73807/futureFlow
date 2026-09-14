@@ -41,6 +41,55 @@ pnpm start
 
 首次使用只需在 `.env` 填写模型供应商的 `LLM_API_KEY`（以及需要时调整模型地址/名称）；Dify Console 授权、应用和执行 Key 不需要手工配置。
 
+### 轻量开发启动（不含 Dify，适合本地调试画布）
+
+不需要 Dify 时可以只启动「数据库 + 网关 + 前端」三个进程：
+
+```bash
+# 1. 初始化 .env 并安装依赖（仅首次）
+pnpm run env:init
+pnpm install
+
+# 2. 只启动 PostgreSQL（不启动 Dify 全家桶）
+docker compose up -d postgres
+
+# 3. 启动网关（http://localhost:3001，另开终端保持运行）
+pnpm --filter futureflow-gateway start
+
+# 4. 启动前端（http://localhost:3000，另开终端保持运行）
+pnpm --filter @flowgram.ai/demo-free-layout start
+```
+
+轻量模式需要在 `.env` 中设置：
+
+```bash
+DIFY_AUTO_BOOTSTRAP=false              # 关闭 Dify 自动初始化，网关才能跳过 Dify 就绪检查
+LLM_API_KEY=<你的模型服务 Key>          # 只保存在服务端，不下发到浏览器
+LLM_API_HOST=https://matchfit.top/v1   # OpenAI 兼容地址
+LLM_DEFAULT_MODEL=glm-5.3-flash        # 画布试运行实际使用的模型
+```
+
+说明：
+
+- 画布「试运行」的大语言模型节点自动使用以上服务端配置：浏览器只调用网关代理 `POST /llm/chat/completions`，由网关持有 `LLM_API_KEY` 转发（规避浏览器 CORS 预检 403 与密钥泄露），实际模型以 `LLM_DEFAULT_MODEL` 为准，画布上的模型名仅作展示。
+- 知识库、MCP、发布后云端执行依赖 Dify；轻量模式下这些能力不可用，界面会给出明确提示。需要时再执行 `pnpm start` 走一键完整启动。
+- 注意 `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET` 必须至少 32 个字符（网关启动校验），`env:init` 会自动生成。
+
+### 测试账号（本地默认）
+
+| 项       | 值                              |
+| -------- | ------------------------------- |
+| 登录地址 | http://localhost:3000/login     |
+| 用户名   | `admin`                         |
+| 密码     | `futureFlow@`                   |
+| 角色     | 管理员（可访问「平台管理」后台） |
+
+- 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖。
+- 修改密码后旧密码立即失效，并强制下线其他会话（token 版本号机制）。
+- 模拟点击验收使用同一账号：
+  - 全流程验收（28 项，含真实模型试运行）：`node scripts/test-gui-full.cjs "futureFlow@"`，截图输出到 `gui-full-screenshots/`。
+  - 轻量冒烟：`pnpm run test:gui-click <密码>`。
+
 ### 访问地址
 
 | 服务          | 地址                          | 说明                                |
