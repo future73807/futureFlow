@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as YAML from 'yaml';
@@ -47,6 +48,21 @@ const FLOWGRAM_NODE_ID_MAX_LENGTH = 255;
 @Injectable()
 export class DifyConverterService {
   private readonly logger = new Logger(DifyConverterService.name);
+
+  /**
+   * ConfigService 允许为空：单元测试直接 new DifyConverterService() 时退回
+   * 节点上的模型名；生产环境通过注入读取 LLM_DEFAULT_MODEL / LLM_API_HOST。
+   */
+  constructor(@Optional() private readonly config?: ConfigService) {}
+
+  /** 服务端统一配置的执行模型（优先于画布上的展示名） */
+  private configuredModelName(): string {
+    return (this.config?.get<string>('LLM_DEFAULT_MODEL', '') || '').trim();
+  }
+
+  private configuredApiHost(): string {
+    return (this.config?.get<string>('LLM_API_HOST', '') || '').trim();
+  }
 
   /** 常见模型名 → Dify provider 映射 */
   private readonly MODEL_PROVIDER_MAP: Record<string, string> = {
@@ -1086,7 +1102,10 @@ main = function(args) {
   private convertLLMNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]): any {
     const inputsValues = node.data.inputsValues || {};
 
-    const modelName = this.getInputValue(inputsValues.modelName, 'gpt-3.5-turbo');
+    const requestedModel = String(this.getInputValue(inputsValues.modelName, 'gpt-3.5-turbo'));
+    // 执行模型由服务端统一配置（与本地试运行同一语义：画布模型名仅作展示），
+    // 未配置时保留节点上的模型名，兼容旧的 Dify Provider 绑定。
+    const modelName = this.configuredModelName() || requestedModel;
     const temperature = parseFloat(
       String(this.getInputValue(inputsValues.temperature, 0.5)),
     );
@@ -3161,7 +3180,11 @@ main = function(args) {
     if (modelName.startsWith('deepseek')) return 'deepseek';
     if (modelName.startsWith('gemini')) return 'google';
     if (modelName.startsWith('qwen')) return 'tongyi';
-    return 'openai'; // 默认
+    // 其余模型（如 glm / 私有网关模型）走 OpenAI-API-compatible 供应商，
+    // 它支持自定义 base_url 与任意模型名，与网关直连代理一致。
+    return (this.configuredModelName() || this.configuredApiHost())
+      ? 'openai_api_compatible'
+      : 'openai';
   }
 
   /**
@@ -3255,6 +3278,7 @@ main = function(args) {
       'claude-3-sonnet': 0.02,
       'claude-3.5-sonnet': 0.02,
       'deepseek-chat': 0.001,
+      'glm-5.3-flash': 0.001,
     };
     const pricePer1K = pricing[modelName] || 0.01;
     return (tokens / 1000) * pricePer1K;

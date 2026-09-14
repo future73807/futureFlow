@@ -1130,6 +1130,10 @@ export class DifyIntegrationService implements OnModuleInit {
       };
     }
 
+    if (provider === 'openai_api_compatible') {
+      return this.ensureCompatibleModelProvider(authorization, model, apiHost);
+    }
+
     const providerListResponse = await this.consoleGet(
       `${authorization.consoleBase}/workspaces/current/model-providers?model_type=llm`,
       authorization.token,
@@ -1201,7 +1205,10 @@ export class DifyIntegrationService implements OnModuleInit {
     };
   }
 
-  private inferManagedModelProvider(model: string, apiHost: string): 'deepseek' | 'openai' | null {
+  private inferManagedModelProvider(
+    model: string,
+    apiHost: string,
+  ): 'deepseek' | 'openai' | 'openai_api_compatible' | null {
     const normalizedModel = model.toLowerCase();
     const normalizedHost = apiHost.toLowerCase();
     if (normalizedModel.startsWith('deepseek') || normalizedHost.includes('deepseek')) {
@@ -1213,7 +1220,105 @@ export class DifyIntegrationService implements OnModuleInit {
     ) {
       return 'openai';
     }
+    // 其余模型统一走 Dify 的「OpenAI-API-compatible」供应商：它支持任意
+    // 模型名与自定义 base_url，正是网关直连代理（LLM_API_HOST）的场景。
+    if (apiHost) {
+      return 'openai_api_compatible';
+    }
     return null;
+  }
+
+  /**
+   * 为 OpenAI 兼容的自定义供应商注册模型凭据（Dify customizable-model 流程）。
+   * 已注册时直接复用，避免每次发布都触发一次模型连通性校验。
+   */
+  private async ensureCompatibleModelProvider(
+    authorization: DifyConsoleAuthorization,
+    model: string,
+    apiHost: string,
+  ): Promise<DifyManagedModelProviderStatus> {
+    const provider = 'openai_api_compatible';
+    const providerListResponse = await this.consoleGet(
+      `${authorization.consoleBase}/workspaces/current/model-providers?model_type=llm`,
+      authorization.token,
+    );
+    const providerList = await providerListResponse.json().catch(() => ({})) as {
+      data?: Array<{ provider?: string }>;
+    };
+    if (!Array.isArray(providerList.data)) {
+      throw new ServiceUnavailableException('Dify 返回的模型 Provider 列表格式无效');
+    }
+    if (!providerList.data.some((item) => item.provider === provider)) {
+      throw new ServiceUnavailableException(`当前 Dify 未安装模型 Provider：${provider}`);
+    }
+
+    const modelsResponse = await this.consoleGet(
+      `${authorization.consoleBase}/workspaces/current/model-providers/${provider}/models`,
+      authorization.token,
+    );
+    const models = await modelsResponse.json().catch(() => ({})) as {
+      data?: Array<{ model?: string; model_type?: string }>;
+    };
+    const installed = Array.isArray(models.data)
+      && models.data.some((item) => item.model === model && item.model_type === 'llm');
+    if (installed) {
+      return {
+        provider,
+        model,
+        status: 'active',
+        configuredNow: false,
+        message: `Dify 模型 Provider ${provider} 已包含模型 ${model}。`,
+      };
+    }
+
+    const apiKey = this.config.get<string>('LLM_API_KEY', '').trim();
+    if (
+      !apiKey
+      || /change-me|replace-with|your[-_ ]?(key|secret)|x{6,}/i.test(apiKey)
+    ) {
+      return {
+        provider,
+        model,
+        status: 'not_configured',
+        configuredNow: false,
+        message: `服务端没有可用的 LLM_API_KEY，未注册 Dify 模型 ${model}。`,
+      };
+    }
+
+    const endpoint = this.normalizeModelProviderEndpoint(
+      apiHost || 'https://api.openai.com/v1',
+    );
+    const configuredTimeout = Number.parseInt(
+      this.config.get<string>('LLM_REQUEST_TIMEOUT_MS', '120000'),
+      10,
+    );
+    await this.consoleFetch(
+      `${authorization.consoleBase}/workspaces/current/model-providers/${provider}/models`,
+      authorization.token,
+      {
+        model,
+        model_type: 'llm',
+        credentials: {
+          api_key: apiKey,
+          endpoint_url: endpoint,
+          mode: 'chat',
+          context_size: this.config.get<string>('LLM_MODEL_CONTEXT_SIZE', '128000'),
+          max_tokens_to_sample: this.config.get<string>('LLM_MODEL_MAX_TOKENS', '32768'),
+          stream_mode_delimiter: '\n\n',
+          function_calling_type: 'tool_call',
+          stream_function_calling: 'supported',
+        },
+      },
+      Number.isInteger(configuredTimeout) ? Math.min(Math.max(configuredTimeout, 15_000), 120_000) : 120_000,
+    );
+    this.logger.log(`Dify 模型 Provider 已从服务端环境完成配置: ${provider}/${model}`);
+    return {
+      provider,
+      model,
+      status: 'configured',
+      configuredNow: true,
+      message: `已注册并验证 Dify 模型 ${model}（${provider}）；验证请求可能产生极少量模型用量。`,
+    };
   }
 
   private normalizeModelProviderEndpoint(value: string): string {

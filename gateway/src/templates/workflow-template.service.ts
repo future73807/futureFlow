@@ -74,7 +74,7 @@ export class WorkflowTemplateService implements OnModuleInit {
       flowgramJson: {
         nodes: [
           { id: 'start_0', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', default: '' } } } } },
-          { id: 'llm_0', type: 'llm', data: { title: 'AI 处理', inputsValues: { modelName: { type: 'constant', content: 'deepseek-chat' }, systemPrompt: { type: 'constant', content: systemPrompt }, prompt: { type: 'template', content: prompt } } } },
+          { id: 'llm_0', type: 'llm', data: { title: 'AI 处理', inputsValues: { modelName: { type: 'constant', content: 'glm-5.3-flash' }, systemPrompt: { type: 'constant', content: systemPrompt }, prompt: { type: 'template', content: prompt } } } },
           { id: 'end_0', type: 'end', data: { title: '结束' } },
         ],
         edges: [

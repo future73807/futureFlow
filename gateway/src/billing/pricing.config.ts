@@ -17,6 +17,8 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   // DeepSeek v4 系列（用户提供的配置）
   'deepseek-v4-pro': { input: 0.002, output: 0.008 },
   'deepseek-v4-flash': { input: 0.0005, output: 0.002 },
+  // GLM 系列（网关统一执行模型）
+  'glm-5.3-flash': { input: 0.001, output: 0.002 },
   'gemini-pro': { input: 0.0005, output: 0.0015 },
   'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
   'gemini-1.5-flash': { input: 0.000075, output: 0.0003 },

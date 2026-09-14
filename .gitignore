@@ -55,3 +55,6 @@ gui-test-screenshots/
 .video_agent/
 # GUI full-flow test screenshots
 gui-full-screenshots/
+
+# Gateway runtime stderr log
+gateway-run.log.err
