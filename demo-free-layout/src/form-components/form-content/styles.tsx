@@ -1,4 +1,4 @@
-import styled from 'styled-components';
+﻿import styled from 'styled-components';
 
 export const FormWrapper = styled.div`
   display: flex;
@@ -6,7 +6,7 @@ export const FormWrapper = styled.div`
   flex-direction: column;
   gap: 8px;
   padding: 0 12px 12px;
-  border-radius: 0 0 var(--ff-radius) var(--ff-radius);
+  border-radius: 0 0 10px 10px;
   background: #ffffff;
   box-sizing: border-box;
 `;
@@ -19,3 +19,4 @@ export const FormTitleDescription = styled.div`
   word-break: break-word;
   white-space: break-spaces;
 `;
+

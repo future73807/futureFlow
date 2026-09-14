@@ -7,9 +7,9 @@ export const Header = styled.div`
   gap: 8px;
   padding: 10px 12px;
   overflow: hidden;
-  border-bottom: 1px solid #edf0f5;
-  border-radius: var(--ff-radius) var(--ff-radius) 0 0;
-  background: #f8fafc;
+  border-bottom: 1px solid #f0f2f5;
+  border-radius: 10px 10px 0 0;
+  background: #ffffff;
   box-sizing: border-box;
   cursor: move;
 `;
@@ -37,3 +37,4 @@ export const Operators = styled.div`
   align-items: center;
   gap: 4px;
 `;
+

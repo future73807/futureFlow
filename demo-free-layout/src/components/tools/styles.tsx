@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  */
@@ -33,9 +33,9 @@ export const ToolSection = styled.div`
   display: flex;
   align-items: center;
   background-color: #fff;
-  border: 1px solid #dfe5ef;
-  border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.10);
+  border: 1px solid #e3e7ee;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
   column-gap: 4px;
   min-height: 44px;
   padding: 4px 10px;
@@ -86,7 +86,7 @@ export const ToolSection = styled.div`
 export const SelectZoom = styled.span`
   padding: 4px;
   border-radius: 8px;
-  border: 1px solid rgba(68, 83, 130, 0.25);
+  border: 1px solid #d3d9e3;
   font-size: 12px;
   width: 50px;
   cursor: pointer;
@@ -102,3 +102,4 @@ export const MinimapContainer = styled.div`
 export const UIIconMinimap = styled(IconMinimap)<{ visible: boolean }>`
   color: ${(props) => (props.visible ? undefined : '#060709cc')};
 `;
+

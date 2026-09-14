@@ -14,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { WorkflowTemplateModule } from './templates/workflow-template.module';
 import { WorkflowTriggerModule } from './triggers/workflow-trigger.module';
 import { MediaModule } from './media/media.module';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { MediaModule } from './media/media.module';
     WorkflowTemplateModule,
     WorkflowTriggerModule,
     MediaModule,
+    LlmModule,
   ],
 })
 export class AppModule {}

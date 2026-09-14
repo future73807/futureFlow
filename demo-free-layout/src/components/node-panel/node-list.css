@@ -1,77 +1,57 @@
 .canvas-node-panel {
-  width: 344px;
+  width: 340px;
   overflow: hidden;
   border: 1px solid var(--ff-border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #ffffff;
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 12px 36px rgba(16, 24, 40, 0.12);
 }
 
 .canvas-node-panel-head {
-  display: grid;
-  gap: 12px;
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid #edf0f5;
-  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  padding: 12px 12px 8px;
 }
 
-.canvas-node-panel-head > div {
-  display: grid;
-  gap: 2px;
-}
-
-.canvas-node-panel-head strong {
-  color: var(--ff-text);
-  font-size: 15px;
-}
-
-.canvas-node-panel-head span {
-  color: var(--ff-muted);
-  font-size: 12px;
-}
 
 .canvas-node-list {
   display: grid;
-  max-height: min(540px, 64vh);
-  gap: 12px;
-  padding: 10px;
+  max-height: min(520px, 62vh);
+  gap: 6px;
+  padding: 0 8px 10px;
   overflow: auto;
 }
 
 .canvas-node-group {
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .canvas-node-group h3 {
   margin: 0;
-  padding: 4px 8px 5px;
-  color: #98a2b3;
+  padding: 6px 8px 4px;
+  color: var(--ff-subtle);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .canvas-node-option {
   display: flex;
   width: 100%;
-  min-height: 58px;
+  min-height: 40px;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: 9px;
+  padding: 6px 8px;
   border: 0;
-  border-radius: var(--ff-radius);
+  border-radius: 8px;
   background: transparent;
-  color: #344054;
+  color: #252b37;
   cursor: pointer;
   text-align: left;
-  transition: background-color 120ms ease, transform 120ms ease;
+  transition: background-color 100ms ease;
 }
 
 .canvas-node-option:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
-  transform: translateX(2px);
+  background: #f2f4f8;
 }
 
 .canvas-node-option:disabled {
@@ -81,15 +61,16 @@
 
 .canvas-node-icon {
   display: grid;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ff-border);
   border-radius: 6px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: #ffffff;
+  color: var(--ff-primary);
+  font-size: 14px;
 }
 
 .canvas-node-icon-image {
@@ -101,13 +82,15 @@
 .canvas-node-option-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
 }
 
 .canvas-node-option-copy strong {
-  color: #344054;
+  overflow: hidden;
+  color: #252b37;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas-node-option-title {
@@ -128,31 +111,13 @@
   font-weight: 600;
 }
 
-.canvas-node-option-copy small {
-  overflow: hidden;
-  color: #98a2b3;
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-node-option:hover .canvas-node-option-copy strong {
-  color: #1d4ed8;
-}
-
-.canvas-node-option:disabled {
-  opacity: 0.72;
-}
-
 .canvas-node-option:disabled .canvas-node-icon {
   filter: grayscale(0.35);
 }
 
 .canvas-node-empty {
   padding: 38px 12px;
-  color: #98a2b3;
+  color: var(--ff-subtle);
   font-size: 12px;
   text-align: center;
 }

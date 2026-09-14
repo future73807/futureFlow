@@ -51,6 +51,7 @@ function Node(props: NodeProps) {
       type="button"
       disabled={props.disabled}
       onClick={props.onClick}
+      title={props.description}
     >
       <span className="canvas-node-icon" aria-hidden="true">
         <NodeIcon icon={props.icon} />
@@ -60,7 +61,6 @@ function Node(props: NodeProps) {
           <strong>{props.label}</strong>
           {props.availability && <em>{props.availability}</em>}
         </span>
-        <small>{props.description}</small>
       </span>
     </button>
   );
@@ -143,10 +143,6 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
   return (
     <div className="canvas-node-panel">
       <div className="canvas-node-panel-head">
-        <div>
-          <strong>添加节点</strong>
-          <span>选择能力并连接到工作流</span>
-        </div>
         <Input
           prefix={<IconSearch />}
           placeholder="搜索节点"

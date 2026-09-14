@@ -49,3 +49,6 @@ gui-test-screenshots/
 
 # Editor scratch directory
 .zcode-tmp/
+
+# GUI full-flow test screenshots
+gui-full-screenshots/

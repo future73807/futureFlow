@@ -4,19 +4,18 @@
   height: 100vh;
   flex-direction: column;
   overflow: hidden;
-  background: #f8fafc;
+  background: var(--ff-page);
 }
 
 .canvas-header {
   display: flex;
-  min-height: 68px;
+  min-height: 52px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 18px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--ff-border);
   background: var(--ff-surface);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02), 0 8px 24px rgba(15, 23, 42, 0.035);
   z-index: 30;
 }
 
@@ -33,72 +32,84 @@
 }
 
 .canvas-back-button {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--ff-border) !important;
-  border-radius: 10px !important;
-  background: #ffffff !important;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #5b6472;
+}
+
+.canvas-back-button:hover {
+  border-color: var(--ff-border) !important;
+  background: #f4f5f7 !important;
 }
 
 .canvas-brand-mark {
   display: inline-flex;
+  flex: 0 0 auto;
   color: var(--ff-primary);
   line-height: 0;
 }
 
 .canvas-name-group {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 2px;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .canvas-name-group > span {
+  flex: 0 0 auto;
+  overflow: hidden;
   color: var(--ff-subtle);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas-name-input {
-  width: 320px;
+  width: 300px;
 }
 
 .canvas-name-input.semi-input-wrapper {
-  padding: 0;
+  padding: 0 8px;
   border-color: transparent !important;
   background: transparent;
+  min-height: 32px;
 }
 
 .canvas-name-input .semi-input {
   color: var(--ff-text);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .canvas-name-input.semi-input-wrapper:hover,
 .canvas-name-input.semi-input-wrapper-focus {
-  padding: 0 8px;
   border-color: var(--ff-border-strong) !important;
   background: #ffffff;
 }
 
 .canvas-save-actions {
   flex: 0 0 auto;
-  gap: 14px;
+  gap: 12px;
 }
 
 .canvas-autosave-badge {
-  padding: 4px 8px;
-  border: 1px solid #dbeafe;
+  padding: 3px 8px;
+  border: 1px solid var(--ff-border);
   border-radius: 999px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--ff-surface-muted);
+  color: var(--ff-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .canvas-save-status {
-  min-width: 160px;
+  min-width: 150px;
   color: var(--ff-muted);
   font-size: 12px;
   text-align: right;
@@ -121,43 +132,28 @@
   overflow: hidden;
 }
 
-.canvas-editor-wrap::before {
-  position: absolute;
-  z-index: 1;
-  top: 14px;
-  left: 18px;
-  padding: 7px 10px;
-  border: 1px solid rgba(226, 232, 240, 0.88);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #94a3b8;
-  content: '拖动画布 · 连接节点 · 点击节点进行配置';
-  font-size: 11px;
-  pointer-events: none;
-  backdrop-filter: blur(8px);
-}
 
 .canvas-loading {
   display: grid;
   height: 100%;
   place-items: center;
+  background: var(--ff-page);
 }
 
 @media (max-width: 720px) {
   .canvas-header {
-    min-height: 56px;
+    min-height: 48px;
     gap: 8px;
-    padding: 8px 10px;
+    padding: 6px 10px;
   }
 
-    .canvas-name-group > span,
-    .canvas-autosave-badge,
-    .canvas-save-status {
+  .canvas-name-group > span,
+  .canvas-autosave-badge,
+  .canvas-save-status {
     display: none;
   }
 
-  .canvas-brand-mark,
-  .canvas-editor-wrap::before {
+  .canvas-brand-mark {
     display: none;
   }
 
