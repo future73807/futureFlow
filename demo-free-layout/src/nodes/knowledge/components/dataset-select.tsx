@@ -39,15 +39,8 @@ export function DatasetSelect() {
     }
     let cancelled = false;
     setLoading(true);
-    apiJson<{ available?: boolean; message?: string; datasets?: DatasetOption[] } | DatasetOption[]>('/knowledge/datasets')
-      .then((res) => {
-        const list = Array.isArray(res) ? res : (res.available === false ? [] : (res.datasets || []));
-        if (res && !Array.isArray(res) && res.available === false) {
-          cachedDatasets = { list: [], at: Date.now() };
-          if (!cancelled) setDatasets([]);
-          Toast.warning('知识库依赖本地 Dify，当前不可用');
-          return;
-        }
+    apiJson<DatasetOption[]>('/knowledge/datasets')
+      .then((list) => {
         cachedDatasets = { list, at: Date.now() };
         if (!cancelled) setDatasets(list);
       })

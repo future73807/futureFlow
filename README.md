@@ -41,39 +41,12 @@ pnpm start
 
 首次使用只需在 `.env` 填写模型供应商的 `LLM_API_KEY`（以及需要时调整模型地址/名称）；Dify Console 授权、应用和执行 Key 不需要手工配置。
 
-### 轻量开发启动（不含 Dify，适合本地调试画布）
+### 模型与 Dify 依赖（重要）
 
-不需要 Dify 时可以只启动「数据库 + 网关 + 前端」三个进程：
+- **Dify 是必需依赖**：知识库、MCP、发布后云端执行、草稿云端试运行都走本地 Dify 容器栈。Dify 未启动时相关接口会**直接报错**（不做静默降级）。
+- `.env` 中填写 `LLM_API_KEY` / `LLM_API_HOST` / `LLM_DEFAULT_MODEL`（OpenAI 兼容，如 `https://matchfit.top/v1` + `glm-5.3-flash`）：画布「试运行」的大语言模型节点经网关代理 `POST /llm/chat/completions` 真实调用，密钥只保存在服务端。
+- `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET` 必须至少 32 个字符（网关启动校验），`env:init` 会自动生成。
 
-```bash
-# 1. 初始化 .env 并安装依赖（仅首次）
-pnpm run env:init
-pnpm install
-
-# 2. 只启动 PostgreSQL（不启动 Dify 全家桶）
-docker compose up -d postgres
-
-# 3. 启动网关（http://localhost:3001，另开终端保持运行）
-pnpm --filter futureflow-gateway start
-
-# 4. 启动前端（http://localhost:3000，另开终端保持运行）
-pnpm --filter @flowgram.ai/demo-free-layout start
-```
-
-轻量模式需要在 `.env` 中设置：
-
-```bash
-DIFY_AUTO_BOOTSTRAP=false              # 关闭 Dify 自动初始化，网关才能跳过 Dify 就绪检查
-LLM_API_KEY=<你的模型服务 Key>          # 只保存在服务端，不下发到浏览器
-LLM_API_HOST=https://matchfit.top/v1   # OpenAI 兼容地址
-LLM_DEFAULT_MODEL=glm-5.3-flash        # 画布试运行实际使用的模型
-```
-
-说明：
-
-- 画布「试运行」的大语言模型节点自动使用以上服务端配置：浏览器只调用网关代理 `POST /llm/chat/completions`，由网关持有 `LLM_API_KEY` 转发（规避浏览器 CORS 预检 403 与密钥泄露），实际模型以 `LLM_DEFAULT_MODEL` 为准，画布上的模型名仅作展示。
-- 知识库、MCP、发布后云端执行依赖 Dify；轻量模式下这些能力不可用，界面会给出明确提示。需要时再执行 `pnpm start` 走一键完整启动。
-- 注意 `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET` 必须至少 32 个字符（网关启动校验），`env:init` 会自动生成。
 
 ### 测试账号（本地默认）
 
@@ -91,8 +64,14 @@ LLM_DEFAULT_MODEL=glm-5.3-flash        # 画布试运行实际使用的模型
     `node scripts/test-gui-full.cjs "futureFlow@"`
   - 本地扩展节点验收（7 项，SQL 查询 + Python 执行真实执行；需要本机 Python 3 与可连的 PostgreSQL）：
     `node scripts/test-local-tools.cjs`
-  - 轻量冒烟（22 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取）：
+  - 轻量冒烟（21 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取）：
     `pnpm run test:gui-click "futureFlow@"`
+  - 新模块 API 验收（16 项，知识库/文件/MCP，需 Dify 已启动）：
+    `pnpm run test:new-modules "futureFlow@"`
+  - 草稿云端试运行端到端（12 项，知识检索在 Dify 沙箱真实执行）：
+    `pnpm run test:draft-run-online "futureFlow@"`
+
+**完整测试 = 以上全部（84 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
 
 ### 访问地址
 

@@ -9,7 +9,6 @@ import {
   Post,
   Request,
   UseGuards,
-  ServiceUnavailableException,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -63,18 +62,8 @@ export class KnowledgeController {
   }
 
   @Get('datasets')
-  async listDatasets(@Request() req: any) {
-    try {
-      const datasets = await this.knowledge.listDatasets(this.currentUserId(req));
-      return { available: true, datasets };
-    } catch (error) {
-      // Dify 未启动/不可达时优雅降级: 返回结构化状态而非 503,
-      // 让前端给出友好提示, 也不污染浏览器控制台。
-      if (error instanceof ServiceUnavailableException) {
-        return { available: false, message: error.message, datasets: [] };
-      }
-      throw error;
-    }
+  listDatasets(@Request() req: any) {
+    return this.knowledge.listDatasets(this.currentUserId(req));
   }
 
   @Post('datasets')
