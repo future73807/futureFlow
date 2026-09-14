@@ -3,20 +3,27 @@
  * SPDX-License-Identifier: MIT
  */
 
-.testrun-success-button {
+/* :global 防止 CSS Modules 把 Semi 的全局类哈希掉;
+   选择器带 .semi-button 提高优先级, 覆盖全局 .semi-button-light 主题规则 */
+:global(.semi-button).testrun-success-button,
+:global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-success-button,
+:global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-success-button:hover {
   background-color: #16a34a !important; // 参考图风格: 试运行为绿色主按钮
   border-color: #16a34a !important;
   border-radius: 8px;
   color: #fff !important; // override semi style
+
+  &:hover {
+    background-color: #15803d !important;
+    border-color: #15803d !important;
+  }
 }
 
-.testrun-success-button:hover {
-  background-color: #15803d !important;
-  border-color: #15803d !important;
-}
-
-.testrun-error-button {
+:global(.semi-button).testrun-error-button,
+:global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-error-button,
+:global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-error-button:hover {
   background-color: #d92d20 !important; // override semi style
+  border-color: #d92d20 !important;
   border-radius: 8px;
   color: #fff !important; // override semi style
 }

@@ -64,10 +64,14 @@ async function main() {
   const page = await ctx.newPage();
   const realErrors = [];
   page.on('pageerror', (e) => realErrors.push('PAGEERROR: ' + String(e)));
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !r.url().includes('/knowledge/')) realErrors.push('HTTP ' + r.status() + ': ' + r.url());
+  });
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const text = m.text();
     if (/findDOMNode is deprecated|deprecated/i.test(text)) return;
+    if (/Failed to load resource/i.test(text)) return; // 资源级错误已在 response 监听按 URL 记录
     if (/net::ERR_ABORTED.*\/healthz/i.test(text)) return;
     realErrors.push(text);
   });
