@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
+
 import logoUrl from '../../assets/logo.svg';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
   IconApps,
   IconExit,
+  IconGridView,
   IconKey,
   IconList,
   IconPlus,
   IconSetting,
+  IconTickCircle,
   IconUser,
 } from '@douyinfe/semi-icons';
 import './main-layout.css';
@@ -16,6 +19,8 @@ import { fetchProfile, isLoggedIn, removeToken } from '../../utils/auth';
 
 const NAV_ITEMS = [
   { key: '/', label: '工作流', icon: <IconApps />, adminOnly: false },
+  { key: '/plugins', label: '插件商店', icon: <IconGridView />, adminOnly: false },
+  { key: '/tasks', label: '任务中心', icon: <IconTickCircle />, adminOnly: false },
   { key: '/profile', label: '个人中心', icon: <IconUser />, adminOnly: false },
   { key: '/admin', label: '平台管理', icon: <IconSetting />, adminOnly: true },
 ];

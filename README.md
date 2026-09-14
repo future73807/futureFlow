@@ -65,14 +65,16 @@ pnpm start
     `node scripts/test-gui-full.cjs "futureFlow@"`
   - 本地扩展节点验收（7 项，SQL 查询 + Python 执行真实执行；需要本机 Python 3 与可连的 PostgreSQL）：
     `node scripts/test-local-tools.cjs`
-  - 轻量冒烟（21 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取）：
+  - 轻量冒烟（26 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取；含插件商店、任务中心）：
     `pnpm run test:gui-click "futureFlow@"`
   - 新模块 API 验收（16 项，知识库/文件/MCP，需 Dify 已启动）：
     `pnpm run test:new-modules "futureFlow@"`
   - 草稿云端试运行端到端（12 项，知识检索在 Dify 沙箱真实执行）：
     `pnpm run test:draft-run-online "futureFlow@"`
+  - 任务中心批量执行端到端（15 项，两行输入逐行真实执行 + 校验/取消/异步列表）：
+    `pnpm run test:task-center "futureFlow@"`
 
-**完整测试 = 以上全部（84 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
+**完整测试 = 以上全部（104 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
 
 ### 访问地址
 
@@ -431,8 +433,8 @@ FUTUREFLOW_FUZZ_CASES=50000      # 控制每类数量（上限 100,000）
 
 ```bash
 # GUI 模拟点击验收：登录 → 建画布 → 节点面板新节点 → LLM 失败分支开关 →
-# GUI 模拟点击验收：登录 → 建画布 → 节点面板新节点 → LLM 失败分支开关 →
-# 云端试运行入口 → 管理后台各 tab → 个人中心文件管理 → 浅色主题校验 → 退出，全程截图存证
+# 云端试运行入口 → 插件商店(列表/详情/添加到工作流) → 任务中心(批量任务弹窗) →
+# 管理后台各 tab → 个人中心文件管理 → 退出，全程截图存证
 pnpm run test:gui-click "futureFlow@"
 
 # 知识库 / 文件上传 / MCP 注册三模块的端到端 API 验收（16 项）
@@ -440,6 +442,9 @@ pnpm run test:new-modules <管理员密码>
 
 # 草稿云端试运行端到端验收：含知识检索节点的草稿经沙箱真实执行（12 项）
 pnpm run test:draft-run-online <管理员密码>
+
+# 任务中心批量任务端到端验收：创建 → 逐行真实执行 → 进度/结果 → 取消 → 异步列表（15 项）
+pnpm run test:task-center <管理员密码>
 ```
 
 ### 全新卷一键验收

@@ -3,7 +3,8 @@
  * futureFlow GUI 模拟点击验收（Playwright 直驱本机 Chrome/Edge/Chromium）
  *
  * 用途：对一键启动后的实时前端做真实点击验收，覆盖登录 → 工作流列表 →
- * 创建画布 → 管理员后台各 tab → 个人中心 → 退出登录，并按步骤截图存证。
+ * 创建画布 → 插件商店(列表/详情/添加到工作流) → 任务中心(批量任务弹窗)
+ * → 管理员后台各 tab → 个人中心 → 退出登录，并按步骤截图存证。
  * 它不依赖 LLM_API_KEY，只走无模型节点路径，是对 test:e2e 的轻量 GUI 互补。
  *
  * 前置：
@@ -214,6 +215,97 @@ async function main() {
       await page.waitForTimeout(1000);
     } else {
       record('T4 创建画布(填名称+提交)进入画布编辑器', false, '未找到创建画布按钮');
+    }
+
+    // T4g 插件商店：列表 → 详情（统计/参数表）→ 添加到我的工作流
+    {
+      const pluginNav = page.getByRole('button', { name: '插件商店' });
+      if ((await pluginNav.count()) >= 1) {
+        await pluginNav.first().click();
+      } else {
+        await page.goto(`${FRONT}/plugins`, { waitUntil: 'domcontentloaded' });
+      }
+      await page.waitForTimeout(1800);
+      await shot(page, 't4g_plugin_store.png');
+      const storeText = await bodyText(page);
+      record(
+        'T4g 插件商店列表渲染(插件卡片+分类)',
+        /插件商店/.test(storeText) && /大语言模型/.test(storeText) && /成功率/.test(storeText),
+      );
+
+      const pluginCard = page.locator('button:has-text("大语言模型")').first();
+      if ((await pluginCard.count()) >= 1) {
+        await pluginCard.click();
+        await page.waitForTimeout(1800);
+        await shot(page, 't4h_plugin_detail.png');
+        const detailText = await bodyText(page);
+        record(
+          'T4h 插件详情渲染(统计条+参数表)',
+          /插件工具/.test(detailText) && /参数名/.test(detailText) && /成功率/.test(detailText),
+        );
+
+        const addBtn = page.getByRole('button', { name: '添加到我的工作流' });
+        if ((await addBtn.count()) >= 1) {
+          await addBtn.first().click();
+          await page.waitForURL('**/canvas/**', { timeout: 20000 }).catch(() => {});
+          await page.waitForTimeout(2500);
+          await shot(page, 't4i_plugin_canvas.png');
+          const canvasText = await bodyText(page);
+          record(
+            'T4i 插件「添加到我的工作流」创建含该节点的画布',
+            /canvas\//.test(page.url()) && /开始/.test(canvasText) && /结束/.test(canvasText),
+            page.url(),
+          );
+        } else {
+          record('T4i 插件「添加到我的工作流」创建含该节点的画布', false, '未找到添加按钮');
+        }
+      } else {
+        record('T4h 插件详情渲染(统计条+参数表)', false, '未找到插件卡片');
+        record('T4i 插件「添加到我的工作流」创建含该节点的画布', false, '未找到插件卡片');
+      }
+    }
+
+    // T4j 任务中心：批量任务入口 + 创建弹窗（CSV 解析）
+    {
+      await page.goto(`${FRONT}/`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(800);
+      const taskNav = page.getByRole('button', { name: '任务中心' });
+      if ((await taskNav.count()) >= 1) {
+        await taskNav.first().click();
+      } else {
+        await page.goto(`${FRONT}/tasks`, { waitUntil: 'domcontentloaded' });
+      }
+      await page.waitForTimeout(1800);
+      await shot(page, 't4j_task_center.png');
+      const taskText = await bodyText(page);
+      record(
+        'T4j 任务中心渲染(批量任务/异步任务)',
+        /任务中心/.test(taskText) && /批量任务/.test(taskText) && /异步任务/.test(taskText),
+      );
+
+      const openCreate = page.getByRole('button', { name: '创建批量任务' }).first();
+      const createTask = page.getByRole('button', { name: '创建任务' }).first();
+      const opener = (await openCreate.count()) >= 1 ? openCreate : createTask;
+      if ((await opener.count()) >= 1) {
+        await opener.click();
+        await page.waitForTimeout(1500);
+        const dataBox = page.getByPlaceholder(/CSV/).first();
+        if ((await dataBox.count()) >= 1) {
+          await dataBox.fill('query\n第一行输入\n第二行输入');
+          await page.waitForTimeout(700);
+          await shot(page, 't4k_task_create_modal.png');
+          record(
+            'T4k 批量任务弹窗解析 CSV 输入',
+            /已解析 2 行/.test(await bodyText(page)),
+          );
+        } else {
+          record('T4k 批量任务弹窗解析 CSV 输入', false, '未找到任务数据输入框');
+        }
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(700);
+      } else {
+        record('T4k 批量任务弹窗解析 CSV 输入', false, '未找到创建任务入口');
+      }
     }
 
     // T5 管理员后台-仪表盘

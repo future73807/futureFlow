@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 工作流列表页
  * 现代卡片网格 + 创建画布
  */
@@ -721,11 +721,8 @@ export const WorkflowListPage = () => {
           {workflows.map((wf) => (
             <WorkflowCard key={wf.id} onClick={() => navigate(`/canvas/${wf.id}`)}>
               <CardTop>
-                <CardIcon>
-                  <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-                    <path d="M10 16 L24 10 L38 16 L38 32 L24 38 L10 32 Z" stroke="#2563eb" strokeWidth="2.5" fill="none" strokeLinejoin="round" />
-                    <circle cx="24" cy="24" r="3" fill="#2563eb" />
-                  </svg>
+                <CardIcon $tint={cardTint(wf.name || wf.id)}>
+                  <span aria-hidden="true">{(wf.name || 'W').trim().slice(0, 1).toUpperCase()}</span>
                 </CardIcon>
                 <Tag
                   size="small"
@@ -1464,6 +1461,23 @@ const WorkflowGrid = styled.div`
   }
 `;
 
+/** 卡片首字母底色：按名称稳定取色，让同一网格里的卡片彼此可辨 */
+const CARD_TINTS = [
+  { bg: '#eef4ff', fg: '#2563eb' },
+  { bg: '#ecfdf3', fg: '#16803c' },
+  { bg: '#fff6e8', fg: '#b54708' },
+  { bg: '#e9f7fa', fg: '#0e7490' },
+  { bg: '#f1f3f7', fg: '#4e5969' },
+];
+
+const cardTint = (seed: string) => {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return CARD_TINTS[hash % CARD_TINTS.length];
+};
+
 const WorkflowCard = styled.article`
   display: flex;
   min-height: 230px;
@@ -1491,14 +1505,17 @@ const CardTop = styled.div`
   gap: 12px;
 `;
 
-const CardIcon = styled.div`
+const CardIcon = styled.div<{ $tint: { bg: string; fg: string } }>`
   display: grid;
   width: 38px;
   height: 38px;
+  flex: 0 0 38px;
   place-items: center;
-  border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
-  background: var(--ff-primary-soft);
+  background: ${(props) => props.$tint.bg};
+  color: ${(props) => props.$tint.fg};
+  font-size: 16px;
+  font-weight: 600;
 `;
 
 const CardTitle = styled.div`
@@ -1566,14 +1583,14 @@ const ActionButton = styled.button`
 `;
 
 const PrimaryCardAction = styled(ActionButton)`
-  border-color: var(--ff-primary);
-  background: var(--ff-primary);
-  color: #ffffff;
+  border-color: var(--ff-primary-border);
+  background: var(--ff-primary-soft);
+  color: var(--ff-primary);
 
   &:hover {
-    border-color: var(--ff-primary-hover);
-    background: var(--ff-primary-hover);
-    color: #ffffff;
+    border-color: var(--ff-primary);
+    background: #e8eefc;
+    color: var(--ff-primary-hover);
   }
 `;
 
@@ -1585,7 +1602,7 @@ const DeleteCardAction = styled(ActionButton)`
   min-width: 32px;
   padding: 6px;
   border-color: transparent;
-  color: var(--ff-danger);
+  color: var(--ff-subtle);
 
   .semi-icon {
     margin: 0;

@@ -35,7 +35,8 @@
     "test:e2e": "node scripts/e2e-full-test.cjs",
     "test:gui-click": "node scripts/test-gui-click.cjs",
     "test:new-modules": "node scripts/test-new-modules-api.cjs",
-    "test:draft-run-online": "node scripts/test-draft-run-online.cjs"
+    "test:draft-run-online": "node scripts/test-draft-run-online.cjs",
+    "test:task-center": "node scripts/test-task-center.cjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

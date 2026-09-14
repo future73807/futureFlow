@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import logoUrl from '../../assets/logo-mono.svg';
+import logoUrl from '../../assets/logo.svg';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Toast } from '@douyinfe/semi-ui';
 import { IconLock, IconMail, IconUser } from '@douyinfe/semi-icons';

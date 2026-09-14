@@ -1,6 +1,6 @@
-/**
+﻿/**
  * futureFlow 应用入口
- * 路由：/login → 登录页 | / → 主布局(工作流列表) | /canvas/:id → 画布编辑器
+ * 路由：/login → 登录页 | / → 主布局(工作流列表/插件商店/任务中心) | /canvas/:id → 画布编辑器
  */
 
 import { useEffect } from 'react';
@@ -12,6 +12,8 @@ import { Toast } from '@douyinfe/semi-ui';
 import { LoginRegisterPage } from './pages/login';
 import { MainLayout } from './pages/main-layout';
 import { WorkflowListPage } from './pages/workflow-list';
+import { PluginStorePage } from './pages/plugin-store';
+import { TaskCenterPage } from './pages/task-center';
 import { ProfilePage } from './pages/profile';
 import { AdminPage } from './pages/admin';
 import { CanvasPage } from './pages/canvas';
@@ -77,6 +79,9 @@ app.render(
         }
       >
         <Route index element={<WorkflowListPage />} />
+        <Route path="plugins" element={<PluginStorePage />} />
+        <Route path="plugins/:pluginId" element={<PluginStorePage />} />
+        <Route path="tasks" element={<TaskCenterPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="admin"
