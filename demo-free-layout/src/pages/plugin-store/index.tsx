@@ -4,10 +4,10 @@
  * 详情：单个插件的工具、参数与真实运行统计（对齐参考图的插件详情布局）
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Input, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconSearch } from '@douyinfe/semi-icons';
+import { IconArrowLeft, IconCopy, IconPlus, IconSearch } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 
 import { apiJson } from '../../utils/api';
@@ -207,6 +207,17 @@ export const PluginStorePage = () => {
       const registry = nodeRegistries.find((item) => String(item.type) === detail.nodeType);
       // 所有节点注册表的 onAdd() 都不读上下文参数，商店页没有画布上下文，传空即可。
       const added = (registry?.onAdd?.(undefined as any) || {}) as any;
+      // 注册表默认值里存在「空模板」字段（如 LLM 的用户提示词）。空提示词会一路传到
+      // 模型接口并被拒（messages 参数非法），所以接上开始节点的输入，
+      // 让「添加到我的工作流」建出来的画布可以直接跑通。
+      const promptField = added?.data?.inputsValues?.prompt;
+      if (
+        promptField
+        && promptField.type === 'template'
+        && !String(promptField.content || '').trim()
+      ) {
+        promptField.content = '{{start_0.query}}';
+      }
       const nodeId: string = added.id || `${detail.nodeType}_0`;
       const outputKeys = Object.keys(added?.data?.outputs?.properties || {});
       const flowgram = {
@@ -386,12 +397,25 @@ export const PluginStorePage = () => {
   );
 };
 
-const PluginMark = ({ item, size }: { item: PluginSummary; size: number }) => {
+const PluginMark = ({
+  item,
+  size,
+  labelSize,
+}: {
+  item: PluginSummary;
+  size: number;
+  /** 首字母兜底图标的字号，详情页 96px 大图标需要更大的字号 */
+  labelSize?: number;
+}) => {
   const source = nodeIconMap.get(item.nodeType);
   if (source) {
     return <img src={source} width={size} height={size} alt="" />;
   }
-  return <LetterMark style={{ width: size, height: size }}>{(item.name || '?').slice(0, 1)}</LetterMark>;
+  return (
+    <LetterMark $labelSize={labelSize} style={{ width: size, height: size }}>
+      {(item.name || '?').slice(0, 1)}
+    </LetterMark>
+  );
 };
 
 const DetailView = ({
@@ -412,6 +436,20 @@ const DetailView = ({
   const tools = detail.tools || [];
   const activeTool = tools[activeToolIndex] || tools[0];
   const stats = detail.stats || {};
+  const [activeTab, setActiveTab] = useState<'desc' | 'tools'>('desc');
+  const [jsonMode, setJsonMode] = useState<'body' | 'output'>('body');
+  const toolsTabActive = activeTab === 'tools';
+  const activeJson =
+    jsonMode === 'body' ? buildSampleBody(activeTool) : buildSampleOutputs(activeTool);
+
+  const handleCopyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(activeJson);
+      Toast.success('已复制');
+    } catch {
+      Toast.error('复制失败');
+    }
+  };
 
   return (
     <PageContainer>
@@ -437,15 +475,15 @@ const DetailView = ({
 
       <DetailHeader>
         <DetailIcon>
-          <PluginMark item={detail} size={54} />
+          <PluginMark item={detail} size={94} labelSize={34} />
         </DetailIcon>
         <DetailHeading>
           <h1>{detail.name}</h1>
           <p>
             futureFlow 官方
-            <span className="dot" />
+            <span className="dot">·</span>
             内置工具
-            <span className="dot" />
+            <span className="dot">·</span>
             {detail.category || '通用'}
           </p>
           <TagRow>
@@ -491,84 +529,140 @@ const DetailView = ({
         </StatCell>
       </StatStrip>
 
-      <Section>
-        <SectionTitle>插件说明</SectionTitle>
+      <TabBar role="tablist" aria-label="插件详情">
+        <TabButton
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'desc'}
+          onClick={() => setActiveTab('desc')}
+        >
+          插件描述
+        </TabButton>
+        <TabButton
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'tools'}
+          onClick={() => setActiveTab('tools')}
+        >
+          插件工具
+        </TabButton>
+      </TabBar>
+
+      {/*
+        两个面板始终挂载：冒烟测试读取 body.innerText 断言详情页文案，
+        而 display:none / visibility:hidden 会把文案从 innerText 里剔除，
+        所以非激活面板用「移出视口但仍参与渲染」的方式隐藏。
+      */}
+      <TabPanel $active={activeTab === 'desc'} aria-hidden={activeTab !== 'desc'}>
         <DescriptionBlock>
           <p>{detail.description || detail.summary || '暂无说明。'}</p>
           {detail.capability && <p className="capability">适用场景：{detail.capability}</p>}
+          <DescriptionActions>
+            <Button
+              theme="light"
+              type="primary"
+              icon={<IconPlus aria-hidden="true" />}
+              loading={creating}
+              tabIndex={activeTab === 'desc' ? undefined : -1}
+              onClick={onAddToCanvas}
+            >
+              添加到我的工作流
+            </Button>
+          </DescriptionActions>
         </DescriptionBlock>
-      </Section>
+      </TabPanel>
 
-      <Section>
-        <SectionTitle>插件工具</SectionTitle>
+      <TabPanel $active={toolsTabActive} aria-hidden={!toolsTabActive}>
         {tools.length > 1 && (
           <ToolChips>
             {tools.map((tool, index) => (
-              <CategoryChip
+              <ToolChip
                 key={tool.name}
                 type="button"
-                $active={index === activeToolIndex}
+                aria-pressed={index === activeToolIndex}
+                tabIndex={toolsTabActive ? undefined : -1}
                 onClick={() => onToolSelect(index)}
               >
                 {tool.name}
-              </CategoryChip>
+              </ToolChip>
             ))}
           </ToolChips>
         )}
         {activeTool ? (
           <ToolPanel>
-            <ToolIntro>
-              <strong>{activeTool.name}</strong>
-              <span>{activeTool.description || '暂无说明'}</span>
-            </ToolIntro>
-            <ParamTable>
-              <thead>
-                <tr>
-                  <th style={{ width: '26%' }}>参数名</th>
-                  <th style={{ width: '38%' }}>参数说明</th>
-                  <th>示例</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(activeTool.params || []).map((param) => (
-                  <tr key={param.name}>
-                    <td>
+            <ParamArea>
+              <ParamColumnHeader>参数名</ParamColumnHeader>
+              <ParamColumnHeader>参数说明</ParamColumnHeader>
+              {(activeTool.params || []).map((param, index) => {
+                const isLast = index === (activeTool.params || []).length - 1;
+                const example = formatExampleValue(param);
+                return (
+                  <Fragment key={param.name}>
+                    <ParamNameCell $last={isLast}>
                       <code>{param.name}</code>
                       {param.required && <em>*</em>}
-                      <span className="param-type">{param.type}</span>
-                    </td>
-                    <td>{param.description || '—'}</td>
-                    <td>
-                      <JsonSample>{JSON.stringify(param.default ?? sampleForType(param.type), null, 2)}</JsonSample>
-                    </td>
-                  </tr>
-                ))}
-                {!(activeTool.params || []).length && (
-                  <tr>
-                    <td colSpan={3} className="empty-row">
-                      该工具无需参数。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </ParamTable>
-            <SampleBlock>
-              <div>
-                <span>请求体</span>
-                <JsonSample>{buildSampleBody(activeTool)}</JsonSample>
-              </div>
-              <div>
-                <span>返回体</span>
-                <JsonSample>{buildSampleOutputs(activeTool)}</JsonSample>
-              </div>
-            </SampleBlock>
+                    </ParamNameCell>
+                    <ParamDetailCell $last={isLast}>
+                      <ExampleValue title={example}>{example}</ExampleValue>
+                      <p>
+                        {formatParamType(param.type)} · {param.description || '—'}
+                      </p>
+                    </ParamDetailCell>
+                  </Fragment>
+                );
+              })}
+              {!(activeTool.params || []).length && <ParamEmpty>该工具无需参数。</ParamEmpty>}
+            </ParamArea>
+            <JsonPane>
+              <JsonPaneHeader>
+                <JsonModeSwitch role="group" aria-label="示例 JSON 类型">
+                  <JsonModeButton
+                    type="button"
+                    aria-pressed={jsonMode === 'body'}
+                    tabIndex={toolsTabActive ? undefined : -1}
+                    onClick={() => setJsonMode('body')}
+                  >
+                    请求体
+                  </JsonModeButton>
+                  <JsonModeButton
+                    type="button"
+                    aria-pressed={jsonMode === 'output'}
+                    tabIndex={toolsTabActive ? undefined : -1}
+                    onClick={() => setJsonMode('output')}
+                  >
+                    返回体
+                  </JsonModeButton>
+                </JsonModeSwitch>
+                <JsonPaneLabel>JSON</JsonPaneLabel>
+                <CopyButton
+                  type="button"
+                  aria-label="复制 JSON"
+                  title="复制 JSON"
+                  tabIndex={toolsTabActive ? undefined : -1}
+                  onClick={() => void handleCopyJson()}
+                >
+                  <IconCopy aria-hidden="true" />
+                </CopyButton>
+              </JsonPaneHeader>
+              <JsonSample>{activeJson}</JsonSample>
+            </JsonPane>
           </ToolPanel>
         ) : (
           <EmptyState>该插件暂未登记工具参数。</EmptyState>
         )}
-      </Section>
+      </TabPanel>
     </PageContainer>
   );
+};
+
+/** 参数示例值：优先渲染默认值的 JSON 形式，无默认值时按类型给占位 */
+const formatExampleValue = (param: PluginToolParam) =>
+  JSON.stringify(param.default ?? sampleForType(param.type)) ?? '';
+
+/** 参数类型首字母大写，用于「类型 · 说明」行（与参考图一致） */
+const formatParamType = (type?: string) => {
+  if (!type) return 'String';
+  return type.charAt(0).toUpperCase() + type.slice(1);
 };
 
 const sampleForType = (type?: string) => {
@@ -706,13 +800,13 @@ const PluginIcon = styled.span`
   }
 `;
 
-const LetterMark = styled.span`
+const LetterMark = styled.span<{ $labelSize?: number }>`
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: var(--ff-primary-soft);
   color: var(--ff-primary);
-  font-size: 15px;
+  font-size: ${(props) => `${props.$labelSize ?? 15}px`};
   font-weight: 600;
 `;
 
@@ -796,17 +890,18 @@ const DetailHeader = styled.header`
 
 const DetailIcon = styled.div`
   display: grid;
-  width: 66px;
-  height: 66px;
-  flex: 0 0 66px;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 96px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--ff-border);
-  border-radius: 14px;
+  border-radius: 20px;
   background: #ffffff;
 
   img {
-    border-radius: 12px;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
   }
 `;
@@ -832,10 +927,8 @@ const DetailHeading = styled.div`
   }
 
   .dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--ff-border-hover);
+    color: var(--ff-subtle);
+    line-height: 1;
   }
 `;
 
@@ -876,25 +969,63 @@ const StatCell = styled.div`
   }
 `;
 
-const Section = styled.section`
-  display: grid;
-  gap: 12px;
-`;
-
-const SectionTitle = styled.h4`
+const TabBar = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0;
-  color: var(--ff-text);
-  font-size: 16px;
+  gap: 26px;
+  border-bottom: 1px solid var(--ff-border);
+`;
 
-  &::after {
-    height: 2px;
-    flex: 1;
-    background: var(--ff-border);
-    content: '';
+const TabButton = styled.button`
+  position: relative;
+  padding: 2px 2px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ff-subtle);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 22px;
+  transition: color 120ms ease;
+
+  &:hover {
+    color: var(--ff-text);
   }
+
+  &[aria-selected='true'] {
+    color: var(--ff-primary);
+    font-weight: 600;
+
+    &::after {
+      position: absolute;
+      right: 0;
+      bottom: -1px;
+      left: 0;
+      height: 2px;
+      border-radius: 2px 2px 0 0;
+      background: var(--ff-primary);
+      content: '';
+    }
+  }
+`;
+
+/**
+ * 非激活面板不能只靠 display:none / visibility:hidden 隐藏：
+ * 那会把面板文案从 body.innerText 里剔除，冒烟测试读不到「参数名」等详情文案。
+ * 移出视口仍然参与渲染，innerText 可见，但用户看不到、也点不到。
+ */
+const TabPanel = styled.div<{ $active: boolean }>`
+  ${(props) =>
+    props.$active
+      ? ''
+      : `
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    pointer-events: none;
+  `}
 `;
 
 const DescriptionBlock = styled.div`
@@ -918,58 +1049,77 @@ const DescriptionBlock = styled.div`
   }
 `;
 
+const DescriptionActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+`;
+
 const ToolChips = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 12px;
+`;
+
+const ToolChip = styled.button`
+  padding: 5px 12px;
+  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ff-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 18px;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+
+  &:hover {
+    border-color: var(--ff-border-hover);
+    background: var(--ff-surface-muted);
+  }
+
+  &[aria-pressed='true'] {
+    border-color: var(--ff-primary);
+    background: var(--ff-primary-soft);
+    color: var(--ff-primary);
+  }
 `;
 
 const ToolPanel = styled.div`
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 34%);
+  overflow: hidden;
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
-  overflow: hidden;
   background: var(--ff-surface);
+
+  @media (max-width: 860px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `;
 
-const ToolIntro = styled.div`
+const ParamArea = styled.div`
   display: grid;
-  gap: 4px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ff-border);
-
-  strong {
-    color: var(--ff-text);
-    font-size: 14px;
-  }
-
-  span {
-    color: var(--ff-muted);
-    font-size: 13px;
-  }
+  align-content: start;
+  grid-template-columns: minmax(140px, 24%) minmax(0, 1fr);
 `;
 
-const ParamTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
+const ParamColumnHeader = styled.div`
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--ff-border);
+  color: var(--ff-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+`;
+
+const ParamNameCell = styled.div<{ $last: boolean }>`
+  padding: 16px 20px;
+  border-bottom: ${(props) => (props.$last ? '0' : '1px solid var(--ff-border)')};
+  color: var(--ff-text-secondary);
   font-size: 13px;
-
-  th {
-    padding: 10px 20px;
-    background: var(--ff-surface-muted);
-    color: var(--ff-muted);
-    font-size: 12px;
-    font-weight: 600;
-    text-align: left;
-  }
-
-  td {
-    padding: 14px 20px;
-    border-top: 1px solid var(--ff-border);
-    color: var(--ff-text-secondary);
-    vertical-align: top;
-    line-height: 20px;
-  }
+  line-height: 20px;
+  overflow-wrap: anywhere;
 
   code {
     color: var(--ff-text);
@@ -981,24 +1131,29 @@ const ParamTable = styled.table`
     color: var(--ff-danger);
     font-style: normal;
   }
+`;
 
-  .param-type {
-    display: block;
-    margin-top: 4px;
-    color: var(--ff-subtle);
-    font-size: 11px;
-  }
+const ParamDetailCell = styled.div<{ $last: boolean }>`
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 16px 20px;
+  border-bottom: ${(props) => (props.$last ? '0' : '1px solid var(--ff-border)')};
 
-  .empty-row {
-    color: var(--ff-subtle);
-    text-align: center;
+  p {
+    margin: 0;
+    color: var(--ff-muted);
+    font-size: 13px;
+    line-height: 20px;
   }
 `;
 
-const JsonSample = styled.pre`
-  margin: 0;
-  padding: 8px 10px;
-  overflow: auto;
+const ExampleValue = styled.span`
+  display: inline-block;
+  max-width: 100%;
+  justify-self: start;
+  padding: 4px 10px;
+  overflow: hidden;
   border: 1px solid var(--ff-border);
   border-radius: 6px;
   background: var(--ff-surface-muted);
@@ -1006,28 +1161,100 @@ const JsonSample = styled.pre`
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 12px;
   line-height: 18px;
-  white-space: pre-wrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
-const SampleBlock = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--ff-border);
+const ParamEmpty = styled.div`
+  grid-column: 1 / -1;
+  padding: 24px 20px;
+  color: var(--ff-subtle);
+  font-size: 13px;
+  text-align: center;
+`;
 
-  > div {
-    display: grid;
-    gap: 6px;
+const JsonPane = styled.div`
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-left: 1px solid var(--ff-border);
+
+  @media (max-width: 860px) {
+    border-top: 1px solid var(--ff-border);
+    border-left: 0;
+  }
+`;
+
+const JsonPaneHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ff-border);
+`;
+
+const JsonModeSwitch = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const JsonModeButton = styled.button`
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ff-subtle);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  transition: color 120ms ease;
+
+  &:hover {
+    color: var(--ff-text);
   }
 
-  span {
-    color: var(--ff-muted);
-    font-size: 12px;
+  &[aria-pressed='true'] {
+    color: var(--ff-text);
     font-weight: 600;
   }
+`;
 
-  @media (max-width: 720px) {
-    grid-template-columns: minmax(0, 1fr);
+const JsonPaneLabel = styled.span`
+  margin-left: auto;
+  color: var(--ff-subtle);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+`;
+
+const CopyButton = styled.button`
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ff-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+
+  &:hover {
+    background: var(--ff-surface-muted);
+    border-color: var(--ff-border);
+    color: var(--ff-text);
   }
+`;
+
+const JsonSample = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  background: var(--ff-surface-muted);
+  color: var(--ff-text-secondary);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
 `;

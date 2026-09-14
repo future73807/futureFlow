@@ -113,9 +113,114 @@
   color: var(--ff-danger);
 }
 
+/* 名称右侧的说明入口：无描述时也给出明确提示，不做成死按钮 */
+.canvas-info-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: #c9cdd4;
+  cursor: help;
+}
+
+.canvas-info-icon:hover {
+  color: var(--ff-text-secondary);
+}
+
+.canvas-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.canvas-publish-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ff-subtle);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.canvas-publish-state::before {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+  opacity: 0.6;
+}
+
+.canvas-publish-state.dirty {
+  color: #c9740a;
+}
+
 .canvas-save-actions {
   flex: 0 0 auto;
+  gap: 8px;
+}
+
+.canvas-icon-action {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--ff-text-secondary) !important;
+}
+
+.canvas-icon-action:hover {
+  background: var(--ff-surface-muted) !important;
+  color: var(--ff-text) !important;
+}
+
+.canvas-run-list {
+  display: grid;
   gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.canvas-run-row {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface);
+}
+
+.canvas-run-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-run-source {
+  color: var(--ff-text);
+  font-size: 13px;
+}
+
+.canvas-run-time {
+  margin-left: auto;
+  color: var(--ff-subtle);
+  font-size: 12px;
+}
+
+.canvas-run-meta {
+  display: flex;
+  gap: 14px;
+  color: var(--ff-muted);
+  font-size: 12px;
+}
+
+.canvas-runs-empty {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
 }
 
 .canvas-editor-wrap {

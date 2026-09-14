@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
 import {
   BatchTask,
@@ -69,6 +70,7 @@ export class TasksService {
     private readonly userRepo: Repository<User>,
     private readonly workflowsService: WorkflowsService,
     private readonly workflowCrud: WorkflowCrudService,
+    private readonly converter: DifyConverterService,
     private readonly draftRun: DraftRunService,
   ) {}
 
@@ -107,6 +109,18 @@ export class TasksService {
       }
       throw error;
     }
+    // 草稿要经 DSL 转换才能导入沙箱执行；把转换门禁前移到创建期，
+    // 避免建出一个注定失败的任务（错误信息也能直接显示在创建弹窗里）。
+    if ((dto.mode ?? 'published') === 'draft') {
+      try {
+        this.converter.toDifyDSL(workflow.flowgramJson as FlowGramJSON);
+      } catch (error) {
+        throw new BadRequestException(
+          `当前草稿无法执行：${this.errorMessage(error)}`.slice(0, 300),
+        );
+      }
+    }
+
     const task = this.batchTaskRepo.create({
       userId,
       workflowId: workflow.id,

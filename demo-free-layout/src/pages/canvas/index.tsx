@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import logoUrl from '../../assets/logo.svg';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Input, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
+import { Button, Dropdown, Input, Modal, SideSheet, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import {
+  IconArrowLeft,
+  IconCopy,
+  IconDelete,
+  IconHistory,
+  IconInfoCircle,
+  IconMore,
+  IconSave,
+  IconSend,
+} from '@douyinfe/semi-icons';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
 import {
   EditorRenderer,
@@ -35,6 +45,14 @@ export const CanvasPage = () => {
   const [flowgramData, setFlowgramData] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [workflowDescription, setWorkflowDescription] = useState('');
+  const [publishedVersion, setPublishedVersion] = useState<number | null>(null);
+  // 是否存在「已保存但尚未发布」的改动：编辑即置位，发布成功才复位。
+  const [publishDirty, setPublishDirty] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [runsVisible, setRunsVisible] = useState(false);
+  const [runs, setRuns] = useState<any[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeRevision, setChangeRevision] = useState(0);
   const editorRef = useRef<FreeLayoutPluginContext | null>(null);
@@ -59,8 +77,15 @@ export const CanvasPage = () => {
         return;
       }
       try {
-        const workflow = await apiJson<{ name: string; flowgramJson?: any }>('/workflows/' + id);
+        const workflow = await apiJson<{
+          name: string;
+          description?: string;
+          publishedVersion?: number | null;
+          flowgramJson?: any;
+        }>('/workflows/' + id);
         setWorkflowName(workflow.name);
+        setWorkflowDescription(workflow.description || '');
+        setPublishedVersion(workflow.publishedVersion || null);
         setFlowgramData(normalizeCanvasLocale(workflow.flowgramJson || { nodes: [], edges: [] }));
       } catch (error: any) {
         if (error instanceof ApiError && error.status === 401) return;
@@ -78,6 +103,7 @@ export const CanvasPage = () => {
     revisionRef.current += 1;
     setChangeRevision(revisionRef.current);
     setSaveStatus('unsaved');
+    setPublishDirty(true);
   }, []);
 
   const handleEditorReady = useCallback((context: FreeLayoutPluginContext) => {
@@ -196,6 +222,77 @@ export const CanvasPage = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [saveWorkflow]);
 
+  const handlePublish = useCallback(async () => {
+    if (!id) return;
+    const trimmedName = workflowName.trim();
+    if (!trimmedName) {
+      Toast.warning('工作流名称不能为空');
+      return;
+    }
+    setPublishing(true);
+    try {
+      // 发布读的是服务端快照，必须先把画布上的改动落盘，否则会发布旧版本。
+      if (revisionRef.current !== savedRevisionRef.current) {
+        await saveRunnerRef.current(false);
+      }
+      const result = await apiJson<{ workflow: { publishedVersion: number }; message?: string }>(
+        `/workflows/${id}/publish`,
+        { method: 'POST' },
+      );
+      setPublishedVersion(result?.workflow?.publishedVersion ?? null);
+      setPublishDirty(false);
+      Toast.success(result?.message || '已发布');
+    } catch (error: any) {
+      Toast.error(error?.message || '发布失败');
+    } finally {
+      setPublishing(false);
+    }
+  }, [id, workflowName]);
+
+  const openRuns = useCallback(async () => {
+    if (!id) return;
+    setRunsVisible(true);
+    setRunsLoading(true);
+    try {
+      const response = await apiJson<any>(`/workflows/${id}/runs?page=1&pageSize=20`);
+      setRuns(response?.items || []);
+    } catch (error: any) {
+      Toast.error(error?.message || '加载运行记录失败');
+    } finally {
+      setRunsLoading(false);
+    }
+  }, [id]);
+
+  const handleDuplicate = useCallback(async () => {
+    if (!id) return;
+    try {
+      const copy = await apiJson<{ id: string }>(`/workflows/${id}/duplicate`, { method: 'POST' });
+      Toast.success('已复制工作流');
+      navigate(`/canvas/${copy.id}`);
+    } catch (error: any) {
+      Toast.error(error?.message || '复制失败');
+    }
+  }, [id, navigate]);
+
+  const handleDelete = useCallback(() => {
+    if (!id) return;
+    Modal.confirm({
+      title: '删除工作流',
+      content: '删除后草稿与版本历史都会移除，确定继续吗？',
+      okText: '删除',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await apiJson(`/workflows/${id}`, { method: 'DELETE' });
+          Toast.success('已删除');
+          navigate('/');
+        } catch (error: any) {
+          Toast.error(error?.message || '删除失败');
+        }
+      },
+    });
+  }, [id, navigate]);
+
   const handleBack = useCallback(() => {
     const hasPendingWork = revisionRef.current !== savedRevisionRef.current || saveInFlightRef.current;
     if (hasPendingWork && !window.confirm('当前更改尚未保存完成，确定要离开吗？')) return;
@@ -247,14 +344,40 @@ export const CanvasPage = () => {
                   markDirty();
                 }}
               />
+              <Tooltip content={workflowDescription || '该工作流暂无描述'}>
+                <span className="canvas-info-icon" aria-label="工作流说明">
+                  <IconInfoCircle aria-hidden="true" />
+                </span>
+              </Tooltip>
             </div>
-            <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
+            <div className="canvas-status-row">
+              <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
+              {saveStatus === 'error' && (
+                <Tag size="small" color="red">
+                  保存失败
+                </Tag>
+              )}
+              {publishDirty ? (
+                <span className="canvas-publish-state dirty">有尚未发布的修改</span>
+              ) : publishedVersion ? (
+                <span className="canvas-publish-state">已发布 v{publishedVersion}</span>
+              ) : (
+                <span className="canvas-publish-state">尚未发布</span>
+              )}
+            </div>
           </div>
         </div>
         <div className="canvas-save-actions">
+          <Tooltip content="运行记录">
+            <Button
+              className="canvas-icon-action"
+              theme="borderless"
+              aria-label="运行记录"
+              icon={<IconHistory aria-hidden="true" />}
+              onClick={() => void openRuns()}
+            />
+          </Tooltip>
           <Button
-            theme="solid"
-            type="primary"
             aria-label="保存工作流"
             icon={<IconSave aria-hidden="true" />}
             loading={saving}
@@ -262,6 +385,42 @@ export const CanvasPage = () => {
           >
             保存
           </Button>
+          <Button
+            theme="solid"
+            type="primary"
+            aria-label="发布工作流"
+            icon={<IconSend aria-hidden="true" />}
+            loading={publishing}
+            onClick={() => void handlePublish()}
+          >
+            发布
+          </Button>
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            menu={[
+              {
+                node: 'item',
+                name: '复制工作流',
+                icon: <IconCopy />,
+                onClick: () => void handleDuplicate(),
+              },
+              {
+                node: 'item',
+                name: '删除工作流',
+                icon: <IconDelete />,
+                type: 'danger',
+                onClick: handleDelete,
+              },
+            ]}
+          >
+            <Button
+              className="canvas-icon-action"
+              theme="borderless"
+              aria-label="更多操作"
+              icon={<IconMore aria-hidden="true" />}
+            />
+          </Dropdown>
         </div>
       </header>
 
@@ -275,6 +434,61 @@ export const CanvasPage = () => {
           />
         </SemiLocaleProvider>
       </section>
+
+      <SideSheet
+        title="运行记录"
+        visible={runsVisible}
+        width={520}
+        footer={null}
+        onCancel={() => setRunsVisible(false)}
+      >
+        {runsLoading ? (
+          <div className="canvas-loading">
+            <Spin size="large" tip="加载运行记录" />
+          </div>
+        ) : runs.length === 0 ? (
+          <div className="canvas-runs-empty">
+            <Typography.Text type="tertiary">暂无运行记录</Typography.Text>
+          </div>
+        ) : (
+          <ul className="canvas-run-list">
+            {runs.map((run) => (
+              <li key={run.id} className="canvas-run-row">
+                <div className="canvas-run-head">
+                  <Tag
+                    size="small"
+                    color={
+                      run.status === 'succeeded'
+                        ? 'green'
+                        : run.status === 'failed'
+                          ? 'red'
+                          : run.status === 'running'
+                            ? 'blue'
+                            : 'grey'
+                    }
+                  >
+                    {run.status}
+                  </Tag>
+                  <span className="canvas-run-source">{run.source || 'manual'}</span>
+                  <span className="canvas-run-time">
+                    {new Date(run.createdAt).toLocaleString('zh-CN', {
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+                <div className="canvas-run-meta">
+                  <span>令牌 {run.totalTokens ?? 0}</span>
+                  <span>耗时 {Number(run.elapsedTime || 0).toFixed(2)}s</span>
+                  <span>费用 ¥{Number(run.actualCost ?? run.estimatedCost ?? 0).toFixed(4)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SideSheet>
     </main>
   );
 };

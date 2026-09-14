@@ -55,6 +55,63 @@
   justify-content: center !important;
 }
 
+/* 侧边栏底部积分卡：与侧栏同为白色，用描边区分层级 */
+.sidebar-points {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding: 12px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface);
+}
+
+.sidebar-points-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ff-muted);
+  font-size: 12px;
+}
+
+.sidebar-points-head em {
+  padding: 1px 6px;
+  border: 1px solid var(--ff-border);
+  border-radius: 4px;
+  color: var(--ff-subtle);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.sidebar-points strong {
+  color: var(--ff-text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.sidebar-points button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ff-muted);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.sidebar-points button:hover {
+  color: var(--ff-primary);
+}
+
+.sidebar-points button i {
+  font-style: normal;
+}
+
 .sidebar-command {
   color: var(--ff-muted) !important;
 }

@@ -69,22 +69,84 @@ async function main() {
   // 2) 选一张可执行的工作流：优先已发布版本，否则退回草稿沙箱执行。
   //    云端执行链只认 Dify 支持的节点，纯本地工具（Python/SQL）图要跳过，
   //    否则拿到的是「工作流至少需要一个可执行节点」这类预期的拒绝结果。
-  const CLOUD_EXECUTABLE_NODES = ['llm', 'http', 'code', 'variable', 'text', 'image', 'video'];
-  const list = await json('GET', '/workflows', token);
-  const workflows = Array.isArray(list.data) ? list.data : [];
-  const isCloudExecutable = (workflow) =>
-    (workflow.flowgramJson?.nodes || []).some((node) => CLOUD_EXECUTABLE_NODES.includes(node.type));
-  const published = workflows.find((item) => item.publishedVersion);
-  const executableDraft = workflows.find(isCloudExecutable);
-  const target = published || executableDraft || workflows[0];
+  // 2) 自建一张最小可执行工作流（开始 → 大语言模型 → 结束）。
+  //    不复用库里已有的工作流：历史草稿可能带空提示词或未配置的条件分支，
+  //    那样测到的是「拒绝」而不是「批量执行」，结论不可复现。
+  const batchWorkflow = await json('POST', '/workflows', token, {
+    name: `任务中心验收-${Date.now().toString().slice(-6)}`,
+    description: '任务中心端到端验收专用（开始 → 大语言模型 → 结束）',
+    flowgram: JSON.stringify({
+      nodes: [
+        {
+          id: 'start_0',
+          type: 'start',
+          meta: { position: { x: 80, y: 200 } },
+          data: {
+            title: '开始',
+            outputs: {
+              type: 'object',
+              properties: { query: { type: 'string', default: '你好' } },
+            },
+          },
+        },
+        {
+          id: 'llm_0',
+          type: 'llm',
+          meta: { position: { x: 480, y: 200 } },
+          data: {
+            title: '大语言模型 1',
+            inputsValues: {
+              modelName: { type: 'constant', content: 'glm-5.3-flash' },
+              temperature: { type: 'constant', content: 0.5 },
+              systemPrompt: {
+                type: 'template',
+                content: '你是一名可靠的 AI 助手，请用清晰、准确的中文回答。',
+              },
+              prompt: { type: 'template', content: '{{start_0.query}}' },
+            },
+            inputs: {
+              type: 'object',
+              required: ['modelName', 'temperature', 'prompt'],
+              properties: {
+                modelName: { type: 'string' },
+                temperature: { type: 'number' },
+                systemPrompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
+                prompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
+              },
+            },
+            outputs: {
+              type: 'object',
+              properties: { result: { type: 'string' } },
+            },
+          },
+        },
+        {
+          id: 'end_0',
+          type: 'end',
+          meta: { position: { x: 900, y: 200 } },
+          data: {
+            title: '结束',
+            inputsValues: { result: { type: 'ref', content: ['llm_0', 'result'] } },
+            inputs: { type: 'object', properties: { result: { type: 'string' } } },
+          },
+        },
+      ],
+      edges: [
+        { sourceNodeID: 'start_0', targetNodeID: 'llm_0' },
+        { sourceNodeID: 'llm_0', targetNodeID: 'end_0' },
+      ],
+    }),
+  });
+  const target = batchWorkflow.data;
+  const created = batchWorkflow.status === 201 || batchWorkflow.status === 200;
   record(
-    '读取可用工作流',
-    !!target,
-    target ? `${target.name}（${published ? '已发布' : '草稿沙箱'}）` : '没有工作流，请先创建',
+    '创建验收专用工作流',
+    created && !!target?.id,
+    created ? `${target.name}` : `HTTP ${batchWorkflow.status}`,
   );
-  if (!target) throw new Error('缺少可选工作流');
+  if (!created) throw new Error('创建工作流失败，无法继续');
 
-  const mode = published ? 'published' : 'draft';
+  const mode = 'draft';
 
   // 3) 参数校验：空输入必须被拒
   const invalid = await json('POST', '/tasks/batch', token, {
@@ -107,16 +169,16 @@ async function main() {
   );
 
   // 5) 真实批量执行：两行输入逐行驱动同一张工作流
-  const created = await json('POST', '/tasks/batch', token, {
+  const taskCreated = await json('POST', '/tasks/batch', token, {
     workflowId: target.id,
     name: '任务中心验收批量任务',
     mode,
     inputs: [{ query: '用一句话介绍你自己' }, { query: '1+1等于几？请只回答数字' }],
   });
-  const okCreate = created.status === 200 || created.status === 201;
-  record('创建批量任务(2 行输入)', okCreate, `HTTP ${created.status} id=${created.data?.id || '-'}`);
-  if (!okCreate) throw new Error(`创建批量任务失败: ${JSON.stringify(created.data).slice(0, 200)}`);
-  const taskId = created.data.id;
+  const okCreate = taskCreated.status === 200 || taskCreated.status === 201;
+  record('创建批量任务(2 行输入)', okCreate, `HTTP ${taskCreated.status} id=${taskCreated.data?.id || '-'}`);
+  if (!okCreate) throw new Error(`创建批量任务失败: ${JSON.stringify(taskCreated.data).slice(0, 200)}`);
+  const taskId = taskCreated.data.id;
 
   // 6) 列表里能查到刚才的任务
   const listed = await json('GET', '/tasks/batch?page=1&pageSize=20', token);
@@ -181,6 +243,10 @@ async function main() {
     Array.isArray(async.data?.items) && typeof async.data?.total === 'number',
     `total=${async.data?.total}`,
   );
+
+  // 11) 清理：删掉验收专用工作流，避免污染资源列表
+  const cleanup = await json('DELETE', `/workflows/${target.id}`, token);
+  record('清理验收专用工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
 
   const failed = results.filter((item) => !item.ok).length;
   console.log(`\n===== 任务中心验收: ${results.length - failed}/${results.length} passed =====`);

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { ConverterModule } from '../converter/converter.module';
 import { BatchTask } from '../database/entities/batch-task.entity';
 import { User } from '../database/entities/user.entity';
 import { Workflow } from '../database/entities/workflow.entity';
@@ -18,6 +19,7 @@ import { TasksService } from './tasks.service';
     TypeOrmModule.forFeature([BatchTask, WorkflowRun, Workflow, User]),
     WorkflowsModule,
     AuthModule,
+    ConverterModule,
   ],
   controllers: [TasksController],
   providers: [TasksService],

@@ -19,14 +19,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import {
-  IconClock,
-  IconFile,
-  IconPlay,
-  IconPlus,
-  IconRefresh,
-  IconUpload,
-} from '@douyinfe/semi-icons';
+import { IconClock, IconPlus, IconRefresh } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 
 import { apiJson } from '../../utils/api';
@@ -190,6 +183,8 @@ export const TaskCenterPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('全部');
+  const [creatorFilter, setCreatorFilter] = useState('全部创建者');
+  const [guideVisible, setGuideVisible] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('全部');
   const [createVisible, setCreateVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -334,12 +329,24 @@ export const TaskCenterPage = () => {
 
       <FilterRow>
         {activeTab === 'batch' ? (
-          <Select
-            value={statusFilter}
-            onChange={(value) => setStatusFilter(String(value))}
-            optionList={statusOptions}
-            style={{ width: 150 }}
-          />
+          <>
+            {/* 平台是单账号工作区，「创建者」维度只有本账号一种取值；控件形态与参考图保持一致 */}
+            <Select
+              value={creatorFilter}
+              onChange={(value) => setCreatorFilter(String(value))}
+              optionList={[
+                { value: '全部创建者', label: '全部创建者' },
+                { value: '我创建的', label: '我创建的' },
+              ]}
+              style={{ width: 150 }}
+            />
+            <Select
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(String(value))}
+              optionList={statusOptions}
+              style={{ width: 150 }}
+            />
+          </>
         ) : (
           <Select
             value={sourceFilter}
@@ -372,7 +379,10 @@ export const TaskCenterPage = () => {
         </LoadingCenter>
       ) : activeTab === 'batch' ? (
         batchTasks.length === 0 ? (
-          <BatchEmptyState onCreate={() => setCreateVisible(true)} />
+          <BatchEmptyState
+            onCreate={() => setCreateVisible(true)}
+            onGuide={() => setGuideVisible(true)}
+          />
         ) : (
           <TaskList>
             {batchTasks.map((task) => (
@@ -476,6 +486,37 @@ export const TaskCenterPage = () => {
         }}
       />
 
+      <Modal
+        title="批量任务怎么用"
+        visible={guideVisible}
+        onCancel={() => setGuideVisible(false)}
+        footer={
+          <Button theme="solid" type="primary" onClick={() => setGuideVisible(false)}>
+            我知道了
+          </Button>
+        }
+        width={520}
+      >
+        <GuideList>
+          <li>
+            <b>1. 选择任务对象</b>
+            <span>先把工作流编排好；批量任务支持「已发布版本」与「当前草稿」两种执行模式。</span>
+          </li>
+          <li>
+            <b>2. 填写任务数据</b>
+            <span>用 CSV（首行为字段名）或 JSON 数组提供每行输入，字段名要和开始节点的输入参数一致。</span>
+          </li>
+          <li>
+            <b>3. 批量任务执行</b>
+            <span>任务创建后逐行串行执行，每行结束即写入进度，列表里可以直接看到成功率。</span>
+          </li>
+          <li>
+            <b>4. 查看任务结果</b>
+            <span>点开任务详情可以查看每行输出、令牌用量和失败原因，运行中的任务可以取消。</span>
+          </li>
+        </GuideList>
+      </Modal>
+
       <SideSheet
         title="任务详情"
         visible={!!detailId}
@@ -537,39 +578,39 @@ export const TaskCenterPage = () => {
   );
 };
 
-const BatchEmptyState = ({ onCreate }: { onCreate: () => void }) => (
+const BatchEmptyState = ({ onCreate, onGuide }: { onCreate: () => void; onGuide: () => void }) => (
   <EmptyWrap>
     <EmptyTitle>futureFlow 批量任务，让我们开始吧！</EmptyTitle>
     <EmptySubtitle>批量任务可以让你配置一批工作流输入，逐行驱动同一张工作流执行。</EmptySubtitle>
     <StepRow>
       <Step>
-        <StepIcon>
-          <IconPlay />
-        </StepIcon>
+        <StepArt>
+          <StepArtPick />
+        </StepArt>
         <strong>选择任务对象</strong>
         <p>选择一张工作流作为批量任务的执行对象。</p>
       </Step>
       <StepArrow>→</StepArrow>
       <Step>
-        <StepIcon>
-          <IconUpload />
-        </StepIcon>
+        <StepArt>
+          <StepArtData />
+        </StepArt>
         <strong>填写任务数据</strong>
         <p>用 CSV 或 JSON 数组提供每行的输入参数。</p>
       </Step>
       <StepArrow>→</StepArrow>
       <Step>
-        <StepIcon>
-          <IconRefresh />
-        </StepIcon>
+        <StepArt>
+          <StepArtRun />
+        </StepArt>
         <strong>批量任务执行</strong>
         <p>逐行读取输入并驱动工作流执行。</p>
       </Step>
       <StepArrow>→</StepArrow>
       <Step>
-        <StepIcon>
-          <IconFile />
-        </StepIcon>
+        <StepArt>
+          <StepArtResult />
+        </StepArt>
         <strong>查看任务结果</strong>
         <p>执行完成后在任务详情里查看每行输出。</p>
       </Step>
@@ -577,7 +618,54 @@ const BatchEmptyState = ({ onCreate }: { onCreate: () => void }) => (
     <Button theme="solid" type="primary" icon={<IconPlus aria-hidden="true" />} onClick={onCreate}>
       创建批量任务
     </Button>
+    <GuideLink type="button" onClick={onGuide}>
+      新手必看
+    </GuideLink>
   </EmptyWrap>
+);
+
+/** 四步引导插图：扁平线稿 + 单一强调色，避免为帮助区引入位图资源 */
+const StepArtPick = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <rect x="10" y="14" width="58" height="14" rx="4" fill="#ecfdf3" />
+    <rect x="10" y="34" width="46" height="8" rx="4" fill="#f1f3f7" />
+    <rect x="10" y="48" width="52" height="8" rx="4" fill="#f1f3f7" />
+    <rect x="80" y="22" width="38" height="30" rx="6" fill="#eef4ff" stroke="#c7d7fb" />
+    <path d="M92 37l6 6 12-13" stroke="#2563eb" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const StepArtData = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <rect x="24" y="8" width="58" height="60" rx="6" fill="#ffffff" stroke="#dbe0e8" />
+    <rect x="34" y="18" width="20" height="7" rx="3.5" fill="#ecfdf3" />
+    <rect x="34" y="32" width="38" height="6" rx="3" fill="#f1f3f7" />
+    <rect x="34" y="44" width="38" height="6" rx="3" fill="#f1f3f7" />
+    <circle cx="96" cy="46" r="16" fill="#ecfdf3" />
+    <path d="M96 38v16M88 46h16" stroke="#16803c" strokeWidth="2.6" strokeLinecap="round" />
+  </svg>
+);
+
+const StepArtRun = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <circle cx="30" cy="38" r="9" fill="#eef4ff" stroke="#c7d7fb" strokeWidth="2" />
+    <circle cx="64" cy="20" r="7" fill="#ecfdf3" stroke="#bfe6cd" strokeWidth="2" />
+    <circle cx="64" cy="56" r="7" fill="#ecfdf3" stroke="#bfe6cd" strokeWidth="2" />
+    <circle cx="100" cy="38" r="9" fill="#fff6e8" stroke="#f4d8ac" strokeWidth="2" />
+    <path d="M38 34l18-11M38 42l18 11M71 22l21 12M71 54l21-12" stroke="#c9cdd4" strokeWidth="2" strokeLinecap="round" />
+    <path d="M97 34l3 4 6-8" stroke="#b54708" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const StepArtResult = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <rect x="16" y="10" width="96" height="56" rx="6" fill="#ffffff" stroke="#dbe0e8" />
+    <rect x="26" y="20" width="34" height="8" rx="4" fill="#eef4ff" />
+    <rect x="66" y="20" width="36" height="8" rx="4" fill="#ecfdf3" />
+    <rect x="26" y="34" width="34" height="8" rx="4" fill="#f1f3f7" />
+    <rect x="66" y="34" width="36" height="8" rx="4" fill="#f1f3f7" />
+    <rect x="26" y="48" width="76" height="8" rx="4" fill="#f1f3f7" />
+  </svg>
 );
 
 const CreateTaskModal = ({
@@ -924,6 +1012,21 @@ const EmptyWrap = styled.div`
   background: var(--ff-surface);
 `;
 
+const GuideLink = styled.button`
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ff-primary);
+  cursor: pointer;
+  font-size: 13px;
+
+  &:hover {
+    color: var(--ff-primary-hover);
+    text-decoration: underline;
+  }
+`;
+
 const EmptyTitle = styled.h2`
   margin: 0;
   color: var(--ff-text);
@@ -965,15 +1068,33 @@ const Step = styled.div`
   }
 `;
 
-const StepIcon = styled.span`
+const StepArt = styled.div`
   display: grid;
-  width: 84px;
-  height: 60px;
   place-items: center;
-  border-radius: 10px;
-  background: var(--ff-surface-muted);
-  color: var(--ff-primary);
-  font-size: 24px;
+`;
+
+const GuideList = styled.ul`
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    gap: 4px;
+  }
+
+  b {
+    color: var(--ff-text);
+    font-size: 14px;
+  }
+
+  span {
+    color: var(--ff-muted);
+    font-size: 13px;
+    line-height: 20px;
+  }
 `;
 
 const StepArrow = styled.span`
