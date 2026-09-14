@@ -32,6 +32,6 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
     DraftRunService,
     WorkflowExecutionGuardService,
   ],
-  exports: [WorkflowsService, WorkflowCrudService],
+  exports: [WorkflowsService, WorkflowCrudService, DraftRunService],
 })
 export class WorkflowsModule {}

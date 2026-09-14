@@ -19,6 +19,8 @@ import { FilesModule } from './files/files.module';
 import { McpModule } from './mcp/mcp.module';
 import { LlmModule } from './llm/llm.module';
 import { LocalToolsModule } from './localtools/localtools.module';
+import { PluginsModule } from './plugins/plugins.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -77,6 +79,8 @@ import { LocalToolsModule } from './localtools/localtools.module';
     McpModule,
     LlmModule,
     LocalToolsModule,
+    PluginsModule,
+    TasksModule,
   ],
 })
 export class AppModule {}

@@ -29,6 +29,8 @@ import { AddKnowledgeDatasetOwners1722652800000 } from './migrations/17226528000
 import { AddTriggerDailySchedule1722739200000 } from './migrations/1722739200000-add-trigger-daily-schedule';
 import { AddTriggerCronExpression1722912000000 } from './migrations/1722912000000-add-trigger-cron-expression';
 import { AddUserTokenVersion1723004800000 } from './migrations/1723004800000-add-user-token-version';
+import { BatchTask } from './entities/batch-task.entity';
+import { AddBatchTasks1723091200000 } from './migrations/1723091200000-add-batch-tasks';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -76,6 +78,7 @@ export default new DataSource({
     McpServer,
     DraftSandbox,
     KnowledgeDatasetOwner,
+    BatchTask,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
@@ -90,6 +93,7 @@ export default new DataSource({
     AddTriggerDailySchedule1722739200000,
     AddTriggerCronExpression1722912000000,
     AddUserTokenVersion1723004800000,
+    AddBatchTasks1723091200000,
   ],
   synchronize: false,
   logging: false,
