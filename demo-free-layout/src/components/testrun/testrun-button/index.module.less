@@ -4,25 +4,19 @@
  */
 
 .testrun-success-button {
-  background-color: var(--ff-primary) !important; // keep canvas execution actions consistent
-  border-color: var(--ff-primary) !important;
-  border-radius: var(--ff-radius);
+  background-color: #16a34a !important; // 参考图风格: 试运行为绿色主按钮
+  border-color: #16a34a !important;
+  border-radius: 8px;
   color: #fff !important; // override semi style
+}
 
-  &:hover {
-    background-color: var(--ff-primary-hover) !important;
-    border-color: var(--ff-primary-hover) !important;
-  }
+.testrun-success-button:hover {
+  background-color: #15803d !important;
+  border-color: #15803d !important;
 }
 
 .testrun-error-button {
-  background-color: var(--ff-danger) !important; // override semi style
-  border-color: var(--ff-danger) !important;
-  border-radius: var(--ff-radius);
+  background-color: #d92d20 !important; // override semi style
+  border-radius: 8px;
   color: #fff !important; // override semi style
-
-  &:hover {
-    background-color: #b02f26 !important;
-    border-color: #b02f26 !important;
-  }
 }

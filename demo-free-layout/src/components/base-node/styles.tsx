@@ -8,10 +8,10 @@ import { IconInfoCircle } from '@douyinfe/semi-icons';
 
 export const NodeWrapperStyle = styled.div`
   align-items: flex-start;
-  background-color: var(--ff-surface);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  background-color: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.03);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -19,40 +19,16 @@ export const NodeWrapperStyle = styled.div`
   width: 360px;
   height: auto;
   min-height: 44px;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
-
-  &::before {
-    position: absolute;
-    z-index: 2;
-    top: 10px;
-    bottom: 10px;
-    left: 0;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: #94a3b8;
-    content: '';
-  }
-
-  &.node-type-llm::before,
-  &.node-type-text::before { background: #6366f1; }
-  &.node-type-image::before { background: #22a06b; }
-  &.node-type-video::before { background: #f97316; }
-  &.node-type-http::before { background: #0284c7; }
-  &.node-type-code::before { background: #7c3aed; }
-  &.node-type-condition::before,
-  &.node-type-multi-condition::before { background: #d97706; }
-  &.node-type-start::before { background: #16a34a; }
-  &.node-type-end::before { background: #dc2626; }
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 
   &.selected {
     border: 1px solid var(--ff-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.09), 0 4px 12px rgba(16, 24, 40, 0.06);
   }
 
   &:hover {
-    border-color: var(--ff-border-strong);
-    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.09);
-    transform: translateY(-1px);
+    border-color: #cfd6e0;
+    box-shadow: 0 6px 16px rgba(16, 24, 40, 0.07);
   }
 `;
 
@@ -60,7 +36,7 @@ export const ErrorIcon = () => (
   <IconInfoCircle
     style={{
       position: 'absolute',
-      color: 'var(--ff-danger)',
+      color: '#d92d20',
       left: -6,
       top: -6,
       zIndex: 1,

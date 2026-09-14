@@ -24,6 +24,7 @@ import { WorkflowRuntimeClient } from '../client';
 import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
 import { WorkflowNodeType } from '../../../nodes';
 import { prepareContentNodesForRuntime } from '../../../nodes/content/runtime';
+import { prepareLLMNodesForRuntime } from '../../../nodes/llm/runtime';
 import { prepareHttpNodesForRuntime } from '../../../nodes/http/runtime';
 import { prepareVariableNodesForRuntime } from '../../../nodes/variable/runtime';
 import { prepareCodeNodesForRuntime } from '../../../nodes/code/runtime';
@@ -126,14 +127,20 @@ export class WorkflowRuntimeService {
     }
     let schema: ReturnType<WorkflowDocument['toJSON']> & { globalVariable: unknown };
     try {
-      schema = prepareConditionNodesForRuntime(prepareCodeNodesForRuntime(
-        prepareHttpNodesForRuntime(prepareContentNodesForRuntime(
-          prepareVariableNodesForRuntime({
-            ...this.document.toJSON(),
-            globalVariable: this.getGlobalVariableSchema(),
-          }),
-        )),
-      ));
+      schema = prepareConditionNodesForRuntime(
+        prepareCodeNodesForRuntime(
+          prepareLLMNodesForRuntime(
+            prepareHttpNodesForRuntime(
+              prepareContentNodesForRuntime(
+                prepareVariableNodesForRuntime({
+                  ...this.document.toJSON(),
+                  globalVariable: this.getGlobalVariableSchema(),
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
     } catch (error) {
       this.resultEmitter.fire({
         errors: [localizeRuntimeMessage((error as Error)?.message || '变量配置无效')],

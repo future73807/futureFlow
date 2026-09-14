@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  */
@@ -32,10 +32,10 @@ export const ToolContainer = styled.div`
 export const ToolSection = styled.div`
   display: flex;
   align-items: center;
-  background-color: var(--ff-surface);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  box-shadow: var(--ff-shadow-sm);
+  background-color: #fff;
+  border: 1px solid #e3e7ee;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
   column-gap: 4px;
   min-height: 44px;
   padding: 4px 10px;
@@ -85,18 +85,11 @@ export const ToolSection = styled.div`
 
 export const SelectZoom = styled.span`
   padding: 4px;
-  border-radius: var(--ff-radius);
-  border: 1px solid var(--ff-border);
+  border-radius: 8px;
+  border: 1px solid #d3d9e3;
   font-size: 12px;
   width: 50px;
   cursor: pointer;
-  color: var(--ff-muted);
-  transition: border-color 0.15s ease, color 0.15s ease;
-
-  &:hover {
-    border-color: var(--ff-primary);
-    color: var(--ff-primary);
-  }
 `;
 
 export const MinimapContainer = styled.div`
@@ -109,3 +102,4 @@ export const MinimapContainer = styled.div`
 export const UIIconMinimap = styled(IconMinimap)<{ visible: boolean }>`
   color: ${(props) => (props.visible ? undefined : '#060709cc')};
 `;
+

@@ -17,13 +17,8 @@ export function readStoredTheme(): ThemeMode | null {
 }
 
 export function resolveInitialTheme(): ThemeMode {
-  const stored = readStoredTheme();
-  if (stored) return stored;
-  try {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  } catch {
-    return 'light';
-  }
+  // 产品主题以白色为主: 不跟随系统深色, 也不恢复历史深色选择。
+  return 'light';
 }
 
 /** 同步设置 --ff-* 令牌（html data-theme）与 Semi UI 调色板（body theme-mode）。 */

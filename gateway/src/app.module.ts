@@ -17,6 +17,7 @@ import { MediaModule } from './media/media.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { FilesModule } from './files/files.module';
 import { McpModule } from './mcp/mcp.module';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { McpModule } from './mcp/mcp.module';
     KnowledgeModule,
     FilesModule,
     McpModule,
+    LlmModule,
   ],
 })
 export class AppModule {}

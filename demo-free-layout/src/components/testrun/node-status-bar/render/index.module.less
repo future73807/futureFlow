@@ -1,28 +1,28 @@
-/**
+﻿/**
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  */
 
 .nodeStatus {
   &Succeed {
-    background-color: rgba(22, 121, 76, 0.1);
-    color: var(--ff-success);
+    background-color: rgba(105, 209, 140, 0.3);
+    color: #00b42a;
   }
 
   &Processing {
-    background-color: rgba(37, 99, 235, 0.1);
-    color: var(--ff-primary);
+    background-color: rgba(37, 99, 235, 0.12);
+    color: #2563eb;
   }
 
   &Failed {
-    background-color: rgba(197, 56, 45, 0.1);
-    color: var(--ff-danger);
+    background-color: rgba(255, 163, 171, 0.3);
+    color: #f53f3f;
   }
 }
 
 .icon {
   &.processing {
-    color: var(--ff-primary);
+    color: #2563eb;
   }
 }
 
@@ -36,7 +36,7 @@
 
 .count {
   font-weight: 500;
-  color: var(--ff-text);
+  color: #333;
   font-size: 15px;
   margin-left: 12px;
 }
@@ -59,12 +59,12 @@
   font-weight: 500;
 
   &.active {
-    border-color: var(--ff-primary);
+    border-color: #2563eb;
     font-weight: 800;
   }
 
   &.inactive {
-    border-color: var(--ff-border);
+    border-color: rgba(29, 28, 35, 0.08);
   }
 }
 
@@ -74,11 +74,11 @@
   border: 1px solid;
 
   &.active {
-    border-color: var(--ff-primary);
+    border-color: #2563eb;
   }
 
   &.inactive {
-    border-color: var(--ff-border);
+    border-color: rgba(29, 28, 35, 0.08);
   }
 }
 
@@ -90,5 +90,6 @@
 
 .error {
   padding: 12px;
-  color: var(--ff-danger);
+  color: red;
 }
+

@@ -1,6 +1,7 @@
 :root {
-  --ff-page: #f5f7fb;
+  --ff-page: #f4f5f7;
   --ff-surface: #ffffff;
+<<<<<<< HEAD
   --ff-surface-muted: #f8fafc;
   --ff-sidebar: #111827;
   --ff-sidebar-muted: #94a3b8;
@@ -26,16 +27,40 @@
   --ff-radius-lg: 12px;
   --ff-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.04);
   --ff-shadow-lg: 0 18px 52px rgba(15, 23, 42, 0.16);
+=======
+  --ff-surface-muted: #f8f9fb;
+  --ff-sidebar: #171a20;
+  --ff-sidebar-muted: #9aa2b1;
+  --ff-text: #1b2432;
+  --ff-muted: #667085;
+  --ff-subtle: #98a2b3;
+  --ff-border: #e5e8ee;
+  --ff-border-strong: #d3d9e3;
+  --ff-primary: #2563eb;
+  --ff-primary-hover: #1d4ed8;
+  --ff-primary-soft: #eef4ff;
+  --ff-success: #16803c;
+  --ff-warning: #b54708;
+  --ff-danger: #d92d20;
+  --ff-radius: 8px;
+  --ff-radius-lg: 10px;
+  --ff-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --ff-shadow-lg: 0 20px 50px rgba(16, 24, 40, 0.16);
+>>>>>>> bak
 
+  /* FlowGram canvas: flat neutral board + one restrained blue accent. */
+  --g-editor-background: #f4f5f7;
+  --g-selection-background: #2563eb;
   --g-workflow-port-color-primary: #2563eb;
-  --g-workflow-port-color-secondary: #93c5fd;
-  --g-workflow-port-color-error: #c5382d;
+  --g-workflow-port-color-secondary: #a5c4ff;
+  --g-workflow-port-color-error: #d92d20;
   --g-workflow-port-color-background: #ffffff;
   --g-workflow-line-color-hidden: transparent;
-  --g-workflow-line-color-default: #2563eb;
+  --g-workflow-line-color-default: #94b0dd;
   --g-workflow-line-color-drawing: #2563eb;
   --g-workflow-line-color-hover: #1d4ed8;
   --g-workflow-line-color-selected: #1d4ed8;
+<<<<<<< HEAD
   --g-workflow-line-color-error: #c5382d;
 
   /* FlowGram 画布本体（选区/背景）对齐品牌色 */
@@ -83,6 +108,10 @@ html[data-theme='dark'] {
 
   --g-editor-background: var(--ff-page);
   --g-selection-background: #3b82f6;
+=======
+  --g-workflow-line-color-error: #d92d20;
+  --g-workflow-line-color-flowing: #2563eb;
+>>>>>>> bak
 }
 
 * { box-sizing: border-box; }
@@ -102,7 +131,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.44);
+  outline: 2px solid rgba(37, 99, 235, 0.4);
   outline-offset: 2px;
 }
 
@@ -111,12 +140,20 @@ textarea:focus-visible {
   min-height: 34px;
   border-radius: var(--ff-radius) !important;
   border-color: var(--ff-border-strong);
+<<<<<<< HEAD
   color: var(--ff-text-secondary);
+=======
+  color: #3b4453;
+>>>>>>> bak
   font-weight: 600;
   box-shadow: none !important;
 }
 
+<<<<<<< HEAD
 .semi-button:hover { border-color: var(--ff-border-hover); background: var(--ff-surface-muted); }
+=======
+.semi-button:hover { border-color: #aeb8c9; background: #f7f8fa; }
+>>>>>>> bak
 
 .semi-button-primary,
 .semi-button-primary.semi-button-solid {
@@ -133,6 +170,7 @@ textarea:focus-visible {
 
 .semi-button-light {
   background: var(--ff-primary-soft) !important;
+<<<<<<< HEAD
   border-color: var(--ff-primary-border) !important;
   color: var(--ff-primary-hover) !important;
 }
@@ -147,6 +185,13 @@ textarea:focus-visible {
 }
 
 .semi-button-borderless:hover { background: var(--ff-surface-muted) !important; }
+=======
+  border-color: #d3e2fc !important;
+  color: #1d4ed8 !important;
+}
+
+.semi-button-borderless:hover { background: #f1f3f7 !important; }
+>>>>>>> bak
 .semi-button-danger { color: var(--ff-danger) !important; }
 .semi-button .semi-button-content { gap: 6px; }
 .semi-tag { border-radius: 4px; font-size: 12px; font-weight: 600; }
@@ -161,28 +206,46 @@ textarea:focus-visible {
 
 .semi-input-wrapper:hover,
 .semi-select:hover,
+<<<<<<< HEAD
 .semi-textarea-wrapper:hover { border-color: var(--ff-border-hover) !important; }
+=======
+.semi-textarea-wrapper:hover { border-color: #aeb8c9 !important; }
+>>>>>>> bak
 
 .semi-input-wrapper-focus,
 .semi-select-focus,
 .semi-textarea-wrapper-focus {
   border-color: var(--ff-primary) !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
 }
 
+<<<<<<< HEAD
 .semi-form-field-label-text { color: var(--ff-text-secondary); font-size: 13px; font-weight: 600; }
+=======
+.semi-form-field-label-text { color: #3b4453; font-size: 13px; font-weight: 600; }
+>>>>>>> bak
 .semi-table { color: var(--ff-text); }
 
 .semi-table-thead > .semi-table-row > .semi-table-row-head {
   height: 42px;
+<<<<<<< HEAD
   background: var(--ff-surface-muted);
   color: var(--ff-muted);
+=======
+  background: #f8f9fb;
+  color: #667085;
+>>>>>>> bak
   font-size: 12px;
   font-weight: 700;
 }
 
+<<<<<<< HEAD
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell { border-color: var(--ff-border); }
 .semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell { background: var(--ff-primary-soft); }
+=======
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell { border-color: #edf0f4; }
+.semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell { background: #f7faff; }
+>>>>>>> bak
 
 .semi-tabs-bar-line .semi-tabs-tab-active::after {
   height: 2px;
@@ -213,7 +276,11 @@ textarea:focus-visible {
   min-height: 64px;
   margin: 0 !important;
   padding: 20px 24px 12px !important;
+<<<<<<< HEAD
   border-bottom: 1px solid var(--ff-border);
+=======
+  border-bottom: 1px solid #edf0f4;
+>>>>>>> bak
 }
 
 .semi-modal-title {
@@ -230,13 +297,17 @@ textarea:focus-visible {
 
 .semi-sidesheet-content {
   border-left: 1px solid var(--ff-border) !important;
-  box-shadow: -14px 0 42px rgba(15, 23, 42, 0.12) !important;
+  box-shadow: -14px 0 42px rgba(16, 24, 40, 0.12) !important;
 }
 
 .semi-sidesheet-header {
   min-height: 64px;
   padding: 18px 20px !important;
+<<<<<<< HEAD
   border-bottom: 1px solid var(--ff-border);
+=======
+  border-bottom: 1px solid #edf0f4;
+>>>>>>> bak
 }
 
 .semi-sidesheet-body { padding: 20px !important; }
@@ -271,6 +342,16 @@ textarea:focus-visible {
   overflow: hidden;
   flex-direction: column;
   background: var(--ff-page);
+<<<<<<< HEAD
+=======
+}
+
+/* Quiet dot grid so the board reads as a canvas, not a blank page. */
+.gedit-playground {
+  background-color: var(--ff-page) !important;
+  background-image: radial-gradient(circle, #dcdfe6 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+>>>>>>> bak
 }
 
 .node-running {
@@ -290,18 +371,34 @@ textarea:focus-visible {
   width: 22px;
   height: 22px;
   place-items: center;
+<<<<<<< HEAD
   border: 1px solid var(--ff-primary-border);
   border-radius: 5px;
   background: var(--ff-primary-soft);
   color: var(--ff-primary);
+=======
+  border: 1px solid #dbe4f0;
+  border-radius: 5px;
+  background: #f0f4fb;
+  color: #2563eb;
+>>>>>>> bak
   font-size: 14px;
 }
 
 .canvas-add-node-action {
   min-width: 112px;
+  background: #f0fdf4 !important;
+  border-color: #bbf7d0 !important;
+  color: #15803d !important;
+}
+
+.canvas-add-node-action:hover {
+  background: #dcfce7 !important;
+  border-color: #86efac !important;
 }
 
 .canvas-add-node-action .semi-button-content {
   opacity: 1 !important;
   visibility: visible !important;
 }
+

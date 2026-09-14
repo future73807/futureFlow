@@ -53,3 +53,5 @@ gui-test-screenshots/
 # Mimosa security scan artifacts
 .mimosa/
 .video_agent/
+# GUI full-flow test screenshots
+gui-full-screenshots/

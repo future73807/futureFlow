@@ -1,4 +1,4 @@
-.content-node-preview {
+﻿.content-node-preview {
   width: 100%;
   overflow: hidden;
   border: 1px solid var(--ff-border);
@@ -45,9 +45,7 @@
   min-height: 112px;
   gap: 7px;
   padding: 12px;
-  background:
-    radial-gradient(circle at 100% 0, rgba(124, 58, 237, 0.11), transparent 46%),
-    linear-gradient(145deg, #fbfaff, #f8fafc);
+  background: #f7f8fb;
 }
 
 .content-node-ai-heading {
@@ -60,12 +58,12 @@
 
 .content-node-ai-heading span:last-child {
   margin-left: auto;
-  color: #7f56d9;
+  color: #2563eb;
 }
 
 .content-node-ai-model {
   overflow: hidden;
-  color: #6941c6;
+  color: #2563eb;
   font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -151,3 +149,5 @@
   font-size: 12px;
   font-weight: 600;
 }
+
+
