@@ -1025,6 +1025,10 @@ main = function(args) {
         return { ...base, height: 180, data: this.convertConditionNode(node, flowgram.nodes) };
       case 'knowledge':
         return { ...base, height: 140, data: this.convertKnowledgeNode(node, flowgram.nodes) };
+      case 'database':
+        throw new BadRequestException('SQL 查询节点暂不支持发布到云端执行；请在画布中使用本地试运行');
+      case 'python':
+        throw new BadRequestException('Python 执行节点暂不支持发布到云端执行；请在画布中使用本地试运行');
       default:
         throw new BadRequestException(
           `暂不支持的节点类型: ${node.type}`,

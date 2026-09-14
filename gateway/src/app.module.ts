@@ -18,6 +18,7 @@ import { KnowledgeModule } from './knowledge/knowledge.module';
 import { FilesModule } from './files/files.module';
 import { McpModule } from './mcp/mcp.module';
 import { LlmModule } from './llm/llm.module';
+import { LocalToolsModule } from './localtools/localtools.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { LlmModule } from './llm/llm.module';
     FilesModule,
     McpModule,
     LlmModule,
+    LocalToolsModule,
   ],
 })
 export class AppModule {}

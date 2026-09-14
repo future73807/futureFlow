@@ -111,6 +111,8 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
       image: '智能与内容',
       video: '智能与内容',
       http: '扩展能力',
+      database: '扩展能力',
+      python: '扩展能力',
       code: '扩展能力',
       knowledge: '扩展能力',
       subworkflow: '扩展能力',
