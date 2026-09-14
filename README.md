@@ -86,9 +86,13 @@ LLM_DEFAULT_MODEL=glm-5.3-flash        # 画布试运行实际使用的模型
 
 - 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖。
 - 修改密码后旧密码立即失效，并强制下线其他会话（token 版本号机制）。
-- 模拟点击验收使用同一账号：
-  - 全流程验收（28 项，含真实模型试运行）：`node scripts/test-gui-full.cjs "futureFlow@"`，截图输出到 `gui-full-screenshots/`。
-  - 轻量冒烟：`pnpm run test:gui-click <密码>`。
+- 模拟点击验收均使用同一账号（密码含 `@`，命令里请加引号）：
+  - 全流程验收（28 项，含真实模型试运行，截图输出到 `gui-full-screenshots/`）：
+    `node scripts/test-gui-full.cjs "futureFlow@"`
+  - 本地扩展节点验收（7 项，SQL 查询 + Python 执行真实执行；需要本机 Python 3 与可连的 PostgreSQL）：
+    `node scripts/test-local-tools.cjs`
+  - 轻量冒烟（22 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取）：
+    `pnpm run test:gui-click "futureFlow@"`
 
 ### 访问地址
 
@@ -446,8 +450,9 @@ FUTUREFLOW_FUZZ_CASES=50000      # 控制每类数量（上限 100,000）
 
 ```bash
 # GUI 模拟点击验收：登录 → 建画布 → 节点面板新节点 → LLM 失败分支开关 →
-# 云端试运行入口 → 管理后台各 tab → 个人中心文件管理 → 深色模式切换 → 退出，全程截图存证
-pnpm run test:gui-click <管理员密码>
+# GUI 模拟点击验收：登录 → 建画布 → 节点面板新节点 → LLM 失败分支开关 →
+# 云端试运行入口 → 管理后台各 tab → 个人中心文件管理 → 浅色主题校验 → 退出，全程截图存证
+pnpm run test:gui-click "futureFlow@"
 
 # 知识库 / 文件上传 / MCP 注册三模块的端到端 API 验收（16 项）
 pnpm run test:new-modules <管理员密码>

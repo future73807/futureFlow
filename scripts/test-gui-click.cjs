@@ -97,6 +97,10 @@ async function main() {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
   const realErrors = [];
+  // 资源级错误按 URL 记录；知识库接口 503 依赖本地 Dify（轻量模式未启动），属预期环境限制
+  page.on('response', (r) => {
+    if (r.status() >= 400 && r.url().indexOf('/knowledge/') === -1) realErrors.push('HTTP ' + r.status() + ': ' + r.url());
+  });
   page.on('pageerror', (e) => realErrors.push(String(e)));
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
@@ -104,6 +108,7 @@ async function main() {
     // React dev 模式把第三方库（Semi UI 等）的弃用提示记到 error 通道；
     // 这些不是项目功能缺陷，过滤后单独汇总，避免误报。
     if (/findDOMNode is deprecated|deprecated/i.test(text)) return;
+    if (/Failed to load resource/i.test(text)) return; // 资源级错误已按 URL 记录
     realErrors.push(text);
   });
 
@@ -271,23 +276,11 @@ async function main() {
       /MCP 服务器/.test(profileBody) && /注册服务器/.test(profileBody),
     );
 
-    // T10 深色模式切换：点击侧栏明暗切换按钮 → html[data-theme] 跟随变化
-    const themeBtn = page.getByRole('button', { name: /深色模式|浅色模式/ }).first();
-    if ((await themeBtn.count()) >= 1) {
-      const before = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
-      await themeBtn.click();
-      await page.waitForTimeout(600);
-      const after = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
-      await shot(page, 't10_theme_toggled.png');
-      record('T10 深色模式切换生效（html data-theme 翻转）', before !== after, `${before} -> ${after}`);
-      await themeBtn.click();
-      await page.waitForTimeout(400);
-      const restored = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
-      record('T10 深色模式切换可还原', restored === before, `${after} -> ${restored}`);
-    } else {
-      record('T10 深色模式切换生效（html data-theme 翻转）', false, '未找到主题切换按钮');
-      record('T10 深色模式切换可还原', false, '未找到主题切换按钮');
-    }
+    // T10 主题：产品以浅色为主，不再提供深色切换；断言当前主题不是 dark
+  const themeNow = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
+  const themeToggleGone = (await page.getByRole('button', { name: /深色模式|浅色模式/ }).count()) === 0;
+  await shot(page, 't10_theme_light.png');
+  record('T10 主题以浅色为主（无深色切换按钮）', themeNow !== 'dark' && themeToggleGone, `data-theme=${themeNow}`);
 
     // T8 退出登录
     const logoutBtn = page.getByRole('button', { name: '退出登录' });
