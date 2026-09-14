@@ -91,6 +91,8 @@ export const ProfilePage = () => {
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [datasets, setDatasets] = useState<KnowledgeDataset[] | null>(null);
+  const [kbAvailable, setKbAvailable] = useState<boolean | null>(null);
+  const [kbMessage, setKbMessage] = useState<string>('');
   const [createDatasetVisible, setCreateDatasetVisible] = useState(false);
   const [docSheetDataset, setDocSheetDataset] = useState<KnowledgeDataset | null>(null);
   const [datasetDocs, setDatasetDocs] = useState<KnowledgeDocument[]>([]);
@@ -108,7 +110,15 @@ export const ProfilePage = () => {
   }, []);
 
   const fetchDatasets = useCallback(async () => {
-    setDatasets(await apiJson<KnowledgeDataset[]>('/knowledge/datasets'));
+    const res = await apiJson<{ available?: boolean; message?: string; datasets?: KnowledgeDataset[] } | KnowledgeDataset[]>('/knowledge/datasets');
+    if (Array.isArray(res)) {
+      setKbAvailable(true);
+      setDatasets(res);
+    } else {
+      setKbAvailable(Boolean(res.available));
+      setKbMessage(res.message || '');
+      setDatasets(res.datasets || []);
+    }
     // 通知画布内知识检索节点的下拉缓存失效。
     invalidateDatasetCache();
   }, []);
@@ -686,10 +696,15 @@ export const ProfilePage = () => {
             <h2>知识库</h2>
             <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
           </div>
-          <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
+          <Button icon={<IconPlus />} disabled={kbAvailable === false} onClick={() => setCreateDatasetVisible(true)}>
             创建知识库
           </Button>
         </div>
+        {kbAvailable === false && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', border: '1px solid var(--ff-border)', borderRadius: 8, background: 'var(--ff-warning-soft)', color: 'var(--ff-warning)', fontSize: 13 }}>
+          知识库依赖本地 Dify，当前不可用：{kbMessage || 'Dify 服务未启动'}。启动 Dify 后刷新即可正常使用。
+        </div>
+      )}
         <Table
           dataSource={datasets || []}
           loading={datasets === null}

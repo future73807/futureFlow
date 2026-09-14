@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import logoUrl from '../../assets/logo.svg';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Input, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
@@ -234,11 +235,7 @@ export const CanvasPage = () => {
             />
           </Tooltip>
           <span className="canvas-brand-mark" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
-              <rect width="48" height="48" rx="12" fill="currentColor" />
-              <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
-              <circle cx="24" cy="24" r="3" fill="white" />
-            </svg>
+            <img src={logoUrl} width={20} height={20} alt="" />
           </span>
           <div className="canvas-name-group">
             <span>futureFlow · 可视化工作流</span>

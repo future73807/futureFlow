@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import logoUrl from '../../assets/logo.svg';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
@@ -55,11 +56,7 @@ export const MainLayout = () => {
       <aside className="app-sidebar">
         <button className="app-brand" type="button" onClick={() => navigate('/')}>
           <span className="app-brand-mark" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
-              <rect width="48" height="48" rx="12" fill="currentColor" />
-              <path d="M14 18 24 14 34 18v12L24 34 14 30V18Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
-              <circle cx="24" cy="24" r="3" fill="white" />
-            </svg>
+            <img src={logoUrl} width={24} height={24} alt="" />
           </span>
           <strong>futureFlow</strong>
         </button>

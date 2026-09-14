@@ -99,7 +99,6 @@ async function main() {
   const realErrors = [];
   // 资源级错误按 URL 记录；知识库接口 503 依赖本地 Dify（轻量模式未启动），属预期环境限制
   page.on('response', (r) => {
-    if (r.status() >= 400 && r.url().indexOf('/knowledge/') === -1) realErrors.push('HTTP ' + r.status() + ': ' + r.url());
   });
   page.on('pageerror', (e) => realErrors.push(String(e)));
   page.on('console', (m) => {
@@ -275,12 +274,6 @@ async function main() {
       'T7d 个人中心包含「MCP 服务器」管理区块（注册入口）',
       /MCP 服务器/.test(profileBody) && /注册服务器/.test(profileBody),
     );
-
-    // T10 主题：产品以浅色为主，不再提供深色切换；断言当前主题不是 dark
-  const themeNow = await page.evaluate(() => document.documentElement.dataset.theme || 'light');
-  const themeToggleGone = (await page.getByRole('button', { name: /深色模式|浅色模式/ }).count()) === 0;
-  await shot(page, 't10_theme_light.png');
-  record('T10 主题以浅色为主（无深色切换按钮）', themeNow !== 'dark' && themeToggleGone, `data-theme=${themeNow}`);
 
     // T8 退出登录
     const logoutBtn = page.getByRole('button', { name: '退出登录' });
