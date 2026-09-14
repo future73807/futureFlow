@@ -188,6 +188,8 @@ export const GatewayRunButton = ({
   const [publishedWorkflowName, setPublishedWorkflowName] = useState('');
   const [sensitiveInputKeys, setSensitiveInputKeys] = useState<string[]>([]);
   const [preparing, setPreparing] = useState(false);
+  /** 输入表单是否已就绪；草稿模式没有发布版本号，不能拿 publishedVersion 兼任就绪标记。 */
+  const [ready, setReady] = useState(false);
   const [inputError, setInputError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
@@ -196,6 +198,7 @@ export const GatewayRunButton = ({
     setResult(initialState);
     setInputError('');
     setPreparing(true);
+    setReady(false);
 
     try {
       if (!workflowId) throw new Error('缺少工作流标识');
@@ -247,8 +250,8 @@ export const GatewayRunButton = ({
       });
 
       if (mode === 'draft') {
-        // draft 模式没有发布版本号；用 0 作为「草稿就绪」标记以启用运行按钮。
-        setPublishedVersion(0);
+        // 草稿模式没有发布版本号；用 ready 标记「输入表单已就绪」以启用运行按钮。
+        setPublishedVersion(null);
       } else {
         setPublishedVersion(publishedVersion);
       }
@@ -256,12 +259,14 @@ export const GatewayRunButton = ({
       setSensitiveInputKeys(collectArchiveSensitiveInputKeys(snapshot));
       setInputFields(nextFields);
       setInputs(nextInputs);
+      setReady(true);
     } catch (error: any) {
       setPublishedVersion(null);
       setPublishedWorkflowName('');
       setSensitiveInputKeys([]);
       setInputFields([]);
       setInputs({});
+      setReady(false);
       setInputError(error?.message || (mode === 'draft' ? '读取草稿失败' : '读取已发布版本失败'));
     } finally {
       setPreparing(false);
@@ -570,7 +575,7 @@ export const GatewayRunButton = ({
                   </label>
                 ))
               )}
-              {!preparing && publishedVersion && inputFields.length === 0 && (
+              {!preparing && ready && inputFields.length === 0 && (
                 <div className="gateway-empty-input">开始节点没有输入参数，可直接运行。</div>
               )}
               {inputError && (
@@ -585,7 +590,7 @@ export const GatewayRunButton = ({
                 type="primary"
                 icon={<IconPlay aria-hidden="true" />}
                 loading={preparing}
-                disabled={!publishedVersion || preparing}
+                disabled={!ready || preparing}
                 onClick={() => void handleRun()}
               >
                 {mode === 'draft' ? '开始云端试运行' : '开始运行'}

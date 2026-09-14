@@ -5,7 +5,7 @@ export const FormWrapper = styled.div`
   width: 100%;
   flex-direction: column;
   gap: 8px;
-  padding: 0 12px 12px;
+  padding: 0 10px 10px;
   border-radius: 0 0 10px 10px;
   background: #ffffff;
   box-sizing: border-box;

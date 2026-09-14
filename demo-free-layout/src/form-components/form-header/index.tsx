@@ -48,7 +48,7 @@ export function FormHeader() {
       {node.renderData.expandable && !isSidebar && (
         <Button
           aria-label={expanded ? '折叠节点' : '展开节点'}
-          type="primary"
+          type="tertiary"
           icon={expanded
             ? <IconSmallTriangleDown aria-hidden="true" />
             : <IconSmallTriangleLeft aria-hidden="true" />}
@@ -65,7 +65,7 @@ export function FormHeader() {
       {isSidebar && (
         <Button
           aria-label="关闭节点配置"
-          type="primary"
+          type="tertiary"
           icon={<IconClose aria-hidden="true" />}
           size="small"
           theme="borderless"

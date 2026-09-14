@@ -39,7 +39,7 @@ export function FormItem({
       <div style={{ width: '0', display: 'flex', flex: '1' }}>
         <Text style={{ width: '100%' }} ellipsis={{ showTooltip: !!showTooltip }}>
           {name}
-          {required && <span style={{ color: 'var(--ff-danger, #c5382d)', paddingLeft: '2px' }}>*</span>}
+          {required && <span style={{ color: 'var(--ff-danger, #d92d20)', paddingLeft: '2px' }}>*</span>}
         </Text>
       </div>
     ),

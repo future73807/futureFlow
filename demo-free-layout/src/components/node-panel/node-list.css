@@ -1,57 +1,58 @@
 .canvas-node-panel {
-  width: 340px;
+  width: 540px;
   overflow: hidden;
   border: 1px solid var(--ff-border);
   border-radius: 12px;
   background: #ffffff;
-  box-shadow: 0 12px 36px rgba(16, 24, 40, 0.12);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
 }
 
 .canvas-node-panel-head {
-  padding: 12px 12px 8px;
+  padding: 12px 12px 6px;
 }
-
 
 .canvas-node-list {
   display: grid;
-  max-height: min(520px, 62vh);
+  max-height: min(560px, 64vh);
   gap: 6px;
-  padding: 0 8px 10px;
+  padding: 0 10px 12px;
   overflow: auto;
 }
 
 .canvas-node-group {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 4px;
 }
 
 .canvas-node-group h3 {
+  grid-column: 1 / -1;
   margin: 0;
-  padding: 6px 8px 4px;
+  padding: 8px 6px 4px;
   color: var(--ff-subtle);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .canvas-node-option {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: 38px;
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #252b37;
+  color: #1d2129;
   cursor: pointer;
   text-align: left;
   transition: background-color 100ms ease;
 }
 
 .canvas-node-option:hover {
-  background: #f2f4f8;
+  background: #f2f3f5;
 }
 
 .canvas-node-option:disabled {
@@ -61,21 +62,22 @@
 
 .canvas-node-icon {
   display: grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--ff-border);
+  border: 0;
   border-radius: 6px;
-  background: #ffffff;
-  color: var(--ff-primary);
+  background: #f7f8fa;
+  color: var(--ff-text-secondary);
   font-size: 14px;
 }
 
 .canvas-node-icon-image {
   width: 100%;
   height: 100%;
+  border-radius: 6px;
   object-fit: cover;
 }
 
@@ -86,9 +88,9 @@
 
 .canvas-node-option-copy strong {
   overflow: hidden;
-  color: #252b37;
+  color: #1d2129;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -104,11 +106,11 @@
   flex: 0 0 auto;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #fff7ed;
-  color: #c2410c;
+  background: #f2f3f5;
+  color: var(--ff-subtle);
   font-size: 10px;
   font-style: normal;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .canvas-node-option:disabled .canvas-node-icon {

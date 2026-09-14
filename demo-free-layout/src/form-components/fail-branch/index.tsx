@@ -31,7 +31,7 @@ const SwitchRow = styled.div`
 
 const PortHint = styled.span`
   font-size: 11px;
-  color: var(--ff-danger, #c5382d);
+  color: var(--ff-danger, #d92d20);
 `;
 
 interface FailBranchToggleProps {

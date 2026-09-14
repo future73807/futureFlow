@@ -461,7 +461,7 @@ export const WorkflowListPage = () => {
               data: {
                 title: '大语言模型 1',
                 inputsValues: {
-                  modelName: { type: 'constant', content: 'deepseek-chat' },
+                  modelName: { type: 'constant', content: 'glm-5.3-flash' },
                   temperature: { type: 'constant', content: 0.7 },
                   systemPrompt: { type: 'template', content: '你是一个友好的 AI 助手，请用简洁的中文回答用户的问题。' },
                   prompt: { type: 'template', content: '{{start_0.query}}' },
@@ -1697,7 +1697,7 @@ const TemplateMark = styled.div`
   place-items: center;
   border: 1px solid var(--ff-primary-border);
   border-radius: var(--ff-radius);
-  background: linear-gradient(135deg, #dbeafe 0%, var(--ff-primary-soft) 100%);
+  background: var(--ff-surface-muted);
   color: var(--ff-primary-hover);
   font-size: 14px;
   font-weight: 700;

@@ -1,10 +1,10 @@
-.localized-output-list {
+﻿.localized-output-list {
   display: grid;
   gap: 7px;
 }
 
 .localized-output-list > strong {
-  color: #667085;
+  color: var(--ff-muted);
   font-size: 12px;
 }
 
@@ -16,12 +16,12 @@
   padding: 5px 8px;
   border: 1px solid var(--ff-border);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #475467;
+  background: var(--ff-surface-muted);
+  color: var(--ff-text-secondary);
   font-size: 12px;
 }
 
 .localized-output-empty {
-  color: #98a2b3;
+  color: var(--ff-subtle);
   font-size: 12px;
 }

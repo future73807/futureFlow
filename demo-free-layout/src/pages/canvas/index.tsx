@@ -237,21 +237,21 @@ export const CanvasPage = () => {
           <span className="canvas-brand-mark" aria-hidden="true">
             <img src={logoUrl} width={20} height={20} alt="" />
           </span>
-          <div className="canvas-name-group">
-            <span>futureFlow · 可视化工作流</span>
-            <Input
-              className="canvas-name-input"
-              value={workflowName}
-              onChange={(value) => {
-                setWorkflowName(value);
-                markDirty();
-              }}
-            />
+          <div className="canvas-title-block">
+            <div className="canvas-name-group">
+              <Input
+                className="canvas-name-input"
+                value={workflowName}
+                onChange={(value) => {
+                  setWorkflowName(value);
+                  markDirty();
+                }}
+              />
+            </div>
+            <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
           </div>
         </div>
         <div className="canvas-save-actions">
-          <span className="canvas-autosave-badge">自动保存</span>
-          <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
           <Button
             theme="solid"
             type="primary"

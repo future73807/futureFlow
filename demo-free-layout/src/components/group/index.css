@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  */
@@ -40,7 +40,7 @@
 }
 
 .workflow-group-ungroup:hover .semi-button {
-    color: #374151;
+    color: var(--ff-text-secondary);
 }
 
 .workflow-group-background {
@@ -96,7 +96,7 @@
 .workflow-group-title-input {
     width: 242px;
     border: none;
-    color: #374151;
+    color: var(--ff-text-secondary);
 }
 
 .workflow-group-color-palette {

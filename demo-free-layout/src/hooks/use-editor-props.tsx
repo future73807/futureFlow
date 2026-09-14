@@ -124,7 +124,7 @@ export function useEditorProps(
         drawing: 'var(--g-workflow-line-color-drawing,#2563eb)',
         hovered: 'var(--g-workflow-line-color-hover,#1d4ed8)',
         selected: 'var(--g-workflow-line-color-selected,#1d4ed8)',
-        error: 'var(--g-workflow-line-color-error,#c5382d)',
+        error: 'var(--g-workflow-line-color-error,#d92d20)',
         flowing: 'var(--g-workflow-line-color-flowing,#2563eb)',
       },
       /*

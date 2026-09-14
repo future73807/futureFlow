@@ -9,9 +9,9 @@ import { IconMinimap } from '../../assets/icon-minimap';
 
 export const ToolContainer = styled.div`
   position: absolute;
-  bottom: 18px;
-  left: 18px;
-  right: 18px;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
   display: flex;
   justify-content: center;
   min-width: 360px;
@@ -33,12 +33,12 @@ export const ToolSection = styled.div`
   display: flex;
   align-items: center;
   background-color: #fff;
-  border: 1px solid #e3e7ee;
+  border: 1px solid var(--ff-border);
   border-radius: 10px;
-  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
-  column-gap: 4px;
-  min-height: 44px;
-  padding: 4px 10px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  column-gap: 2px;
+  min-height: 40px;
+  padding: 4px 8px;
 
   > :last-child {
     margin-right: 2px;
@@ -48,19 +48,41 @@ export const ToolSection = styled.div`
   .canvas-tool-group {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 1px;
   }
 
-  .gedit-flow-panel-layer-wrap-floating:has(.gedit-flow-panel-right-area .gedit-flow-panel-wrap) & {
-    width: 100%;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding: 4px 8px;
+  /* 工具条内的图标按钮统一为紧凑的中性灰按钮 */
+  .semi-button {
+    min-height: 28px;
+    height: 28px;
+    padding: 0 4px;
+    border: none !important;
+    background: transparent !important;
+    color: var(--ff-text-secondary) !important;
+  }
 
-    .canvas-tool-group-view,
-    .canvas-tool-group-edit,
-    > .semi-divider:first-of-type {
-      display: none !important;
+  .semi-button:hover:not(:disabled) {
+    background: var(--ff-surface-muted) !important;
+    color: var(--ff-text) !important;
+  }
+
+  .semi-button:disabled {
+    color: #c9cdd4 !important;
+  }
+
+  .semi-divider {
+    background: var(--ff-border) !important;
+  }
+
+  /* 节点配置面板展开时画布变窄：工具栏收成内容宽度并居中，不再是整条通栏白条 */
+  .gedit-flow-panel-layer-wrap-floating:has(.gedit-flow-panel-right-area .gedit-flow-panel-wrap) & {
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
     }
   }
 
@@ -84,12 +106,22 @@ export const ToolSection = styled.div`
 `;
 
 export const SelectZoom = styled.span`
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid #d3d9e3;
+  display: inline-flex;
+  min-width: 46px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 6px;
+  color: var(--ff-text-secondary);
   font-size: 12px;
-  width: 50px;
+  font-weight: 500;
   cursor: pointer;
+
+  &:hover {
+    background: var(--ff-surface-muted);
+    color: var(--ff-text);
+  }
 `;
 
 export const MinimapContainer = styled.div`
@@ -97,9 +129,14 @@ export const MinimapContainer = styled.div`
   bottom: 60px;
   left: 16px;
   width: 198px;
+  padding: 3px;
+  overflow: hidden;
+  border: 1px solid var(--ff-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
 `;
 
 export const UIIconMinimap = styled(IconMinimap)<{ visible: boolean }>`
   color: ${(props) => (props.visible ? undefined : '#060709cc')};
 `;
-

@@ -9,11 +9,11 @@
 
 .canvas-header {
   display: flex;
-  min-height: 52px;
+  min-height: 60px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 16px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--ff-border);
   background: var(--ff-surface);
   z-index: 30;
@@ -28,7 +28,7 @@
 .canvas-header-left {
   min-width: 0;
   flex: 1;
-  gap: 10px;
+  gap: 8px;
 }
 
 .canvas-back-button {
@@ -38,53 +38,58 @@
   border: 1px solid transparent !important;
   border-radius: 8px !important;
   background: transparent !important;
-  color: #5b6472;
+  color: var(--ff-text-secondary);
 }
 
 .canvas-back-button:hover {
-  border-color: var(--ff-border) !important;
-  background: #f4f5f7 !important;
+  border-color: transparent !important;
+  background: var(--ff-surface-muted) !important;
+  color: var(--ff-text) !important;
 }
 
 .canvas-brand-mark {
   display: inline-flex;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
-  color: var(--ff-primary);
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--ff-surface-muted);
   line-height: 0;
+}
+
+.canvas-title-block {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  margin-left: 4px;
 }
 
 .canvas-name-group {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.canvas-name-group > span {
-  flex: 0 0 auto;
-  overflow: hidden;
-  color: var(--ff-subtle);
-  font-size: 12px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .canvas-name-input {
-  width: 300px;
+  width: 320px;
+  max-width: 46vw;
 }
 
 .canvas-name-input.semi-input-wrapper {
-  padding: 0 8px;
+  min-height: 26px;
+  padding: 0 6px;
   border-color: transparent !important;
   background: transparent;
-  min-height: 32px;
 }
 
 .canvas-name-input .semi-input {
   color: var(--ff-text);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 26px;
 }
 
 .canvas-name-input.semi-input-wrapper:hover,
@@ -93,34 +98,24 @@
   background: #ffffff;
 }
 
-.canvas-save-actions {
-  flex: 0 0 auto;
-  gap: 12px;
-}
-
-.canvas-autosave-badge {
-  padding: 3px 8px;
-  border: 1px solid var(--ff-border);
-  border-radius: 999px;
-  background: var(--ff-surface-muted);
-  color: var(--ff-muted);
-  font-size: 11px;
-  font-weight: 600;
-}
-
 .canvas-save-status {
-  min-width: 150px;
-  color: var(--ff-muted);
+  color: var(--ff-subtle);
   font-size: 12px;
-  text-align: right;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .canvas-save-status.unsaved {
-  color: var(--ff-warning);
+  color: #c9740a;
 }
 
 .canvas-save-status.error {
   color: var(--ff-danger);
+}
+
+.canvas-save-actions {
+  flex: 0 0 auto;
+  gap: 10px;
 }
 
 .canvas-editor-wrap {
@@ -132,7 +127,6 @@
   overflow: hidden;
 }
 
-
 .canvas-loading {
   display: grid;
   height: 100%;
@@ -142,18 +136,13 @@
 
 @media (max-width: 720px) {
   .canvas-header {
-    min-height: 48px;
+    min-height: 52px;
     gap: 8px;
     padding: 6px 10px;
   }
 
-  .canvas-name-group > span,
-  .canvas-autosave-badge,
+  .canvas-brand-mark,
   .canvas-save-status {
-    display: none;
-  }
-
-  .canvas-brand-mark {
     display: none;
   }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  */
@@ -8,22 +8,22 @@
 :global(.semi-button).testrun-success-button,
 :global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-success-button,
 :global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-success-button:hover {
-  background-color: #16a34a !important; // 参考图风格: 试运行为绿色主按钮
-  border-color: #16a34a !important;
+  background-color: var(--ff-run) !important; // 参考图风格: 试运行为绿色主按钮
+  border-color: var(--ff-run) !important;
   border-radius: 8px;
   color: #fff !important; // override semi style
 
   &:hover {
-    background-color: #15803d !important;
-    border-color: #15803d !important;
+    background-color: var(--ff-run-hover) !important;
+    border-color: var(--ff-run-hover) !important;
   }
 }
 
 :global(.semi-button).testrun-error-button,
 :global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-error-button,
 :global(.semi-button):global(.semi-button-primary):global(.semi-button-light).testrun-error-button:hover {
-  background-color: #d92d20 !important; // override semi style
-  border-color: #d92d20 !important;
+  background-color: var(--ff-danger) !important; // override semi style
+  border-color: var(--ff-danger) !important;
   border-radius: 8px;
   color: #fff !important; // override semi style
 }

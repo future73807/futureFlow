@@ -15,14 +15,14 @@
     .title {
       font-size: 15px;
       font-weight: 500;
-      color: #333;
+      color: var(--ff-text);
       flex: 1;
     }
   }
 
 
   .error {
-    color: red;
+    color: var(--ff-danger);
     font-size: 14px;
   }
 
@@ -32,7 +32,7 @@
     background: #fff;
     padding: 8px 8px 8px 4px;
     border-radius: 4px;
-    border: 1px solid #52649a0f;
+    border: 1px solid var(--ff-border);
 
     :global(.cm-editor) {
       height: 100% !important;
@@ -71,12 +71,12 @@
   height: 40px;
 
   &.running {
-    background-color: #eef1f6 !important; // override semi style
-    color: #3b4453;
+    background-color: var(--ff-surface-muted) !important; // override semi style
+    color: var(--ff-text-secondary);
   }
 
   &.default {
-    background-color: #16a34a !important; // override semi style
+    background-color: var(--ff-run) !important; // override semi style
     color: #fff;
   }
 }
@@ -93,7 +93,7 @@
   border-radius: 8px;
   height: 100%;
   width: 100%;
-  border: 1px solid #e5e8ee;
+  border: 1px solid var(--ff-border);
   padding: 8px 0 8px 0;
   display: flex;
   flex-direction: column;
@@ -101,8 +101,8 @@
   position: relative;
 
   .testrun-panel-header {
-    background: #fafbfc;
-    border-bottom: 1px solid #e5e8ee;
+    background: var(--ff-surface-muted);
+    border-bottom: 1px solid var(--ff-border);
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
     display: flex;
@@ -134,10 +134,10 @@
   }
 
   .testrun-panel-footer {
-    border-top: 1px solid #e5e8ee;
+    border-top: 1px solid var(--ff-border);
     height: 40px;
     position: absolute;
-    background: #fafbfc;
+    background: var(--ff-surface-muted);
     height: 62px;
     bottom: 0;
     border-radius: 0 0 8px 8px;

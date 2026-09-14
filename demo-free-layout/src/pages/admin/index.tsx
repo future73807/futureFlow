@@ -302,7 +302,8 @@ const TrendChart = ({ data }: { data: { date: string; count: number; tokens: num
           title={`${d.date} · ${d.count} 次运行 · ${Number(d.tokens || 0).toLocaleString()} tokens`}
         >
           <BarFill style={{ height: `${(d.count / maxCount) * 100}%` }} />
-          <BarLabel>{d.date.slice(5)}</BarLabel>
+          {/* 后端返回 ISO 时间戳，横轴只保留 MM-DD */}
+          <BarLabel>{d.date.slice(5, 10)}</BarLabel>
           <BarCount>{d.count}</BarCount>
         </Bar>
       ))}
@@ -903,7 +904,7 @@ const Bar = styled.div`
 const BarFill = styled.div`
   width: 28px;
   min-height: 4px;
-  background: linear-gradient(180deg, #3b82f6 0%, var(--ff-primary) 100%);
+  background: var(--ff-primary);
   border-radius: 4px 4px 0 0;
   transition: height 0.3s;
 `;

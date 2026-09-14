@@ -8,6 +8,7 @@ import React from 'react';
 import { FlowNodeRegistry } from '@flowgram.ai/free-layout-editor';
 
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';
+import { NodeSummary } from '../node-summary';
 import { FormTitleDescription, FormWrapper } from './styles';
 
 /**
@@ -22,6 +23,7 @@ export function FormContent(props: { children?: React.ReactNode }) {
     <FormWrapper>
       <>
         {isSidebar && <FormTitleDescription>{registry.info?.description}</FormTitleDescription>}
+        {!isSidebar && !expanded && <NodeSummary />}
         {(expanded || isSidebar) && props.children}
       </>
     </FormWrapper>

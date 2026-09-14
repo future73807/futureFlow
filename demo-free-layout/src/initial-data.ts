@@ -44,7 +44,7 @@ export const initialData: FlowDocumentJSON = {
         inputsValues: {
           modelName: {
             type: 'constant',
-            content: 'deepseek-chat',
+            content: 'glm-5.3-flash',
           },
           temperature: {
             type: 'constant',

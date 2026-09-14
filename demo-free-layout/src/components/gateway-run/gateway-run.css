@@ -1,4 +1,4 @@
-.gateway-run-action {
+﻿.gateway-run-action {
   height: 34px;
   margin: 0 !important;
 }
@@ -65,7 +65,7 @@
 
 .gateway-input-field em {
   margin-left: 3px;
-  color: #c5382d;
+  color: var(--ff-danger);
   font-style: normal;
 }
 
@@ -81,9 +81,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px dashed #d8dee9;
+  border: 1px dashed var(--ff-border);
   border-radius: var(--ff-radius);
-  background: #f8fafc;
+  background: var(--ff-surface-muted);
   color: var(--ff-muted);
   font-size: 12px;
 }
@@ -109,7 +109,7 @@
   height: 8px;
   flex: 0 0 8px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: #c9cdd4;
 }
 
 .gateway-node-state.running {
@@ -117,11 +117,11 @@
 }
 
 .gateway-node-state.succeeded {
-  background: #16794c;
+  background: var(--ff-success);
 }
 
 .gateway-node-state.failed {
-  background: #c5382d;
+  background: var(--ff-danger);
 }
 
 .gateway-node-row > div {
@@ -160,8 +160,8 @@
   overflow: auto;
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
-  background: #f8fafc;
-  color: #334155;
+  background: var(--ff-surface-muted);
+  color: var(--ff-text-secondary);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -174,7 +174,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
-  background: #f8fafc;
+  background: var(--ff-surface-muted);
 }
 
 .gateway-stats div {

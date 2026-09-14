@@ -1,43 +1,43 @@
 :root {
-  --ff-page: #f4f5f7;
+  --ff-page: #f2f3f5;
   --ff-surface: #ffffff;
-  --ff-surface-muted: #f8f9fb;
+  --ff-surface-muted: #f7f8fa;
   --ff-sidebar: #ffffff;
   --ff-sidebar-muted: #9aa2b1;
-  --ff-text: #1b2432;
-  --ff-text-secondary: #3b4453;
-  --ff-muted: #667085;
-  --ff-subtle: #98a2b3;
-  --ff-border: #e5e8ee;
-  --ff-border-hover: #aeb8c9;
-  --ff-border-strong: #d3d9e3;
+  --ff-text: #1d2129;
+  --ff-text-secondary: #4e5969;
+  --ff-muted: #6b7280;
+  --ff-subtle: #86909c;
+  --ff-border: #e5e6eb;
+  --ff-border-hover: #c9cdd4;
+  --ff-border-strong: #e5e6eb;
   --ff-primary: #2563eb;
   --ff-primary-hover: #1d4ed8;
-  --ff-primary-soft: #eef4ff;
-  --ff-primary-border: #d3e2fc;
+  --ff-primary-soft: #f2f5fd;
+  --ff-primary-border: #dbe3f8;
   --ff-success: #16803c;
   --ff-success-soft: #ecfdf5;
   --ff-warning: #b54708;
   --ff-warning-soft: #fffbeb;
   --ff-danger: #d92d20;
   --ff-danger-soft: #fff5f5;
-    --ff-danger-border: #fecdca;
-  --ff-run: #16a34a;
-  --ff-run-hover: #15803d;
+  --ff-danger-border: #fecdca;
+  --ff-run: #00b42a;
+  --ff-run-hover: #009a29;
   --ff-radius: 8px;
   --ff-radius-lg: 10px;
-  --ff-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.04);
-  --ff-shadow-lg: 0 18px 52px rgba(15, 23, 42, 0.16);
+  --ff-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.05);
+  --ff-shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.14);
 
   --g-workflow-port-color-primary: #2563eb;
-  --g-workflow-port-color-secondary: #a5c4ff;
+  --g-workflow-port-color-secondary: #c0cadb;
   --g-workflow-port-color-error: #d92d20;
   --g-workflow-port-color-background: #ffffff;
   --g-workflow-line-color-hidden: transparent;
-  --g-workflow-line-color-default: #94b0dd;
+  --g-workflow-line-color-default: #c0cadb;
   --g-workflow-line-color-drawing: #2563eb;
-  --g-workflow-line-color-hover: #1d4ed8;
-  --g-workflow-line-color-selected: #1d4ed8;
+  --g-workflow-line-color-hover: #2563eb;
+  --g-workflow-line-color-selected: #2563eb;
   --g-workflow-line-color-error: #d92d20;
   --g-workflow-line-color-flowing: #2563eb;
 
@@ -73,44 +73,52 @@ textarea:focus-visible {
   min-height: 34px;
   border-radius: var(--ff-radius) !important;
   border-color: var(--ff-border-strong);
+  background: #ffffff;
   color: var(--ff-text-secondary);
-  font-weight: 600;
+  font-weight: 500;
   box-shadow: none !important;
 }
 
 .semi-button:hover { border-color: var(--ff-border-hover); background: var(--ff-surface-muted); }
 
-.semi-button-primary,
 .semi-button-primary.semi-button-solid {
   background: var(--ff-primary) !important;
   border-color: var(--ff-primary) !important;
   color: #ffffff !important;
 }
 
-.semi-button-primary:hover,
 .semi-button-primary.semi-button-solid:hover {
   background: var(--ff-primary-hover) !important;
   border-color: var(--ff-primary-hover) !important;
 }
 
-.semi-button-light {
-  background: var(--ff-primary-soft) !important;
-  border-color: var(--ff-primary-border) !important;
-  color: var(--ff-primary-hover) !important;
+/* 轻主题按钮统一为中性浅灰；避免整页浮起一层浅蓝按钮 */
+.semi-button.semi-button-light {
+  background: #ffffff !important;
+  border-color: var(--ff-border) !important;
+  color: var(--ff-text-secondary) !important;
 }
 
-/* 浅色主按钮 hover 时保持浅底深字；否则 primary:hover 的深蓝底
-   会和 light 的深蓝字叠加，按钮变成“看不见文字的纯色块”。 */
-.semi-button-primary.semi-button-light:hover,
-.semi-button-light:hover {
-  background: var(--ff-primary-soft) !important;
-  border-color: var(--ff-primary-border) !important;
-  color: var(--ff-primary-hover) !important;
+.semi-button.semi-button-light:hover {
+  background: var(--ff-surface-muted) !important;
+  border-color: var(--ff-border-hover) !important;
+  color: var(--ff-text) !important;
 }
 
-.semi-button-borderless:hover { background: var(--ff-surface-muted) !important; }
+/* 无边框按钮（节点操作/工具栏）保持透明，hover 才出现浅灰底 */
+.semi-button.semi-button-borderless {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.semi-button.semi-button-borderless:hover {
+  background: var(--ff-surface-muted) !important;
+}
+
 .semi-button-danger { color: var(--ff-danger) !important; }
 .semi-button .semi-button-content { gap: 6px; }
+.semi-button.semi-button-size-small { min-height: 24px; height: 24px; border-radius: 6px !important; }
+.semi-button.semi-button-size-small .semi-icon { font-size: 15px; }
 .semi-tag { border-radius: 4px; font-size: 12px; font-weight: 600; }
 
 .semi-input-wrapper,
@@ -259,10 +267,6 @@ textarea:focus-visible {
   font-size: 14px;
 }
 
-.canvas-add-node-action {
-  min-width: 112px;
-}
-
 .canvas-add-node-action .semi-button-content {
   opacity: 1 !important;
   visibility: visible !important;
@@ -271,18 +275,94 @@ textarea:focus-visible {
 /* 画布板面: 安静的点阵, 让空白区域读作"画布"而不是"空白页" */
 .gedit-playground {
   background-color: var(--ff-page) !important;
-  background-image: radial-gradient(circle, #dcdfe6 1px, transparent 1px) !important;
+  background-image: radial-gradient(circle, #e2e4e9 1px, transparent 1px) !important;
   background-size: 20px 20px !important;
 }
 
 .canvas-add-node-action {
   min-width: 112px;
-  background: #f0fdf4 !important;
-  border-color: #bbf7d0 !important;
-  color: #15803d !important;
+  border: 1px solid var(--ff-border) !important;
+  background: #ffffff !important;
+  color: var(--ff-text) !important;
+  font-weight: 500;
 }
 
 .canvas-add-node-action:hover {
-  background: #dcfce7 !important;
-  border-color: #86efac !important;
+  border-color: var(--ff-primary) !important;
+  background: #ffffff !important;
+  color: var(--ff-primary) !important;
+}
+
+/* 节点卡片摘要行（输入 / 输出 / 模型）：对齐扣子画布的紧凑信息行 */
+.ff-node-summary {
+  display: grid;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.ff-node-summary-row {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ff-node-summary-label {
+  display: inline-flex;
+  flex: 0 0 42px;
+  align-items: center;
+  gap: 3px;
+  color: var(--ff-subtle);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ff-node-summary-label svg {
+  width: 12px;
+  height: 12px;
+  color: #b9bfc9;
+}
+
+.ff-node-summary-values {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ff-node-summary-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px solid var(--ff-border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--ff-text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 变量引用保持中性底色，只有文字用等宽体区分；避免卡片上浮一层浅蓝 */
+.ff-node-summary-chip.variable {
+  background: var(--ff-surface-muted);
+  color: var(--ff-text);
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+}
+
+.ff-node-summary-empty {
+  color: #c0c4cc;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.ff-node-summary-more {
+  color: var(--ff-subtle);
+  font-size: 11px;
+  line-height: 18px;
 }

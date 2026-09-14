@@ -14,7 +14,7 @@ interface StatePanelProps {
 
 const Error = styled.span`
   font-size: 12px;
-  color: var(--ff-danger, #c5382d);
+  color: var(--ff-danger, #d92d20);
 `;
 
 const Warning = styled.span`
