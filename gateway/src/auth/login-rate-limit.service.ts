@@ -12,9 +12,15 @@ interface AttemptWindow {
   blockedUntil: number;
 }
 
-const WINDOW_MS = 15 * 60_000;
-const MAX_FAILURES = 8;
-const BLOCK_MS = 15 * 60_000;
+// 阈值可通过 .env 调整（本地开发如误触发锁定可放宽，或重启网关立即清除内存计数）
+const envPositiveInt = (name: string, fallback: number): number => {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const WINDOW_MS = envPositiveInt('LOGIN_RATE_LIMIT_WINDOW_MINUTES', 15) * 60_000;
+const MAX_FAILURES = envPositiveInt('LOGIN_RATE_LIMIT_MAX_FAILURES', 8);
+const BLOCK_MS = envPositiveInt('LOGIN_RATE_LIMIT_BLOCK_MINUTES', 15) * 60_000;
 
 const REGISTER_WINDOW_MS = 60 * 60_000;
 const MAX_REGISTER_ATTEMPTS = 20;

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
 import logoUrl from '../../assets/logo-mono.svg';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Toast } from '@douyinfe/semi-ui';
@@ -19,12 +20,18 @@ export const LoginRegisterPage = () => {
 
   const handleLogin = useCallback(async (values: any) => {
     setLoading(true);
+    const account = String(values.account || '').trim();
+    const password = String(values.password || '');
     try {
-      await login(values.account, values.password);
+      await login(account, password);
       Toast.success('登录成功');
       navigate('/', { replace: true });
     } catch (error: any) {
       Toast.error(error.message || '登录失败');
+      // 常见坑：中文输入法把 @ 等符号打成全角（＠），导致密码看起来没输错却失败
+      if (/[\uFF01-\uFF5E\u3000]/.test(password)) {
+        Toast.warning('检测到密码中含全角字符，请切换到英文输入法后重新输入');
+      }
     } finally {
       setLoading(false);
     }

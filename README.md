@@ -59,6 +59,7 @@ pnpm start
 
 - 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖。
 - 修改密码后旧密码立即失效，并强制下线其他会话（token 版本号机制）。
+- **登录防暴力破解**：15 分钟内失败 8 次会锁定该「IP+账号」15 分钟（正确密码也会被拒）。连续看到「账号或密码错误」时，先检查中文输入法是否把 `@` 打成全角 `＠`（登录页会自动提示）；误触发锁定后**重启网关即可立即清除计数**，或用 `.env` 的 `LOGIN_RATE_LIMIT_*` 阈值放宽。
 - 模拟点击验收均使用同一账号（密码含 `@`，命令里请加引号）：
   - 全流程验收（28 项，含真实模型试运行，截图输出到 `gui-full-screenshots/`）：
     `node scripts/test-gui-full.cjs "futureFlow@"`
