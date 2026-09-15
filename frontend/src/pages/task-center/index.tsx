@@ -412,17 +412,6 @@ export const TaskCenterPage = () => {
                       <span>创建于 {formatTime(task.createdAt)}</span>
                       {task.finishedAt && <span>完成于 {formatTime(task.finishedAt)}</span>}
                     </TaskMeta>
-                    <Progress
-                      percent={
-                        task.totalCount > 0
-                          ? Math.round(((task.succeededCount + task.failedCount) / task.totalCount) * 100)
-                          : 0
-                      }
-                      showInfo={false}
-                      stroke={
-                        task.failedCount > 0 && task.status !== 'running' ? 'var(--ff-danger)' : undefined
-                      }
-                    />
                   </TaskCardMain>
                   <TaskCardSide>
                     {/* 执行状态归到右侧，和计数一起读；左侧只留任务名与元信息 */}
@@ -434,6 +423,20 @@ export const TaskCenterPage = () => {
                         {task.mode === 'draft' ? '草稿' : '已发布'}
                       </Tag>
                     </TaskSideTags>
+                    {/* 进度条与状态同属右侧集群：右对齐，进度向左延伸 */}
+                    <TaskSideProgress>
+                      <Progress
+                        percent={
+                          task.totalCount > 0
+                            ? Math.round(((task.succeededCount + task.failedCount) / task.totalCount) * 100)
+                            : 0
+                        }
+                        showInfo={false}
+                        stroke={
+                          task.failedCount > 0 && task.status !== 'running' ? 'var(--ff-danger)' : undefined
+                        }
+                      />
+                    </TaskSideProgress>
                     <TaskCounts>
                       <b>
                         {task.succeededCount}/{task.totalCount}
@@ -1152,10 +1155,19 @@ const TaskMeta = styled.div`
 
 const TaskCardSide = styled.div`
   display: grid;
-  flex: 0 0 auto;
+  width: 320px;
+  flex: 0 0 320px;
   justify-items: end;
+  align-content: center;
   gap: 6px;
+  text-align: right;
 `;
+
+const TaskSideProgress = styled.div`
+  width: 100%;
+`;
+
+
 
 const TaskSideTags = styled.div`
   display: flex;

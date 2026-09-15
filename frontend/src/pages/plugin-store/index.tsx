@@ -461,13 +461,8 @@ const pluginTint = (seed: string) => {
  * 每个插件一套专属图形，不用文字，列表与详情共用同一份映射。
  */
 const PLUGIN_ICONS: Record<string, React.ReactNode> = {
-  // 大语言模型：星芒 + 小星
-  llm: (
-    <>
-      <path d="M11 3.5l1.7 4.1L16.8 9.3l-4.1 1.7L11 15.1 9.3 11 5.2 9.3 9.3 7.6z" />
-      <path d="M17.5 15l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" />
-    </>
-  ),
+  // 大语言模型：AI 星芒（四角内凹），单个大图形更醒目
+  llm: <path d="M12 2.8c.7 4.6 4.6 8.5 9.2 9.2-4.6.7-8.5 4.6-9.2 9.2-.7-4.6-4.6-8.5-9.2-9.2 4.6-.7 8.5-4.6 9.2-9.2z" />,
   // 文本处理：三行文字
   'content-text': <path d="M5 7h14M5 12h10.5M5 17h7" />,
   // 图片处理：相框 + 太阳 + 山
@@ -588,7 +583,7 @@ const PluginMark = ({
 }) => {
   // 统一图标风格：专属线性图形 + 同色系极浅背景，颜色按插件 id 稳定选取
   const tint = pluginTint(item.id || item.nodeType || item.name || '');
-  const glyphSize = Math.round(size * 0.56);
+  const glyphSize = Math.round(size * 0.66);
   return (
     <LetterMark style={{ width: size, height: size, background: tint.bg, color: tint.fg }}>
       <svg
@@ -597,7 +592,7 @@ const PluginMark = ({
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={1.7}
+        strokeWidth={1.9}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
