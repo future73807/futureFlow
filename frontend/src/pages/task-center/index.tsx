@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Button,
   Input,
+  InputNumber,
   Modal,
   Progress,
   Select,
@@ -189,6 +190,8 @@ export const TaskCenterPage = () => {
   const [guideVisible, setGuideVisible] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('全部');
   const [createVisible, setCreateVisible] = useState(false);
+  // 异步任务 = 给工作流挂 Webhook / 定时触发器，与批量任务不是同一件事
+  const [asyncVisible, setAsyncVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BatchTaskDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -315,9 +318,9 @@ export const TaskCenterPage = () => {
             theme="solid"
             type="primary"
             icon={<IconPlus aria-hidden="true" />}
-            onClick={() => setCreateVisible(true)}
+            onClick={() => (activeTab === 'batch' ? setCreateVisible(true) : setAsyncVisible(true))}
           >
-            创建任务
+            {activeTab === 'batch' ? '创建任务' : '创建异步任务'}
           </Button>
         </div>
       </header>
@@ -403,12 +406,6 @@ export const TaskCenterPage = () => {
                   <TaskCardMain>
                     <TaskNameRow>
                       <strong>{task.name}</strong>
-                      <Tag size="small" color={STATUS_META[task.status]?.color || 'grey'}>
-                        {STATUS_META[task.status]?.text || task.status}
-                      </Tag>
-                      <Tag size="small" type="ghost">
-                        {task.mode === 'draft' ? '草稿' : '已发布'}
-                      </Tag>
                     </TaskNameRow>
                     <TaskMeta>
                       <span>工作流：{task.workflowName || '已删除的工作流'}</span>
@@ -428,6 +425,15 @@ export const TaskCenterPage = () => {
                     />
                   </TaskCardMain>
                   <TaskCardSide>
+                    {/* 执行状态归到右侧，和计数一起读；左侧只留任务名与元信息 */}
+                    <TaskSideTags>
+                      <Tag size="small" color={STATUS_META[task.status]?.color || 'grey'}>
+                        {STATUS_META[task.status]?.text || task.status}
+                      </Tag>
+                      <Tag size="small" type="ghost">
+                        {task.mode === 'draft' ? '草稿' : '已发布'}
+                      </Tag>
+                    </TaskSideTags>
                     <TaskCounts>
                       <b>
                         {task.succeededCount}/{task.totalCount}
@@ -469,12 +475,6 @@ export const TaskCenterPage = () => {
                 <TaskCardMain>
                   <TaskNameRow>
                     <strong>{run.workflowName || '画布试运行'}</strong>
-                    <Tag size="small" color={STATUS_META[run.status]?.color || 'grey'}>
-                      {STATUS_META[run.status]?.text || run.status}
-                    </Tag>
-                    <Tag size="small" type="ghost">
-                      {SOURCE_LABELS[run.source] || run.source}
-                    </Tag>
                   </TaskNameRow>
                   <TaskMeta>
                     <span>开始于 {formatTime(run.createdAt)}</span>
@@ -483,11 +483,31 @@ export const TaskCenterPage = () => {
                     <span>费用 ¥{Number(run.cost || 0).toFixed(4)}</span>
                   </TaskMeta>
                 </TaskCardMain>
+                <TaskCardSide>
+                  {/* 状态与来源同样归到右侧，与批量任务卡保持一致 */}
+                  <TaskSideTags>
+                    <Tag size="small" color={STATUS_META[run.status]?.color || 'grey'}>
+                      {STATUS_META[run.status]?.text || run.status}
+                    </Tag>
+                    <Tag size="small" type="ghost">
+                      {SOURCE_LABELS[run.source] || run.source}
+                    </Tag>
+                  </TaskSideTags>
+                </TaskCardSide>
               </TaskCard>
             ))}
           </TaskList>
         )}
       </ScrollArea>
+
+      <CreateAsyncTaskModal
+        visible={asyncVisible}
+        onCancel={() => setAsyncVisible(false)}
+        onCreated={() => {
+          setAsyncVisible(false);
+          void refresh();
+        }}
+      />
 
       <CreateTaskModal
         visible={createVisible}
@@ -684,6 +704,158 @@ const StepArtResult = () => (
     <rect x="26" y="48" width="76" height="8" rx="4" fill="#f1f3f7" />
   </svg>
 );
+
+/**
+ * 创建异步任务：本质是给某张工作流挂一个 Webhook 或定时触发器，
+ * 之后由 Webhook / 定时计划触发的运行会出现在下面的列表里。
+ */
+const CreateAsyncTaskModal = ({
+  visible,
+  onCancel,
+  onCreated,
+}: {
+  visible: boolean;
+  onCancel: () => void;
+  onCreated: () => void;
+}) => {
+  const [workflows, setWorkflows] = useState<WorkflowOption[]>([]);
+  const [workflowId, setWorkflowId] = useState('');
+  const [type, setType] = useState<'webhook' | 'schedule'>('webhook');
+  const [name, setName] = useState('');
+  const [dailyTime, setDailyTime] = useState('09:00');
+  const [intervalMinutes, setIntervalMinutes] = useState(60);
+  const [scheduleType, setScheduleType] = useState<'interval' | 'daily'>('daily');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!visible) return;
+    setError('');
+    apiJson<WorkflowOption[]>('/workflows')
+      .then((list) => {
+        const usable = list || [];
+        setWorkflows(usable);
+        if (usable[0]) {
+          setWorkflowId(usable[0].id);
+          setName(`异步任务-${usable[0].name}`);
+        }
+      })
+      .catch((err: any) => setError(err?.message || '加载工作流失败'));
+  }, [visible]);
+
+  const handleSubmit = async () => {
+    if (!workflowId) {
+      setError('请选择要触发的工作流');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const body: Record<string, unknown> = { name: name.trim() || '异步任务', type };
+      if (type === 'schedule') {
+        body.scheduleType = scheduleType;
+        if (scheduleType === 'daily') body.dailyTime = dailyTime;
+        else body.intervalMinutes = intervalMinutes;
+      }
+      const created = await apiJson<{ webhookUrl?: string }>(`/workflows/${workflowId}/triggers`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      Toast.success(
+        `${type === 'webhook' ? 'Webhook' : '定时'}触发已创建${
+          created?.webhookUrl ? `：${created.webhookUrl}` : ''
+        }`,
+      );
+      onCreated();
+    } catch (err: any) {
+      setError(err?.message || '创建异步任务失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="创建异步任务"
+      visible={visible}
+      onCancel={onCancel}
+      onOk={() => void handleSubmit()}
+      okText="创建"
+      cancelText="取消"
+      confirmLoading={submitting}
+      width={560}
+      maskClosable={false}
+    >
+      <ModalBody>
+        <Field>
+          <label>触发方式</label>
+          <Select
+            value={type}
+            onChange={(value) => setType(String(value) as 'webhook' | 'schedule')}
+            style={{ width: '100%' }}
+            optionList={[
+              { value: 'webhook', label: 'Webhook（外部调用触发）' },
+              { value: 'schedule', label: '定时计划（按时间自动触发）' },
+            ]}
+          />
+          <small>
+            {type === 'webhook'
+              ? '创建后得到一次性密钥地址，外部系统 POST 该地址即触发工作流运行。'
+              : '到点自动触发工作流运行，运行结果会出现在下方列表。'}
+          </small>
+        </Field>
+
+        <Field>
+          <label>目标工作流</label>
+          <Select
+            value={workflowId}
+            onChange={(value) => {
+              const next = String(value);
+              setWorkflowId(next);
+              const target = workflows.find((item) => item.id === next);
+              if (target) setName(`异步任务-${target.name}`);
+            }}
+            style={{ width: '100%' }}
+            optionList={workflows.map((item) => ({ value: item.id, label: item.name }))}
+            placeholder="选择工作流"
+          />
+        </Field>
+
+        {type === 'schedule' && (
+          <Field>
+            <label>触发频率</label>
+            <Select
+              value={scheduleType}
+              onChange={(value) => setScheduleType(String(value) as 'interval' | 'daily')}
+              style={{ width: '100%' }}
+              optionList={[
+                { value: 'daily', label: '每天固定时间' },
+                { value: 'interval', label: '固定间隔（分钟）' },
+              ]}
+            />
+            {scheduleType === 'daily' ? (
+              <Input value={dailyTime} onChange={setDailyTime} placeholder="HH:MM，例如 09:00" />
+            ) : (
+              <InputNumber
+                value={intervalMinutes}
+                min={1}
+                onChange={(value: string | number) => setIntervalMinutes(Number(value) || 60)}
+                style={{ width: '100%' }}
+              />
+            )}
+          </Field>
+        )}
+
+        <Field>
+          <label>任务名称</label>
+          <Input value={name} onChange={setName} placeholder="便于识别的名称" />
+        </Field>
+
+        {error && <Typography.Text type="danger">{error}</Typography.Text>}
+      </ModalBody>
+    </Modal>
+  );
+};
 
 const CreateTaskModal = ({
   visible,
@@ -982,6 +1154,13 @@ const TaskCardSide = styled.div`
   display: grid;
   flex: 0 0 auto;
   justify-items: end;
+  gap: 6px;
+`;
+
+const TaskSideTags = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 `;
 
