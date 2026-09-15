@@ -63,13 +63,6 @@ interface PluginDetail extends PluginSummary {
   tools?: PluginTool[];
 }
 
-/** nodeType → 画布节点图标，直接复用节点注册表，避免两处维护同一份图标映射 */
-const nodeIconMap = new Map<string, string>(
-  nodeRegistries
-    .filter((registry) => typeof registry.info?.icon === 'string')
-    .map((registry) => [String(registry.type), registry.info!.icon as string]),
-);
-
 const formatCount = (value?: number) => {
   const count = Number(value || 0);
   if (count >= 10000) return `${(count / 10000).toFixed(1)}万`;
@@ -438,6 +431,29 @@ export const PluginStorePage = () => {
   );
 };
 
+/**
+ * 插件图标的取色板：字形用较深的颜色，背景用同色系接近白色的浅色。
+ * 颜色按插件 id 做稳定哈希，保证同一插件每次渲染颜色一致。
+ */
+const PLUGIN_TINTS: Array<{ fg: string; bg: string }> = [
+  { fg: '#1E3A8A', bg: '#EDF1FB' },
+  { fg: '#B45309', bg: '#FDF4E7' },
+  { fg: '#0F766E', bg: '#E8F7F4' },
+  { fg: '#6D28D9', bg: '#F3EEFE' },
+  { fg: '#BE123C', bg: '#FCEEF1' },
+  { fg: '#15803D', bg: '#EBF9F0' },
+  { fg: '#0369A1', bg: '#E9F4FB' },
+  { fg: '#9A3412', bg: '#FBEFE8' },
+];
+
+const pluginTint = (seed: string) => {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return PLUGIN_TINTS[hash % PLUGIN_TINTS.length];
+};
+
 const PluginMark = ({
   item,
   size,
@@ -448,13 +464,21 @@ const PluginMark = ({
   /** 首字母兜底图标的字号，详情页 96px 大图标需要更大的字号 */
   labelSize?: number;
 }) => {
-  const source = nodeIconMap.get(item.nodeType);
-  if (source) {
-    return <img src={source} width={size} height={size} alt="" />;
-  }
+  // 统一图标风格：首字母字形 + 同色系极浅背景，颜色按插件 id 稳定选取，
+  // 不再使用各节点自带的位图/深色图标，列表与详情视觉保持一致
+  const tint = pluginTint(item.id || item.nodeType || item.name || '');
   return (
-    <LetterMark $labelSize={labelSize} style={{ width: size, height: size }}>
-      {(item.name || '?').slice(0, 1)}
+    <LetterMark
+      $labelSize={labelSize}
+      style={{
+        width: size,
+        height: size,
+        background: tint.bg,
+        color: tint.fg,
+        fontSize: labelSize ?? Math.round(size * 0.46),
+      }}
+    >
+      {(item.name || '?').trim().slice(0, 1)}
     </LetterMark>
   );
 };

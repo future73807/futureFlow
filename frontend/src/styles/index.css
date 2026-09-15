@@ -648,3 +648,10 @@ body:has(.semi-sidesheet-mask) .app-content .page-scroll {
   background: #d8dbe0;
   background-clip: content-box;
 }
+
+/* 表头右侧那一条滚动条宽度也要有表头底色：否则表头看起来缺一块。
+   用等宽实心投影补齐，不改变任何列宽与布局。 */
+.ff-table-scroll > div:first-child,
+.admin-table-scroll .semi-table-thead {
+  box-shadow: 12px 0 0 var(--ff-surface-muted);
+}
