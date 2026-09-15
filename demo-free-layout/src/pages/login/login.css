@@ -65,6 +65,25 @@
   font-size: 13px;
 }
 
+/* 全角字符提示：贴着输入框常驻，避免用户只看到一闪而过的 toast */
+.auth-input-warning {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid var(--ff-warning-soft);
+  border-radius: var(--ff-radius);
+  background: var(--ff-warning-soft);
+  color: var(--ff-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.auth-input-warning code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(181, 71, 8, 0.12);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
 .auth-switch button {
   padding: 0;
   border: 0;
