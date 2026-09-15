@@ -77,3 +77,32 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+/* 调整弹窗：余额行内放输入框 + 保存余额按钮，各字段纵向排布 */
+.admin-adjust {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-adjust-field {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-adjust-field label {
+  color: var(--ff-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-adjust-balance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-adjust-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

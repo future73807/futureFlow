@@ -257,7 +257,10 @@ export const VersionPanel = ({ workflowId, visible, onClose, onRestored }: Versi
 
           {loading ? (
             <Center>
-              <Spin tip="加载版本列表" />
+              <div className="loading-inline">
+                <Spin size="small" />
+                <span>加载版本列表</span>
+              </div>
             </Center>
           ) : loadError ? (
             <ErrorState>

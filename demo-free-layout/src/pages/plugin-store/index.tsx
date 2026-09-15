@@ -311,7 +311,10 @@ export const PluginStorePage = () => {
     return (
       <PageContainer>
         <LoadingCenter>
-          <Spin size="large" tip="加载插件商店" />
+          <div className="loading-inline">
+            <Spin size="small" />
+            <span>加载插件商店</span>
+          </div>
         </LoadingCenter>
       </PageContainer>
     );
@@ -333,7 +336,10 @@ export const PluginStorePage = () => {
       return (
         <PageContainer>
           <LoadingCenter>
-            <Spin size="large" tip="加载插件详情" />
+            <div className="loading-inline">
+              <Spin size="small" />
+              <span>加载插件详情</span>
+            </div>
           </LoadingCenter>
         </PageContainer>
       );
@@ -358,10 +364,24 @@ export const PluginStorePage = () => {
         <p className="page-sub">平台内置工具插件，查看参数与运行统计，一键创建含该工具的画布。</p>
       </header>
 
-      {/* 工具条：本页没有主操作按钮，只有筛选控件，按规则统一靠右 */}
+      {/* 工具条：分类 chips 在左、搜索在右，两簇同一行；标题区不动 */}
       <div className="list-toolbar">
+        <div className="toolbar-actions">
+          <CategoryRow>
+            {categories.map((item) => (
+              <CategoryChip
+                key={item}
+                type="button"
+                $active={item === category}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </CategoryChip>
+            ))}
+          </CategoryRow>
+        </div>
         <div className="toolbar-filters">
-          {/* Semi 输入框默认 width:100%，会把分类 chips 整体压到第二行并铺满整行；限定宽高后整块紧凑贴右 */}
+          {/* 限定宽度：Semi 输入框默认 width:100%，不限定会把分类 chips 挤换行 */}
           <Input
             className="plugin-search"
             style={{ flex: '0 1 240px', minWidth: 180 }}
@@ -371,18 +391,6 @@ export const PluginStorePage = () => {
             onChange={setKeyword}
             showClear
           />
-          <CategoryRow>
-          {categories.map((item) => (
-            <CategoryChip
-              key={item}
-              type="button"
-              $active={item === category}
-              onClick={() => setCategory(item)}
-            >
-              {item}
-            </CategoryChip>
-          ))}
-          </CategoryRow>
         </div>
       </div>
 
@@ -730,8 +738,8 @@ const PageContainer = styled.div`
 const CategoryRow = styled.div`
   display: flex;
   flex-wrap: wrap;
-  /* 分类 chips 自身换行时每一行也靠右，与工具条的右对齐一致 */
-  justify-content: flex-end;
+  /* 分类现在位于工具条左侧，chips 换行时每行也靠左 */
+  justify-content: flex-start;
   gap: 8px;
 `;
 

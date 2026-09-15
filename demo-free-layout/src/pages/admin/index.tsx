@@ -16,14 +16,13 @@ import {
   Spin,
   Toast,
   Modal,
-  Form,
   Popconfirm,
   Empty,
   Select,
   Input,
+  InputNumber,
 } from '@douyinfe/semi-ui';
 import {
-  IconDelete,
   IconUser,
   IconKey,
   IconBranch,
@@ -37,7 +36,6 @@ import {
   adjustBalance,
   updateVipLevel,
   updateUserStatus,
-  deleteUser,
   listApiKeys,
   revokeApiKey,
   listWorkflows,
@@ -143,8 +141,8 @@ const userDetailFields = (r: UserRow): DetailField[] => [
   { label: '用户名', value: r.username || '-' },
   { label: '邮箱', value: r.email || '-' },
   { label: '角色', value: r.role === 'admin' ? '管理员' : '普通用户' },
-  { label: 'VIP 等级', value: (r.vipLevel || 'free').toUpperCase() },
-  { label: '状态', value: USER_STATUS_TEXT[r.status] || r.status || '-' },
+  { label: '会员等级', value: (r.vipLevel || 'free').toUpperCase() },
+  { label: '账号状态', value: USER_STATUS_TEXT[r.status] || r.status || '-' },
   { label: '余额', value: `¥${Number(r.balance || 0).toFixed(2)}` },
   { label: '冻结余额', value: `¥${Number(r.frozenBalance || 0).toFixed(2)}` },
   { label: '注册时间', value: formatTime(r.createdAt) },
@@ -204,11 +202,6 @@ const balanceLogDetailFields = (r: BalanceLogRow): DetailField[] => [
   { label: '关联运行 ID', value: <span className="cell-mono">{r.workflowRunId || '-'}</span> },
   { label: '时间', value: formatTime(r.createdAt) },
 ];
-
-/** 操作下拉选择器（提前定义，避免 TDZ 问题）。宽度按「企业版」三字 + 箭头算足，避免文字被省略 */
-const ActionSelect = (props: any) => (
-  <Select {...props} size="small" style={{ width: 92, ...props.style }} />
-);
 
 /** 每一行都有的查看按钮：打开完整字段弹窗 */
 const ViewButton = ({ onClick }: { onClick: () => void }) => (
@@ -500,50 +493,52 @@ const UsersView = ({
   onPageChange: (p: number) => void;
   refresh: () => void;
 }) => {
-  const [balanceModal, setBalanceModal] = useState<{ user: UserRow; visible: boolean }>({
+  const [adjustModal, setAdjustModal] = useState<{ user: UserRow; visible: boolean }>({
     user: null,
     visible: false,
   });
+  const [adjustValues, setAdjustValues] = useState<{
+    delta: number;
+    vipLevel: string;
+    status: string;
+  }>({ delta: 0, vipLevel: 'free', status: 'active' });
+  const [adjustSaving, setAdjustSaving] = useState(false);
   const { showDetail, detailNode } = useRowDetail();
 
-  const handleAdjustBalance = async (values: any) => {
+  const openAdjust = (r: UserRow) => {
+    setAdjustValues({ delta: 0, vipLevel: r.vipLevel || 'free', status: r.status || 'active' });
+    setAdjustModal({ user: r, visible: true });
+  };
+
+  const closeAdjust = () => setAdjustModal({ user: null, visible: false });
+
+  const handleSaveBalance = async () => {
+    if (!adjustModal.user) return;
     try {
-      await adjustBalance(balanceModal.user.id, values.delta, values.remark || '');
-      Toast.success('余额已调整');
-      setBalanceModal({ user: null, visible: false });
+      await adjustBalance(adjustModal.user.id, Number(adjustValues.delta || 0), '管理员手动调整');
+      Toast.success('余额已保存');
       refresh();
     } catch (e: any) {
-      Toast.error(e.message || '调整失败');
+      Toast.error(e.message || '保存余额失败');
     }
   };
 
-  const handleVipChange = async (id: string, vip: string) => {
+  const handleSaveAll = async () => {
+    const user = adjustModal.user;
+    if (!user) return;
+    setAdjustSaving(true);
     try {
-      await updateVipLevel(id, vip);
-      Toast.success('VIP 等级已更新');
+      // 余额、等级、状态各有独立接口，按顺序提交；任一失败即中止，避免只改一半还提示成功
+      await adjustBalance(user.id, Number(adjustValues.delta || 0), '管理员手动调整');
+      await updateVipLevel(user.id, adjustValues.vipLevel);
+      await updateUserStatus(user.id, adjustValues.status);
+      Toast.success('用户信息已更新');
+      closeAdjust();
       refresh();
     } catch (e: any) {
-      Toast.error(e.message || '更新失败');
-    }
-  };
-
-  const handleStatusChange = async (id: string, status: string) => {
-    try {
-      await updateUserStatus(id, status);
-      Toast.success('状态已更新');
-      refresh();
-    } catch (e: any) {
-      Toast.error(e.message || '更新失败');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteUser(id);
-      Toast.success('用户已删除');
-      refresh();
-    } catch (e: any) {
-      Toast.error(e.message || '删除失败');
+      Toast.error(e.message || '保存失败');
+    } finally {
+      setAdjustSaving(false);
     }
   };
 
@@ -597,38 +592,13 @@ const UsersView = ({
     },
     {
       title: '操作',
-      width: 320,
+      width: 140,
       render: (_: any, r: UserRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail(`用户详情 - ${r.username || ''}`, userDetailFields(r))} />
-          <Button size="small" onClick={() => setBalanceModal({ user: r, visible: true })}>
-            调整余额
+          <Button size="small" onClick={() => openAdjust(r)}>
+            调整
           </Button>
-          <ActionSelect
-            value={r.vipLevel}
-            onChange={(v: any) => handleVipChange(r.id, v as string)}
-            optionList={[
-              { value: 'free', label: '免费版' },
-              { value: 'pro', label: '专业版' },
-              { value: 'enterprise', label: '企业版' },
-            ]}
-          />
-          <ActionSelect
-            value={r.status}
-            onChange={(v: any) => handleStatusChange(r.id, v as string)}
-            optionList={[
-              { value: 'active', label: '正常' },
-              { value: 'suspended', label: '暂停' },
-              { value: 'banned', label: '封禁' },
-            ]}
-          />
-          {r.role !== 'admin' && (
-            <Popconfirm title="确认删除此用户？" onConfirm={() => handleDelete(r.id)}>
-              <Button size="small" type="danger" icon={<IconDelete />}>
-                删除
-              </Button>
-            </Popconfirm>
-          )}
         </div>
       ),
     },
@@ -650,34 +620,68 @@ const UsersView = ({
         empty={<Empty description="暂无用户" />}
       />
       <Modal
-        title={`调整余额 - ${balanceModal.user?.username || ''}`}
-        visible={balanceModal.visible}
-        onCancel={() => setBalanceModal({ user: null, visible: false })}
-        footer={null}
-      >
-        <Form onSubmit={handleAdjustBalance} initValues={{ delta: 0, remark: '' }}>
-          <Form.InputNumber
-            field="delta"
-            label="变动金额（正数充值，负数扣除）"
-            step={1}
-            style={{ width: '100%' }}
-          />
-          <Form.Input
-            field="remark"
-            label="备注"
-            placeholder="如：管理员手动充值"
-          />
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
+        title={`调整用户 - ${adjustModal.user?.username || ''}`}
+        visible={adjustModal.visible}
+        onCancel={closeAdjust}
+        footer={
+          <div className="admin-adjust-footer">
+            <Button onClick={closeAdjust}>取消</Button>
             <Button
               theme="solid"
               type="primary"
-              htmlType="submit"
-              style={{ borderRadius: 6 }}
+              loading={adjustSaving}
+              onClick={() => void handleSaveAll()}
             >
-              确认调整
+              保存
             </Button>
           </div>
-        </Form>
+        }
+      >
+        <div className="admin-adjust">
+          <div className="admin-adjust-field">
+            <label>余额</label>
+            <div className="admin-adjust-balance">
+              <InputNumber
+                value={adjustValues.delta}
+                step={1}
+                style={{ width: '100%' }}
+                onChange={(value) =>
+                  setAdjustValues((prev) => ({ ...prev, delta: Number(value || 0) }))
+                }
+              />
+              <Button onClick={() => void handleSaveBalance()}>保存余额</Button>
+            </div>
+            <span className="admin-muted">正数充值，负数扣除</span>
+          </div>
+          <div className="admin-adjust-field">
+            <label>等级</label>
+            <Select
+              value={adjustValues.vipLevel}
+              style={{ width: '100%' }}
+              onChange={(value) =>
+                setAdjustValues((prev) => ({ ...prev, vipLevel: String(value) }))
+              }
+              optionList={[
+                { value: 'free', label: '免费版' },
+                { value: 'pro', label: '专业版' },
+              ]}
+            />
+          </div>
+          <div className="admin-adjust-field">
+            <label>状态</label>
+            <Select
+              value={adjustValues.status}
+              style={{ width: '100%' }}
+              onChange={(value) =>
+                setAdjustValues((prev) => ({ ...prev, status: String(value) }))
+              }
+              optionList={[
+                { value: 'active', label: '正常' },
+                { value: 'suspended', label: '暂停' },
+              ]}
+            />
+          </div>
+        </div>
       </Modal>
       {detailNode}
     </div>

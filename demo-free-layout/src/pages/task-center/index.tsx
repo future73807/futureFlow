@@ -384,7 +384,10 @@ export const TaskCenterPage = () => {
 
       {loading && !error ? (
         <LoadingCenter>
-          <Spin size="large" tip="加载任务" />
+          <div className="loading-inline">
+            <Spin size="small" />
+            <span>加载任务</span>
+          </div>
         </LoadingCenter>
       ) : activeTab === 'batch' ? (
         batchTasks.length === 0 ? (
@@ -535,7 +538,10 @@ export const TaskCenterPage = () => {
       >
         {detailLoading || !detail ? (
           <LoadingCenter>
-            <Spin size="large" tip="加载任务详情" />
+            <div className="loading-inline">
+              <Spin size="small" />
+              <span>加载任务详情</span>
+            </div>
           </LoadingCenter>
         ) : (
           <DetailBody>
@@ -770,7 +776,10 @@ const CreateTaskModal = ({
     >
       {loading ? (
         <LoadingCenter>
-          <Spin tip="加载工作流" />
+          <div className="loading-inline">
+            <Spin size="small" />
+            <span>加载工作流</span>
+          </div>
         </LoadingCenter>
       ) : (
         <ModalBody>

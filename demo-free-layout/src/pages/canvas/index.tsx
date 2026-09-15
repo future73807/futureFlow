@@ -351,7 +351,10 @@ export const CanvasPage = () => {
   if (loading) {
     return (
       <div className="canvas-loading">
-        <Spin size="large" tip="加载画布" />
+        <div className="loading-inline">
+          <Spin size="small" />
+          <span>加载画布</span>
+        </div>
       </div>
     );
   }
@@ -519,7 +522,10 @@ export const CanvasPage = () => {
         )}
         {runsLoading ? (
           <div className="canvas-loading">
-            <Spin size="large" tip="加载运行记录" />
+            <div className="loading-inline">
+              <Spin size="small" />
+              <span>加载运行记录</span>
+            </div>
           </div>
         ) : runs.length === 0 ? (
           <div className="canvas-runs-empty">
