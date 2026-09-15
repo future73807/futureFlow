@@ -153,27 +153,18 @@ export class WorkflowCrudService {
       wf.publishedAt = publishedAt;
       const published = await workflowRepo.save(wf);
 
-      // Re-publishing an unchanged draft refreshes the live snapshot but does
-      // not create duplicate version-history rows.
-      const existing = await versionRepo.findOne({
-        where: { workflowId: published.id, version: published.version },
+      // 版本号统一从版本表顺延（与「另存为版本」同一条规则）：草稿修订号会被
+      // 保存动作推高，直接拿它当版本号会让版本列表跳号（1.4 却没有 1.1~1.3）。
+      const latest = await versionRepo.findOne({
+        where: { workflowId: published.id },
+        order: { version: 'DESC' },
       });
-      if (!existing) {
-        await this.createVersionRow(
-          versionRepo,
-          published,
-          userId,
-          published.version,
-          publishedAt,
-        );
-      } else if (!this.isSameSnapshot(existing, published)) {
-        // 另存为版本可能已经占用了草稿修订号；发布新内容时必须顺延编号补写历史，
-        // 否则线上快照会缺少可回溯记录。
-        const latest = await versionRepo.findOne({
-          where: { workflowId: published.id },
-          order: { version: 'DESC' },
-        });
-        const nextVersion = (latest?.version ?? published.version) + 1;
+      if (latest && this.isSameSnapshot(latest, published)) {
+        // 内容没变（例如刚另存过）：沿用最新版本号作为线上版本，不新增历史行。
+        published.publishedVersion = latest.version;
+        await workflowRepo.save(published);
+      } else {
+        const nextVersion = (latest?.version ?? 0) + 1;
         await this.createVersionRow(
           versionRepo,
           published,
@@ -329,6 +320,10 @@ export class WorkflowCrudService {
           flowgramJson: this.cloneJson(wf.flowgramJson),
           comment: (dto.comment || '').trim(),
           source: 'manual',
+          // 与发布路径保持一致地显式写入时间：publishedAt 是 timestamp without time zone，
+          // 交给数据库 now() 会写入 UTC 墙钟，而 JS Date 写入的是进程本地墙钟，
+          // 两条路径混用会让版本列表的时间差一个时区（实测差 8 小时）。
+          publishedAt: new Date(),
         }),
       );
       return this.toVersionItem(created, wf.publishedVersion, created.version);

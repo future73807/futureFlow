@@ -258,7 +258,9 @@ async function main() {
       .post(`/workflows/${workflowId}/publish`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
-    assert.equal(publishResponse.body.workflow.publishedVersion, 2);
+    // 版本号从版本表顺延（1.0 起），不再复用会被保存动作推高的草稿修订号，
+    // 否则版本列表会跳号（出现 1.4 却没有 1.1~1.3）。
+    assert.equal(publishResponse.body.workflow.publishedVersion, 1);
     assert.equal(publishResponse.body.endpoint, `/workflows/${workflowId}/execute`);
 
     const versions = await request(server)
@@ -266,7 +268,9 @@ async function main() {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     assert.equal(versions.body.length, 1);
-    assert.equal(versions.body[0].version, 2);
+    assert.equal(versions.body[0].version, 1);
+    assert.equal(versions.body[0].label, '1.0');
+    assert.equal(versions.body[0].isPublished, true);
 
     await request(server)
       .put(`/workflows/${workflowId}`)
@@ -275,12 +279,12 @@ async function main() {
       .expect(200)
       .expect((response) => assert.equal(response.body.version, 3));
     const restored = await request(server)
-      .post(`/workflows/${workflowId}/versions/2/restore`)
+      .post(`/workflows/${workflowId}/versions/1/restore`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(201);
     assert.equal(restored.body.name, '更新后的工作流');
     assert.equal(restored.body.version, 4);
-    assert.equal(restored.body.publishedVersion, 2, '恢复草稿不能自动改变线上版本');
+    assert.equal(restored.body.publishedVersion, 1, '恢复草稿不能自动改变线上版本');
 
     await request(server)
       .post(`/workflows/${workflowId}/triggers`)
