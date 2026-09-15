@@ -13,7 +13,7 @@ require(resolve(__dirname, '../gateway/node_modules/ts-node/register/transpile-o
 
 const { prepareConditionNodesForRuntime } = require(resolve(
   __dirname,
-  '../demo-free-layout/src/nodes/condition/runtime.ts',
+  '../frontend/src/nodes/condition/runtime.ts',
 ));
 
 let TaskReportAPI;
@@ -203,7 +203,7 @@ const runPreparedSchema = async (schema, inputs) => {
     TaskReportAPI,
     TaskRunAPI,
     TaskValidateAPI,
-  } = await import('../demo-free-layout/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
+  } = await import('../frontend/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
 
   const reservedOrdinary = buildSchema();
   reservedOrdinary.nodes.find((node) => node.id === 'string_condition')

@@ -14,7 +14,7 @@ require(resolve(__dirname, '../gateway/node_modules/ts-node/register/transpile-o
 
 const { prepareHttpNodesForRuntime } = require(resolve(
   __dirname,
-  '../demo-free-layout/src/nodes/http/runtime.ts',
+  '../frontend/src/nodes/http/runtime.ts',
 ));
 
 let TaskReportAPI;
@@ -220,7 +220,7 @@ const waitForReport = async (taskID) => {
     TaskReportAPI,
     TaskRunAPI,
     TaskValidateAPI,
-  } = await import('../demo-free-layout/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
+  } = await import('../frontend/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
 
   const { server, baseUrl } = await startEchoServer();
   try {

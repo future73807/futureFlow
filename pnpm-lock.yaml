@@ -18,7 +18,7 @@ importers:
         specifier: 1.62.1
         version: 1.62.1
 
-  demo-free-layout:
+  frontend:
     dependencies:
       '@douyinfe/semi-icons':
         specifier: ^2.80.0

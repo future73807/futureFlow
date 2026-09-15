@@ -49,5 +49,6 @@
   "engines": {
     "node": ">=20",
     "pnpm": ">=10"
-  }
+  },
+  "license": "MIT"
 }

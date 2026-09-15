@@ -343,5 +343,4 @@ LLM_DEFAULT_MODEL=deepseek-chat
 
 ## 许可证
 
-- 仓库根目录当前未包含 `LICENSE` 文件，根 `package.json` 也未声明许可证；在补充授权条款前，请视为保留所有权利，对外分发或商业使用前先与作者确认。
-- 前端画布包 `demo-free-layout` 派生自 FlowGram 官方示例工程，其 `package.json` 声明为 MIT，该声明仅适用于该包本身。
+MIT

@@ -142,7 +142,7 @@ const run = async (items, outputType = 'number') => {
     TaskReportAPI,
     TaskRunAPI,
     TaskValidateAPI,
-  } = await import('../demo-free-layout/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
+  } = await import('../frontend/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js'));
 
   const numberReport = await run([1, 2, 3]);
   assert.equal(numberReport.workflowStatus.status, 'succeeded');

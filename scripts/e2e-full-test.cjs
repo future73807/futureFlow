@@ -455,7 +455,7 @@ async function startFrontendForUi() {
   log('info', 'Starting the current frontend source for UI verification...');
   await assertPortAvailable(CONFIG.FRONTEND_PORT);
 
-  const frontendDir = resolve(process.cwd(), 'demo-free-layout');
+  const frontendDir = resolve(process.cwd(), 'frontend');
   const rsbuildCli = resolve(
     frontendDir,
     'node_modules',

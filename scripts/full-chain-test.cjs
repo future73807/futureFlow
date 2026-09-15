@@ -706,10 +706,10 @@ async function verifyArchive(outputs, nodeEvents, finished) {
   });
   process.env.TS_NODE_TRANSPILE_ONLY = 'true';
   require(resolve(__dirname, '../gateway/node_modules/ts-node/register/transpile-only'));
-  const JSZip = require(resolve(__dirname, '../demo-free-layout/node_modules/jszip'));
+  const JSZip = require(resolve(__dirname, '../frontend/node_modules/jszip'));
   const { createResultArchive } = require(resolve(
     __dirname,
-    '../demo-free-layout/src/utils/result-archive.ts',
+    '../frontend/src/utils/result-archive.ts',
   ));
   const { zip } = createResultArchive({
     workflowName: '富节点真实全链路',

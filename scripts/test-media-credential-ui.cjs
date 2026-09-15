@@ -20,7 +20,7 @@ require(resolve(__dirname, '../gateway/node_modules/ts-node/register/transpile-o
 const {
   isMediaCredentialId,
   parseMediaCredentialSummaries,
-} = require(resolve(__dirname, '../demo-free-layout/src/services/media-credentials.ts'));
+} = require(resolve(__dirname, '../frontend/src/services/media-credentials.ts'));
 
 const credentialId = '11111111-1111-4111-8111-111111111111';
 // 运行时拼接夹具字符串，避免源码出现可直接使用的凭据样式字面量。
@@ -51,11 +51,11 @@ assert.throws(
 );
 
 const formMeta = readFileSync(
-  resolve(__dirname, '../demo-free-layout/src/nodes/content/form-meta.tsx'),
+  resolve(__dirname, '../frontend/src/nodes/content/form-meta.tsx'),
   'utf8',
 );
 const selector = readFileSync(
-  resolve(__dirname, '../demo-free-layout/src/nodes/content/media-credential-selector.tsx'),
+  resolve(__dirname, '../frontend/src/nodes/content/media-credential-selector.tsx'),
   'utf8',
 );
 assert.match(formMeta, /MediaCredentialSelector/);

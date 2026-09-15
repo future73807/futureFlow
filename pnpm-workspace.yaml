@@ -1,6 +1,6 @@
 packages:
   - 'gateway'
-  - 'demo-free-layout'
+  - 'frontend'
 
 # pnpm 11+ 使用 allowBuilds 控制哪些依赖可执行 build scripts
 # 设为 true 表示允许,false 表示禁止

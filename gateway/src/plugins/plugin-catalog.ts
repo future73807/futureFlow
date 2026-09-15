@@ -2,7 +2,7 @@
  * 插件商店静态目录。
  *
  * 这里只做展示元数据：名称、描述、真实参数与输出都对齐前端节点注册表
- * （demo-free-layout/src/nodes），不包含任何运行时逻辑。
+ * （frontend/src/nodes），不包含任何运行时逻辑。
  * nodeType 必须与前端 FlowGram 节点的 type 字符串完全一致，
  * 统计服务依赖它把 workflow_runs.flowgramJson.nodes[].type 映射到插件。
  */

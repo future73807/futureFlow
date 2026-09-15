@@ -10,7 +10,7 @@ import {
 import {
   analyzeSynchronousJavaScript as analyzeBrowserJavaScript,
   prepareCodeNodesForRuntime,
-} from '../../demo-free-layout/src/nodes/code/runtime';
+} from '../../frontend/src/nodes/code/runtime';
 
 const converter = new DifyConverterService();
 (converter as any).logger = { log() {} };
@@ -433,7 +433,7 @@ const reportErrors = (report: any): string => Object.values(report.messages || {
 const runQuickJsContractChecks = async () => {
   const runtimeUrl = pathToFileURL(resolve(
     __dirname,
-    '../../demo-free-layout/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js',
+    '../../frontend/node_modules/@flowgram.ai/runtime-js/dist/esm/index.js',
   )).href;
   const nativeImport = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
   const runtime = await nativeImport(runtimeUrl);

@@ -14,11 +14,11 @@ process.env.TS_NODE_TRANSPILE_ONLY = 'true';
 
 require(resolve(__dirname, '../gateway/node_modules/ts-node/register/transpile-only'));
 
-const JSZip = require(resolve(__dirname, '../demo-free-layout/node_modules/jszip'));
+const JSZip = require(resolve(__dirname, '../frontend/node_modules/jszip'));
 const {
   createResultArchive,
   extractTextOutput,
-} = require(resolve(__dirname, '../demo-free-layout/src/utils/result-archive.ts'));
+} = require(resolve(__dirname, '../frontend/src/utils/result-archive.ts'));
 
 const FIXED_TIME = new Date('2026-08-09T12:34:56.000Z');
 
