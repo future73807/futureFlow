@@ -18,9 +18,20 @@
 .auth-brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   color: var(--ff-text);
-  font-size: 18px;
+  font-size: 21px;
+}
+
+/* 与侧边栏一致：品牌名用蓝→浅蓝渐变，和 logo 融为一体 */
+.auth-brand strong {
+  background: linear-gradient(92deg, #1d4ed8 0%, #2563eb 45%, #7cc5ff 100%);
+  background-clip: text;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .auth-brand-mark {

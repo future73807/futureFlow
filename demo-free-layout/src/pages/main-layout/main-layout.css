@@ -27,8 +27,19 @@
   background: transparent;
   color: var(--ff-text);
   cursor: pointer;
-  font-size: 17px;
+  font-size: 20px;
   text-align: left;
+}
+
+/* 品牌名与 logo 用同一套蓝→浅蓝渐变，字号加大，读起来是一个整体 */
+.app-brand strong {
+  background: linear-gradient(92deg, #1d4ed8 0%, #2563eb 45%, #7cc5ff 100%);
+  background-clip: text;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .app-brand-mark {
