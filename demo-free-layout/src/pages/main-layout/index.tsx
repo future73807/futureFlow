@@ -116,18 +116,6 @@ export const MainLayout = () => {
             })}
         </nav>
 
-        <div className="sidebar-points">
-          <div className="sidebar-points-head">
-            <span>可用额度</span>
-            <em>{user?.vipLevel?.toUpperCase() || 'FREE'}</em>
-          </div>
-          <strong>¥ {Number(user?.balance || 0).toFixed(2)}</strong>
-          <button type="button" onClick={() => navigate('/profile')}>
-            升级套餐获得更多权益
-            <i aria-hidden="true">›</i>
-          </button>
-        </div>
-
         <div className="sidebar-footer">
           <button className="sidebar-account" type="button" onClick={() => navigate('/profile')}>
             <Avatar size="small">

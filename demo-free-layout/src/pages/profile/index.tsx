@@ -464,7 +464,8 @@ export const ProfilePage = () => {
         </div>
       </header>
 
-      <section className="profile-identity">
+      <section className="profile-summary">
+        <div className="profile-identity">
         <div className="profile-identity-main">
           <Avatar className="profile-avatar" size="small">
             {user.username?.[0]?.toUpperCase() || 'U'}
@@ -488,35 +489,36 @@ export const ProfilePage = () => {
             <dd>{joinDate}</dd>
           </div>
         </dl>
-      </section>
+        </div>
 
-      <section className="profile-metrics" aria-label="账户指标">
-        <div className="profile-metric">
-          <span>可用额度</span>
-          <strong>¥ {Number(user.balance || 0).toFixed(2)}</strong>
-          <small>可用于工作流运行与 API 调用</small>
-        </div>
-        <div className="profile-metric">
-          <span>冻结额度</span>
-          <strong>¥ {Number(user.frozenBalance || 0).toFixed(4)}</strong>
-          <small>运行中的任务会暂时占用额度</small>
-        </div>
-        <div className="profile-metric">
-          <span>访问密钥</span>
-          <strong>{apiKeys.length}</strong>
-          <small>{usedKeyCount ? usedKeyCount + ' 个密钥已有调用记录' : '请只为必要环境创建 Key'}</small>
-        </div>
+        <dl className="profile-metrics" aria-label="账户指标">
+          <div className="profile-metric">
+            <span>可用额度</span>
+            <strong>¥ {Number(user.balance || 0).toFixed(2)}</strong>
+            <small>可用于工作流运行与 API 调用</small>
+          </div>
+          <div className="profile-metric">
+            <span>冻结额度</span>
+            <strong>¥ {Number(user.frozenBalance || 0).toFixed(4)}</strong>
+            <small>运行中的任务会暂时占用额度</small>
+          </div>
+          <div className="profile-metric">
+            <span>访问密钥</span>
+            <strong>{apiKeys.length}</strong>
+            <small>{usedKeyCount ? usedKeyCount + ' 个密钥已有调用记录' : '请只为必要环境创建 Key'}</small>
+          </div>
+        </dl>
       </section>
 
       <section className="profile-section">
         <div className="profile-section-header">
-          <div>
+          <div className="profile-section-title">
             <h2>API 密钥</h2>
-            <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
+            <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>
+              创建 Key
+            </Button>
           </div>
-          <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>
-            创建 Key
-          </Button>
+          <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
         </div>
         <Table
           dataSource={apiKeys}
@@ -590,11 +592,9 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="profile-section-header">
-          <div>
+          <div className="profile-section-title">
             <h2>文件管理</h2>
-            <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
-          </div>
-          <label className="profile-upload-button">
+            <label className="profile-upload-button">
             <input
               type="file"
               style={{ display: 'none' }}
@@ -607,6 +607,8 @@ export const ProfilePage = () => {
               上传文件
             </Button>
           </label>
+          </div>
+          <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
         </div>
         <Table
           dataSource={files}
@@ -682,13 +684,13 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="profile-section-header">
-          <div>
+          <div className="profile-section-title">
             <h2>知识库</h2>
-            <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
+            <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
+              创建知识库
+            </Button>
           </div>
-          <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
-            创建知识库
-          </Button>
+          <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
         </div>
         <Table
           dataSource={datasets || []}
@@ -752,13 +754,13 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="profile-section-header">
-          <div>
+          <div className="profile-section-title">
             <h2>MCP 服务器</h2>
-            <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
+            <Button icon={<IconPlus />} onClick={() => setCreateMcpVisible(true)}>
+              注册服务器
+            </Button>
           </div>
-          <Button icon={<IconPlus />} onClick={() => setCreateMcpVisible(true)}>
-            注册服务器
-          </Button>
+          <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
         </div>
         <Table
           dataSource={mcpServers || []}

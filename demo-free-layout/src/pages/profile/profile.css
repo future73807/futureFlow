@@ -4,16 +4,24 @@
   padding: 34px 40px 48px;
 }
 
-.profile-page-header,
+/* 区块级与页面级操作都跟着标题放左边：先读标题再读动作，视线不用甩到最右边 */
 .profile-section-header {
+  display: block;
+}
+
+.profile-section-title {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
 .profile-page-header {
   margin-bottom: 24px;
+}
+
+.profile-page-header > div:last-child {
+  margin-top: 14px;
 }
 
 .profile-page h1,
@@ -42,7 +50,7 @@
   font-weight: 700;
 }
 
-.profile-identity,
+.profile-summary,
 .profile-section {
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
@@ -50,12 +58,17 @@
   box-shadow: var(--ff-shadow-sm);
 }
 
+.profile-summary {
+  display: grid;
+  margin-bottom: 16px;
+}
+
 .profile-identity {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 28px;
-  min-height: 108px;
+  min-height: 96px;
   padding: 22px 24px;
 }
 
@@ -126,32 +139,35 @@
   white-space: nowrap;
 }
 
+/* 额度指标与账户信息同属一张卡：用分隔线排版，不再叠三层卡片边框 */
 .profile-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 16px 0;
+  margin: 0;
+  border-top: 1px solid var(--ff-border);
 }
 
 .profile-metric {
-  min-height: 120px;
-  padding: 20px;
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius);
-  background: var(--ff-surface);
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 16px 24px 18px;
+  border-right: 1px solid var(--ff-border);
+}
+
+.profile-metric:last-child {
+  border-right: 0;
 }
 
 .profile-metric > span {
   color: var(--ff-muted);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
 }
 
 .profile-metric strong {
-  display: block;
-  margin: 10px 0 4px;
   color: var(--ff-text);
-  font-size: 24px;
+  font-size: 22px;
+  font-weight: 600;
   line-height: 30px;
 }
 
@@ -161,8 +177,27 @@
   line-height: 18px;
 }
 
+@media (max-width: 720px) {
+  .profile-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .profile-metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--ff-border);
+  }
+
+  .profile-metric:last-child {
+    border-bottom: 0;
+  }
+}
+
 .profile-section {
   padding: 22px 24px 10px;
+}
+
+.profile-section + .profile-section {
+  margin-top: 16px;
 }
 
 .profile-section-header {
