@@ -72,8 +72,8 @@ textarea:focus-visible {
 .semi-button {
   min-height: 34px;
   border-radius: var(--ff-radius) !important;
-  border-color: #e5e6eb;
-  background: #f2f3f5;
+  border-color: #d8dbe0;
+  background: #ffffff;
   color: var(--ff-text-secondary);
   font-weight: 500;
   box-shadow: none !important;
@@ -94,9 +94,10 @@ textarea:focus-visible {
 
 /* 轻主题按钮（Semi 默认 theme=light，即所有次级按钮）统一浅灰填充；
    白底+描边在白底页面上看不出是按钮，浅灰填充保证可辨识 */
+/* 次级按钮统一白底 + 清晰描边：灰填充会和浅色页面糊在一起，白底靠描边界定按钮形状 */
 .semi-button.semi-button-light {
-  background: #f2f3f5 !important;
-  border-color: #e5e6eb !important;
+  background: #ffffff !important;
+  border-color: #d8dbe0 !important;
   color: var(--ff-text-secondary) !important;
 }
 
