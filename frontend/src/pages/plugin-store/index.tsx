@@ -447,12 +447,134 @@ const PLUGIN_TINTS: Array<{ fg: string; bg: string }> = [
 ];
 
 const pluginTint = (seed: string) => {
+  // 大语言模型用最深的一档蓝（用户指定：这个颜色深一点）
+  if (seed === 'llm') return { fg: '#1E3A8A', bg: '#EDF1FB' };
   let hash = 0;
   for (let index = 0; index < seed.length; index += 1) {
     hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
   }
   return PLUGIN_TINTS[hash % PLUGIN_TINTS.length];
 };
+
+/**
+ * 插件图标：统一的 24px 线性图标（描边用当前色，因此跟着取色板变色）。
+ * 每个插件一套专属图形，不用文字，列表与详情共用同一份映射。
+ */
+const PLUGIN_ICONS: Record<string, React.ReactNode> = {
+  // 大语言模型：星芒 + 小星
+  llm: (
+    <>
+      <path d="M11 3.5l1.7 4.1L16.8 9.3l-4.1 1.7L11 15.1 9.3 11 5.2 9.3 9.3 7.6z" />
+      <path d="M17.5 15l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" />
+    </>
+  ),
+  // 文本处理：三行文字
+  'content-text': <path d="M5 7h14M5 12h10.5M5 17h7" />,
+  // 图片处理：相框 + 太阳 + 山
+  'content-image': (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.6" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="M4.2 17.2l4.6-4.6 3.6 3.6 2.4-2.2 5 4.4" />
+    </>
+  ),
+  // 视频处理：播放键
+  'content-video': (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2.6" />
+      <path d="M10.6 9.6l5.2 2.4-5.2 2.4z" />
+    </>
+  ),
+  // API 请求：地球
+  http: (
+    <>
+      <circle cx="12" cy="12" r="8.4" />
+      <path d="M3.6 12h16.8" />
+      <path d="M12 3.6c2.6 2.5 2.6 14.4 0 16.8-2.6-2.4-2.6-14.3 0-16.8z" />
+    </>
+  ),
+  // 代码执行：尖括号
+  code: <path d="M9.2 8l-4 4 4 4M14.8 8l4 4-4 4" />,
+  // 知识检索：书本
+  knowledge: (
+    <>
+      <path d="M5.5 4.5h9a2.5 2.5 0 012.5 2.5v12H8a2.5 2.5 0 01-2.5-2.5z" />
+      <path d="M8.6 4.5v14.5" />
+    </>
+  ),
+  // 子工作流：两个节点 + 连线
+  subworkflow: (
+    <>
+      <rect x="3.5" y="4.2" width="7" height="5.6" rx="1.6" />
+      <rect x="13.5" y="14.2" width="7" height="5.6" rx="1.6" />
+      <path d="M10.5 7h4.2a2.4 2.4 0 012.4 2.4v4.8" />
+    </>
+  ),
+  // MCP 工具：插头
+  mcp: (
+    <>
+      <path d="M9.6 4.6v4.2M14.4 4.6v4.2" />
+      <path d="M7.4 8.8h9.2v4a4.6 4.6 0 01-9.2 0z" />
+      <path d="M12 17.4V20.5" />
+    </>
+  ),
+  // SQL 查询：数据库柱体
+  database: (
+    <>
+      <ellipse cx="12" cy="6.4" rx="6.8" ry="2.6" />
+      <path d="M5.2 6.4v11.2c0 1.4 3 2.6 6.8 2.6s6.8-1.2 6.8-2.6V6.4" />
+      <path d="M5.2 12c0 1.4 3 2.6 6.8 2.6s6.8-1.2 6.8-2.6" />
+    </>
+  ),
+  // Python 执行：终端窗口
+  python: (
+    <>
+      <rect x="3.6" y="4.6" width="16.8" height="14.8" rx="2.4" />
+      <path d="M7.4 9.6l2.4 2.4-2.4 2.4M12.4 14.4h4.2" />
+    </>
+  ),
+  // 条件分支：分叉
+  condition: (
+    <>
+      <path d="M12 4.2v3.6M12 7.8L7.2 12.2v4.4M12 7.8l4.8 4.4v4.4" />
+      <circle cx="7.2" cy="18.4" r="1.5" />
+      <circle cx="12" cy="18.4" r="1.5" />
+      <circle cx="16.8" cy="18.4" r="1.5" />
+    </>
+  ),
+  // 多条件分支：三分叉
+  'multi-condition': (
+    <>
+      <path d="M12 4.2v3.4M12 7.6H6.4v7.2M12 7.6v7.2M12 7.6h5.6v7.2" />
+      <circle cx="6.4" cy="16.6" r="1.4" />
+      <circle cx="12" cy="16.6" r="1.4" />
+      <circle cx="17.6" cy="16.6" r="1.4" />
+    </>
+  ),
+  // 数组批处理：循环箭头
+  loop: (
+    <>
+      <path d="M4.6 12a7.4 7.4 0 0112.6-5.2" />
+      <path d="M19.4 12a7.4 7.4 0 01-12.6 5.2" />
+      <path d="M17.6 3.4v3.8h-3.8M6.4 20.6v-3.8h3.8" />
+    </>
+  ),
+  // 变量赋值：花括号里的叉（变量符号）
+  variable: (
+    <>
+      <path d="M8.4 5.6H7a1.6 1.6 0 00-1.6 1.6v9.6A1.6 1.6 0 007 18.4h1.4M15.6 5.6H17a1.6 1.6 0 011.6 1.6v9.6a1.6 1.6 0 01-1.6 1.6h-1.4" />
+      <path d="M10.2 9.6l3.6 4.8M13.8 9.6l-3.6 4.8" />
+    </>
+  ),
+};
+
+/** 未知插件兜底：方块 + 十字，保持与其他图标同样的线性观感 */
+const FALLBACK_ICON = (
+  <>
+    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <path d="M9 12h6M12 9v6" />
+  </>
+);
 
 const PluginMark = ({
   item,
@@ -464,24 +586,28 @@ const PluginMark = ({
   /** 首字母兜底图标的字号，详情页 96px 大图标需要更大的字号 */
   labelSize?: number;
 }) => {
-  // 统一图标风格：首字母字形 + 同色系极浅背景，颜色按插件 id 稳定选取，
-  // 不再使用各节点自带的位图/深色图标，列表与详情视觉保持一致
+  // 统一图标风格：专属线性图形 + 同色系极浅背景，颜色按插件 id 稳定选取
   const tint = pluginTint(item.id || item.nodeType || item.name || '');
+  const glyphSize = Math.round(size * 0.56);
   return (
-    <LetterMark
-      $labelSize={labelSize}
-      style={{
-        width: size,
-        height: size,
-        background: tint.bg,
-        color: tint.fg,
-        fontSize: labelSize ?? Math.round(size * 0.46),
-      }}
-    >
-      {(item.name || '?').trim().slice(0, 1)}
+    <LetterMark style={{ width: size, height: size, background: tint.bg, color: tint.fg }}>
+      <svg
+        width={glyphSize}
+        height={glyphSize}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {PLUGIN_ICONS[item.id] ?? FALLBACK_ICON}
+      </svg>
     </LetterMark>
   );
 };
+
 
 const DetailView = ({
   detail,
