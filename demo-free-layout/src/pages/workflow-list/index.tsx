@@ -1220,20 +1220,20 @@ export const WorkflowListPage = () => {
       <div className="list-toolbar">
         <div className="toolbar-actions">
           <Button
-            theme="light"
-            icon={<IconUpload />}
-            loading={importing}
-            onClick={() => importInputRef.current?.click()}
-          >
-            导入
-          </Button>
-          <Button
             type="primary"
             theme="solid"
             icon={<IconPlus />}
             onClick={() => setCreateVisible(true)}
           >
             创建画布
+          </Button>
+          <Button
+            theme="light"
+            icon={<IconUpload />}
+            loading={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
+            导入
           </Button>
           {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
           <input
@@ -1245,8 +1245,10 @@ export const WorkflowListPage = () => {
           />
         </div>
         <div className="toolbar-filters">
+          {/* Semi 输入框默认 width:100%，会把同行的发布状态下拉挤到第二行；限定可伸缩宽度后两者保持同一行 */}
           <Input
             className="resource-search"
+            style={{ flex: '0 1 240px', minWidth: 180 }}
             prefix={<IconSearch />}
             placeholder="搜索资源"
             value={keyword}

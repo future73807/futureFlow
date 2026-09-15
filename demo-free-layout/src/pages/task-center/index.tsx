@@ -181,6 +181,8 @@ export const TaskCenterPage = () => {
   const [batchTasks, setBatchTasks] = useState<BatchTaskSummary[]>([]);
   const [asyncRuns, setAsyncRuns] = useState<AsyncRun[]>([]);
   const [loading, setLoading] = useState(true);
+  // 手动刷新与轮询走 refreshing：只让按钮转圈，列表保持在屏幕上，避免整页被 Spin 替换
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('全部');
   const [creatorFilter, setCreatorFilter] = useState('全部创建者');
@@ -207,6 +209,7 @@ export const TaskCenterPage = () => {
   }, [sourceFilter]);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     try {
       setError(null);
       if (activeTab === 'batch') await loadBatchTasks();
@@ -214,12 +217,13 @@ export const TaskCenterPage = () => {
     } catch (err: any) {
       setError(err?.message || '加载任务失败');
     } finally {
+      setRefreshing(false);
+      // 首屏 Spin 只在第一次请求结束后收起，之后刷新不再整块替换列表
       setLoading(false);
     }
   }, [activeTab, loadAsyncRuns, loadBatchTasks]);
 
   useEffect(() => {
-    setLoading(true);
     void refresh();
   }, [refresh]);
 
@@ -327,56 +331,45 @@ export const TaskCenterPage = () => {
         </TabButton>
       </TabRow>
 
-      {/* 列表区块头只放标题与说明，操作与筛选挪到独立工具条 */}
-      <div className="section-head">
-        <div className="section-head-row">
-          <h2>{activeTab === 'batch' ? '任务列表' : '运行记录'}</h2>
-        </div>
-        <p>
-          {activeTab === 'batch'
-            ? '逐行查看每个批量任务的进度与结果，点击卡片查看每行输出。'
-            : 'Webhook、定时计划与平台 API 触发的运行都会记录在这里。'}
-        </p>
-      </div>
-
+      {/* 区块头已删除：列表本身可读，不再占用一行标题；操作与筛选统一放工具条 */}
       <div className="list-toolbar">
         <div className="toolbar-actions">
           <Button
             icon={<IconRefresh aria-hidden="true" />}
             onClick={() => void refresh()}
-            loading={loading}
+            loading={refreshing}
           >
             刷新
           </Button>
         </div>
         <div className="toolbar-filters">
           {activeTab === 'batch' ? (
-          <>
-            {/* 平台是单账号工作区，「创建者」维度只有本账号一种取值；控件形态与参考图保持一致 */}
+            <>
+              {/* 平台是单账号工作区，「创建者」维度只有本账号一种取值；控件形态与参考图保持一致 */}
+              <Select
+                value={creatorFilter}
+                onChange={(value) => setCreatorFilter(String(value))}
+                optionList={[
+                  { value: '全部创建者', label: '全部创建者' },
+                  { value: '我创建的', label: '我创建的' },
+                ]}
+                style={{ width: 150 }}
+              />
+              <Select
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(String(value))}
+                optionList={statusOptions}
+                style={{ width: 150 }}
+              />
+            </>
+          ) : (
             <Select
-              value={creatorFilter}
-              onChange={(value) => setCreatorFilter(String(value))}
-              optionList={[
-                { value: '全部创建者', label: '全部创建者' },
-                { value: '我创建的', label: '我创建的' },
-              ]}
-              style={{ width: 150 }}
+              value={sourceFilter}
+              onChange={(value) => setSourceFilter(String(value))}
+              optionList={sourceOptions}
+              style={{ width: 160 }}
             />
-            <Select
-              value={statusFilter}
-              onChange={(value) => setStatusFilter(String(value))}
-              optionList={statusOptions}
-              style={{ width: 150 }}
-            />
-          </>
-        ) : (
-          <Select
-            value={sourceFilter}
-            onChange={(value) => setSourceFilter(String(value))}
-            optionList={sourceOptions}
-            style={{ width: 160 }}
-          />
-        )}
+          )}
         </div>
       </div>
 

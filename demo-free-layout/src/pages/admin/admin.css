@@ -10,6 +10,16 @@
   overflow-y: auto;
 }
 
+/* 表格铺满内容区：列宽用百分比分摊，内容少时右侧也不留空档 */
+.admin-page .semi-table {
+  width: 100%;
+}
+
+/* 行高不一致时（部分单元格带按钮/标签）让内容纵向居中 */
+.admin-page .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
+  vertical-align: middle;
+}
+
 /* 筛选行（搜索框 / 来源下拉）：靠左排列，和页头操作区保持同一种对齐 */
 .admin-filters {
   display: flex;

@@ -509,13 +509,13 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>API 密钥</h2>
+          <h2>API 密钥</h2>
+          <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
+          <div className="section-head-actions">
             <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>
               创建 Key
             </Button>
           </div>
-          <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
         </div>
         {apiKeys.length === 0 ? (
           <div className="profile-table-empty">
@@ -594,8 +594,9 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>文件管理</h2>
+          <h2>文件管理</h2>
+          <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
+          <div className="section-head-actions">
             <label className="profile-upload-button">
               <input
                 type="file"
@@ -610,7 +611,6 @@ export const ProfilePage = () => {
               </Button>
             </label>
           </div>
-          <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
         </div>
         {files.length === 0 ? (
           <div className="profile-table-empty">
@@ -691,13 +691,13 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>知识库</h2>
+          <h2>知识库</h2>
+          <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
+          <div className="section-head-actions">
             <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
               创建知识库
             </Button>
           </div>
-          <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
         </div>
         {datasets !== null && datasets.length === 0 ? (
           <div className="profile-table-empty">
@@ -766,13 +766,13 @@ export const ProfilePage = () => {
 
       <section className="profile-section">
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>MCP 服务器</h2>
+          <h2>MCP 服务器</h2>
+          <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
+          <div className="section-head-actions">
             <Button icon={<IconPlus />} onClick={() => setCreateMcpVisible(true)}>
               注册服务器
             </Button>
           </div>
-          <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
         </div>
         {mcpServers !== null && mcpServers.length === 0 ? (
           <div className="profile-table-empty">

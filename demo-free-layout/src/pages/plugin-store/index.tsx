@@ -361,8 +361,10 @@ export const PluginStorePage = () => {
       {/* 工具条：本页没有主操作按钮，只有筛选控件，按规则统一靠右 */}
       <div className="list-toolbar">
         <div className="toolbar-filters">
+          {/* Semi 输入框默认 width:100%，会把分类 chips 整体压到第二行并铺满整行；限定宽高后整块紧凑贴右 */}
           <Input
             className="plugin-search"
+            style={{ flex: '0 1 240px', minWidth: 180 }}
             prefix={<IconSearch />}
             placeholder="搜索插件名称、说明或标签"
             value={keyword}
@@ -586,8 +588,10 @@ const DetailView = ({
       */}
       <TabPanel $active={activeTab === 'desc'} aria-hidden={activeTab !== 'desc'}>
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>插件描述</h2>
+          <h2>插件描述</h2>
+          <p>{detail.description || detail.summary || '暂无说明。'}</p>
+          {detail.capability && <p>适用场景：{detail.capability}</p>}
+          <div className="section-head-actions">
             <Button
               theme="light"
               type="primary"
@@ -599,16 +603,12 @@ const DetailView = ({
               添加到我的工作流
             </Button>
           </div>
-          <p>{detail.description || detail.summary || '暂无说明。'}</p>
-          {detail.capability && <p>适用场景：{detail.capability}</p>}
         </div>
       </TabPanel>
 
       <TabPanel $active={toolsTabActive} aria-hidden={!toolsTabActive}>
         <div className="section-head">
-          <div className="section-head-row">
-            <h2>工具参数</h2>
-          </div>
+          <h2>工具参数</h2>
           <p>查看每个参数的示例值与说明，复制请求体 / 返回体 JSON。</p>
         </div>
         {/* 只有一个工具时也保留 chip 行：它是「当前工具」的可见标识，与参考图一致 */}
@@ -730,6 +730,8 @@ const PageContainer = styled.div`
 const CategoryRow = styled.div`
   display: flex;
   flex-wrap: wrap;
+  /* 分类 chips 自身换行时每一行也靠右，与工具条的右对齐一致 */
+  justify-content: flex-end;
   gap: 8px;
 `;
 

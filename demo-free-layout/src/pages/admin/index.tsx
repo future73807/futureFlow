@@ -547,22 +547,23 @@ const UsersView = ({
     }
   };
 
+  // 列宽：内容列用百分比自适应分摊整表宽度，只有「操作」列固定宽度
   const columns = [
     {
       title: '用户名',
       dataIndex: 'username',
-      width: 140,
+      width: '16%',
       render: (t: string, r: UserRow) => (
         <span>
           {t} {r.role === 'admin' && <Tag size="small" color="orange">管理员</Tag>}
         </span>
       ),
     },
-    { title: '邮箱', dataIndex: 'email', width: 200 },
+    { title: '邮箱', dataIndex: 'email', width: '22%' },
     {
       title: 'VIP',
       dataIndex: 'vipLevel',
-      width: 100,
+      width: '10%',
       render: (vip: string) => (
         <Tag
           size="small"
@@ -575,13 +576,13 @@ const UsersView = ({
     {
       title: '余额',
       dataIndex: 'balance',
-      width: 100,
+      width: '12%',
       render: (b: number) => `¥${Number(b || 0).toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 90,
+      width: '10%',
       render: (s: string) => (
         <Tag size="small" color={s === 'active' ? 'green' : 'red'}>
           {USER_STATUS_TEXT[s] || s}
@@ -591,7 +592,7 @@ const UsersView = ({
     {
       title: '注册时间',
       dataIndex: 'createdAt',
-      width: 160,
+      width: '14%',
       render: (t: string) => <TimeCell value={t} />,
     },
     {
@@ -640,7 +641,6 @@ const UsersView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
@@ -714,24 +714,24 @@ const ApiKeysView = ({
   };
 
   const columns = [
-    { title: '名称', dataIndex: 'name', width: 140, render: (t: string) => t || '-' },
+    { title: '名称', dataIndex: 'name', width: '16%', render: (t: string) => t || '-' },
     {
       title: 'Key 前缀',
       dataIndex: 'keyPrefix',
-      width: 150,
+      width: '18%',
       // 等宽中性色，不用品牌蓝
       render: (t: string) => <span className="cell-mono">{t ? `${t}...` : '-'}</span>,
     },
     {
       title: '所属用户',
       dataIndex: 'username',
-      width: 120,
+      width: '14%',
       render: (t: string) => t || '-',
     },
     {
       title: '状态',
       dataIndex: 'revoked',
-      width: 90,
+      width: '10%',
       render: (r: boolean) =>
         r ? (
           <Tag size="small" color="red">已吊销</Tag>
@@ -742,13 +742,13 @@ const ApiKeysView = ({
     {
       title: '最后使用',
       dataIndex: 'lastUsedAt',
-      width: 160,
+      width: '18%',
       render: (t: string) => <TimeCell value={t} fallback="从未使用" />,
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
-      width: 160,
+      width: '18%',
       render: (t: string) => <TimeCell value={t} />,
     },
     {
@@ -779,7 +779,6 @@ const ApiKeysView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
@@ -811,31 +810,31 @@ const WorkflowsView = ({
   const { showDetail, detailNode } = useRowDetail();
 
   const columns = [
-    { title: '名称', dataIndex: 'name', width: 180, render: (t: string) => t || '-' },
+    { title: '名称', dataIndex: 'name', width: '20%', render: (t: string) => t || '-' },
     {
       title: '描述',
       dataIndex: 'description',
-      width: 220,
+      width: '26%',
       ellipsis: true,
       render: (t: string) => t || '暂无描述',
     },
-    { title: '所属用户', dataIndex: 'username', width: 120, render: (t: string) => t || '-' },
+    { title: '所属用户', dataIndex: 'username', width: '14%', render: (t: string) => t || '-' },
     {
       title: '版本',
       dataIndex: 'version',
-      width: 70,
+      width: '8%',
       render: (v: number) => `v${v ?? 1}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 90,
+      width: '10%',
       render: (s: string) => <Tag size="small">{s || '-'}</Tag>,
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: 160,
+      width: '18%',
       render: (t: string) => <TimeCell value={t} />,
     },
     {
@@ -856,7 +855,6 @@ const WorkflowsView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
@@ -891,45 +889,45 @@ const RunsView = ({
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: '10%',
       render: (s: string) => {
         const color =
           s === 'succeeded' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'grey';
         return <Tag size="small" color={color}>{RUN_STATUS_TEXT[s] || s}</Tag>;
       },
     },
-    { title: '用户', dataIndex: 'username', width: 120, render: (v: string) => v || '-' },
-    { title: '来源', dataIndex: 'source', width: 110, render: (v: string) => v || '-' },
+    { title: '用户', dataIndex: 'username', width: '12%', render: (v: string) => v || '-' },
+    { title: '来源', dataIndex: 'source', width: '11%', render: (v: string) => v || '-' },
     {
       title: 'Token',
       dataIndex: 'totalTokens',
-      width: 100,
+      width: '10%',
       render: (t: number) => (t || 0).toLocaleString(),
     },
-    { title: '步数', dataIndex: 'totalSteps', width: 70, render: (t: number) => t ?? 0 },
+    { title: '步数', dataIndex: 'totalSteps', width: '7%', render: (t: number) => t ?? 0 },
     {
       title: '费用',
       dataIndex: 'actualCost',
-      width: 90,
+      width: '9%',
       render: (c: number) => `¥${Number(c || 0).toFixed(4)}`,
     },
     {
       title: '耗时',
       dataIndex: 'elapsedTime',
-      width: 90,
+      width: '9%',
       render: (t: number) => `${Number(t || 0).toFixed(2)}s`,
     },
     {
       title: '错误',
       dataIndex: 'errorMessage',
-      width: 220,
+      width: '16%',
       ellipsis: true,
       render: (t: string) => t || '-',
     },
     {
       title: '时间',
       dataIndex: 'createdAt',
-      width: 160,
+      width: '16%',
       render: (t: string) => <TimeCell value={t} />,
     },
     {
@@ -950,7 +948,6 @@ const RunsView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
@@ -985,14 +982,14 @@ const LogsView = ({
     {
       title: '类型',
       dataIndex: 'type',
-      width: 80,
+      width: '10%',
       render: (t: string) => <Tag size="small">{BALANCE_TYPE_TEXT[t] || t}</Tag>,
     },
-    { title: '用户', dataIndex: 'username', width: 120, render: (t: string) => t || '-' },
+    { title: '用户', dataIndex: 'username', width: '14%', render: (t: string) => t || '-' },
     {
       title: '金额',
       dataIndex: 'amount',
-      width: 110,
+      width: '12%',
       render: (a: number) => (
         <span style={{ color: Number(a) >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)', fontWeight: 600 }}>
           {Number(a) >= 0 ? '+' : ''}
@@ -1003,14 +1000,14 @@ const LogsView = ({
     {
       title: '变动后余额',
       dataIndex: 'balanceAfter',
-      width: 120,
+      width: '13%',
       render: (b: number) => `¥${Number(b || 0).toFixed(4)}`,
     },
-    { title: '备注', dataIndex: 'remark', width: 220, ellipsis: true, render: (t: string) => t || '-' },
+    { title: '备注', dataIndex: 'remark', width: '22%', ellipsis: true, render: (t: string) => t || '-' },
     {
       title: '时间',
       dataIndex: 'createdAt',
-      width: 160,
+      width: '17%',
       render: (t: string) => <TimeCell value={t} />,
     },
     {
@@ -1031,7 +1028,6 @@ const LogsView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
