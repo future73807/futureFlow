@@ -548,3 +548,9 @@ textarea:focus-visible {
   font-size: 13px;
   white-space: nowrap;
 }
+
+/* 弹窗/侧栏打开时锁住底层页面滚动：否则弹窗内一条、页面外一条，出现两条滚动条 */
+body:has(.semi-modal-mask) .app-content > *,
+body:has(.semi-sidesheet-mask) .app-content > * {
+  overflow: hidden !important;
+}

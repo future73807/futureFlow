@@ -1,12 +1,12 @@
 # futureFlow：可部署的 AI 工作流平台
 
-futureFlow 是一个面向单账号/个人开发者场景的 AI 工作流 MVP：可视化编排、草稿/发布快照与版本历史、平台 API、模板建流、Webhook/定时自动化、运行审计、计费保护和管理员运维均可用。它不是静态演示页；每次线上调用都会经过鉴权、准入、运行记录和计费流水。
+futureFlow 是一个面向单账号/个人开发者场景的 AI 工作流平台：可视化编排、草稿/发布快照与版本历史、平台 API、模板建流、Webhook/定时自动化、运行审计、计费保护和管理员运维均可用，每次线上调用都会经过鉴权、准入、运行记录和计费流水。它不是静态演示页。
 
-> 当前明确不包含团队空间、成员管理和 RBAC。它们需要以租户数据模型为基础，不能用现有单用户字段临时拼接，见文末「当前边界」。
+> 当前明确不包含团队空间、成员管理和 RBAC：它们需要以租户数据模型为基础，不能用现有单用户字段临时拼接。
 
 ---
 
-## 0. 快速开始
+## 快速开始
 
 ### 一键启动
 
@@ -47,8 +47,16 @@ pnpm start
 - `.env` 中填写 `LLM_API_KEY` / `LLM_API_HOST` / `LLM_DEFAULT_MODEL`（OpenAI 兼容，如 `https://matchfit.top/v1` + `glm-5.3-flash`）：画布「试运行」的大语言模型节点经网关代理 `POST /llm/chat/completions` 真实调用，密钥只保存在服务端。
 - `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET` 必须至少 32 个字符（网关启动校验），`env:init` 会自动生成。
 
+### 访问地址
 
-### 测试账号（本地默认）
+| 服务          | 地址                          | 说明                           |
+| ------------- | ----------------------------- | ------------------------------ |
+| FlowGram 画布 | http://localhost:3000         | 拖拽编排工作流                 |
+| 网关 API      | http://localhost:3001         | 鉴权/扣费/DSL 转换             |
+| Dify 控制台   | http://localhost:8080         | 可选的 Dify 状态查看与高级运维 |
+| 健康检查      | http://localhost:3001/healthz | 网关和数据库就绪状态           |
+
+### 测试账号与管理员（本地默认）
 
 | 项       | 值                              |
 | -------- | ------------------------------- |
@@ -62,51 +70,91 @@ pnpm start
 > 想确认自己有没有踩坑，可以用命令行验证一次：`curl -s -X POST http://localhost:3001/auth/login -H "Content-Type: application/json" -d '{"account":"admin","password":"futureFlow@"}'`，
 > 返回 `accessToken` 即说明账号密码本身没问题。
 
-- 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖。
+- 管理员后台地址：http://localhost:3000/admin，可查看仪表盘统计（用户/Key/工作流/运行数/Token/费用/7 天趋势）、管理用户（调整余额/修改 VIP/封禁/删除）、吊销全站 API Key，以及查看工作流、运行记录与余额流水。
+- 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖，应用日志不会输出密码。部署方可在环境升级完成后显式设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 关闭后续初始化。
 - 修改密码后旧密码立即失效，并强制下线其他会话（token 版本号机制）。
 - **登录防暴力破解**：15 分钟内失败 8 次会锁定该「IP+账号」15 分钟（正确密码也会被拒）。连续看到「账号或密码错误」时，先检查中文输入法是否把 `@` 打成全角 `＠`（登录页会自动提示）；误触发锁定后**重启网关即可立即清除计数**，或用 `.env` 的 `LOGIN_RATE_LIMIT_*` 阈值放宽。
-- 模拟点击验收均使用同一账号（密码含 `@`，命令里请加引号）：
-  - 全流程验收（28 项，含真实模型试运行，截图输出到 `gui-full-screenshots/`）：
-    `node scripts/test-gui-full.cjs "futureFlow@"`
-  - 本地扩展节点验收（7 项，SQL 查询 + Python 执行真实执行；需要本机 Python 3 与可连的 PostgreSQL）：
-    `node scripts/test-local-tools.cjs`
-  - 轻量冒烟（26 项，前端端口自动从 `.env` 的 `FRONTEND_PORT` 读取；含插件商店、任务中心）：
-    `pnpm run test:gui-click "futureFlow@"`
-  - 新模块 API 验收（16 项，知识库/文件/MCP，需 Dify 已启动）：
-    `pnpm run test:new-modules "futureFlow@"`
-  - 草稿云端试运行端到端（12 项，知识检索在 Dify 沙箱真实执行）：
-    `pnpm run test:draft-run-online "futureFlow@"`
-  - 任务中心批量执行端到端（16 项，自建专用工作流后两行输入逐行真实执行 + 校验/取消/异步列表）：
-    `pnpm run test:task-center "futureFlow@"`
-  - 版本管理与导入导出（15 项，发布自动存版本 → 版本号递增 → 手动另存 → 注释 → 回退 → 导入校验）：
-    `pnpm run test:versions "futureFlow@"`
-
-**完整测试 = 以上全部（120 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
-
-### 访问地址
-
-| 服务          | 地址                          | 说明                                |
-| ------------- | ----------------------------- | ----------------------------------- |
-| FlowGram 画布 | http://localhost:3000         | 拖拽编排工作流                      |
-| 网关 API      | http://localhost:3001         | 鉴权/扣费/DSL 转换                  |
-| Dify 控制台   | http://localhost:8080         | 可选的 Dify 状态查看与高级运维      |
-| 健康检查      | http://localhost:3001/healthz | 网关和数据库就绪状态                |
-
-### 首次登录与管理员
-
-一键启动默认创建 futureFlow 管理员：用户名 `admin`，默认密码 `futureFlow@`（保存在本机 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`，可自行修改后重新初始化）。应用日志不会输出密码；账号存在时不会重复创建或覆盖。部署方可在环境升级完成后显式设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 关闭后续初始化。
-
-旧版生成的 `.env` 会在首次启动时一次性迁移到环境格式 v2，开启管理员和受控 Dify 的一键初始化并写入版本标记。迁移后再次显式关闭开关会被保留，不会在每次启动时强制改回。
-
-从旧版本升级时，如果数据库中仍有使用公开旧密码的 `demo` 管理员，请在对外开放服务前登录后修改、封禁或删除该账号；新版本不会静默覆盖已有账号凭据。
-
-网关默认只监听 `127.0.0.1`。只有在确需跨主机访问时才设置 `GATEWAY_HOST=0.0.0.0`（或指定地址），并同时收紧 `CORS_ORIGIN`、主机防火墙和反向代理访问控制。
+- 旧版生成的 `.env` 会在首次启动时一次性迁移到环境格式 v2，开启管理员和受控 Dify 的一键初始化并写入版本标记；迁移后再次显式关闭开关会被保留，不会在每次启动时强制改回。
+- 从旧版本升级时，如果数据库中仍有使用公开旧密码的 `demo` 管理员，请在对外开放服务前登录后修改、封禁或删除该账号；新版本不会静默覆盖已有账号凭据。
 
 ---
 
-## 1. 架构总览
+## 生产部署
 
-futureFlow 采用**解耦的混合三层架构**：
+### 端口配置
+
+| 服务          | 默认端口 | 说明                                   |
+| ------------- | -------- | -------------------------------------- |
+| FlowGram 画布 | 3000     | 前端                                   |
+| 网关 API      | 3001     | 后端（默认仅绑定 `127.0.0.1`）         |
+| Dify 控制台   | 8080     | Dify Web                               |
+| Dify API      | 5001     | Dify Service API                       |
+| PostgreSQL    | 5432     | 网关数据库（冲突时自动改用 5433-5450） |
+
+> 网关端口可通过 `.env` 的 `GATEWAY_PORT` 与 `PUBLIC_GATEWAY_URL` 修改（两者需一致）。
+> 若宿主机其他进程/容器占用了默认端口导致浏览器请求被抢答（表现为 CORS 错误），请将网关迁移到空闲端口后重启 `pnpm start`。媒体生成网关端口跟随 `DIFY_MEDIA_GATEWAY_PORT`。
+> 网关默认只监听 `127.0.0.1`。只有在确需跨主机访问时才设置 `GATEWAY_HOST=0.0.0.0`（或指定地址），并同时收紧 `CORS_ORIGIN`、主机防火墙和反向代理访问控制。
+
+### 环境变量配置
+
+网关在所有运行模式下都会拒绝缺失、过短或仍为占位符的 JWT 密钥；`pnpm run env:init` 会生成安全随机值。生产环境还会拒绝以下不安全配置：
+
+- 默认或过短的 JWT 密钥（< 32 字符）
+- 示例数据库密码
+- 通配符 CORS（`*`）
+- 缺失的执行引擎配置
+- 非正数的限流/超时参数
+
+### 启动前检查
+
+```bash
+# 执行数据库迁移
+pnpm --filter futureflow-gateway migration:run
+
+# 启动生产网关
+pnpm --filter futureflow-gateway start:prod
+
+# 健康检查
+curl http://localhost:3001/healthz
+```
+
+### Dify 版本锁定与依赖
+
+当前 `docker-compose.yml` 固定 Dify 版本为 **0.15.3**，代码执行环境固定为 Dify Sandbox **0.2.10**。升级前必须对 DSL 转换、Console 导入、代码/HTTP 节点与 SSE 执行做兼容性回归。
+
+Dify API 和 Worker 的代码、HTTP 节点依赖 Sandbox 与 SSRF Proxy。推荐使用 `pnpm start`，启动脚本会等待 Proxy、Sandbox 和 Dify API 健康；手动编排容器时也必须保持相同的依赖和健康检查顺序。Dify 0.15.3 固定要求代码执行请求启用 Sandbox 网络，因此默认 `ENABLE_NETWORK=true`；Sandbox 与 Proxy 仅在隔离的 Docker 网络通信，不向宿主机暴露端口，HTTP(S) 出网必须继续经过带 ACL 的 SSRF Proxy。
+
+Dify API、Dify 控制台和 futureFlow 网关默认都只绑定宿主机 `127.0.0.1`。`pnpm env:init` 会为两套 PostgreSQL、网关 JWT、可选管理员初始化、Dify 管理员、Dify `SECRET_KEY`、Sandbox 和凭据加密分别生成随机密钥。已有数据库卷升级时，脚本不会擅自轮换弱数据库密码；请先备份并同步修改数据库角色密码与 `.env`，再重启服务。其他持久密钥也应按对应迁移流程显式轮换，不要直接对在线数据自动重建。SSRF Proxy 会拒绝 loopback、私网、link-local、云元数据和内部域名目标，生产部署仍应结合出口防火墙与 DNS 策略做第二层限制。若受控桌面环境将公网域名合成解析到 `198.18.0.0/15`，可通过 `DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS` 逐个列出可信域名；默认 `.invalid` 不放行，IP 字面量和未列出的域名仍会被拒绝。
+
+### 受控 Dify 授权（默认自动，手动接口仅用于特殊部署）
+
+futureFlow 不要求把 Dify `app-*` Service API Key 或 Console Token 粘贴到 `.env`。本地一键启动会用自动生成的 Dify 管理员凭据登录，等待授权可用后将 access/refresh token 以 AES-256-GCM 加密保存到 PostgreSQL；失败会阻止网关进入就绪状态。此后平台在**每个工作流版本发布时**自动创建专属 Dify 工作流应用、导入并发布不可变 DSL 快照，再生成专属 Service API Key。接口、页面和日志均不回显凭据明文。
+
+外部 Dify、授权轮换或显式关闭自动初始化的部署可使用以下接口；默认本地启动无需调用：
+
+```bash
+# 零成本安全预检（不接触管理员凭据、不触发模型费用）
+curl -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
+  http://localhost:3001/admin/dify/preflight
+
+# 只读验证管理员授权（不保存、不建应用/Key、不执行模型）
+curl -X POST http://localhost:3001/admin/dify/validate-authorization \
+  -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"<DIFY_PASSWORD>"}'
+
+# 保存授权并启用自动建应用/Key
+curl -X POST http://localhost:3001/admin/dify/bootstrap \
+  -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"<DIFY_PASSWORD>"}'
+```
+
+---
+
+## 架构总览
+
+futureFlow 采用**解耦的混合三层架构**：FlowGram 画布（编排）→ 自研网关（鉴权/扣费/DSL 转换）→ Dify（执行引擎）。
 
 ```mermaid
 flowchart TD
@@ -148,134 +196,7 @@ flowchart TD
 | **控制层** (自研网关) | 用户鉴权、VIP 权限拦截、节点级扣费计算、DSL 格式转换 |
 | **执行层** (Dify)     | 纯执行引擎，接收 Dify DSL，调度执行并流式返回结果    |
 
----
-
-## 2. 已实现功能
-
-### 全局体验
-
-- 统一视觉令牌和 Semi UI 覆盖样式，支持浅色/深色主题切换（跟随系统首选项，localStorage 持久化）
-- 左侧导航：创建画布、模板库、创建 Key
-- 仪表盘、工作流列表、模板库、登录页、个人中心、管理页的统一视觉语言
-- 图标降级处理，避免图标缺失时出现空白控件
-
-### 画布与节点编辑
-
-- 画布主界面、节点面板、节点标题、配置项与运行结果使用中文文案
-- 可运行并可发布节点：开始、结束、大语言模型、文本处理、图片处理、视频处理、变量赋值、条件/多条件分支、数组批处理、API 请求、代码执行、知识检索、子工作流、MCP 工具；实际可用范围同时受下方账号等级权限约束
-- 大语言模型、API 请求和代码执行节点支持「失败时」失败分支：开关开启后节点出现独立失败出口，发布时映射为 Dify error_strategy=fail-branch，失败分支连线在发布与执行入口都会校验
-- 变量节点支持新建变量，以及在线性或确定支配路径上修改已有顶层变量；浏览器试运行和 Dify 发布都会编译为 JavaScript 代码节点。分支汇合处存在歧义的赋值会用中文错误明确拒绝
-- 全局变量当前未启用：变量面板只显示不可编辑的“全局变量（未启用）”空分组。FlowGram 的浏览器全局作用域无法可靠映射到 Dify 0.15.3，因此本地试运行和发布都会拒绝旧草稿中的 `global` 引用；需要跨节点传值时请使用开始节点输入、上游节点输出或变量赋值节点
-- 注释和分组属于画布辅助节点，发布时会安全忽略；继续和中断仍标记为“暂不可运行”，不会进入数组批处理首期运行语义
-- 品牌：白色主题为主；logo 为黑色圆角标 + 白色 S 型流线贯穿三节点（`src/assets/logo.svg`），登录页使用白底黑线变体（`logo-mono.svg`），同步用于侧栏、画布头部与 favicon
-- 草稿自动保存（停止操作 1.5 秒后）和手动保存（Ctrl/Command + S）
-- 发布不可变快照与版本历史
-- LLM 节点侧边编辑器（带错误边界）
-- 画布工具栏：适应视图、自动布局、切换连线、鸟瞰图、撤销/重做
-- **SQL 查询**：连接 PostgreSQL 执行单条只读 SELECT/WITH 查询（READ ONLY 事务、200 行上限、10 秒超时）；连接信息随请求传入不落库，本地试运行经网关 `/db/query` 代理真实执行
-- **Python 执行**：在本机 Python 3 执行 `main({params})` 并返回 JSON 结果（独立临时目录、15 秒超时）；本地试运行经网关 `/python/exec` 代理真实执行
-- 节点菜单：编辑标题、移出容器、创建副本、自动布局、删除
-- 试运行面板：输入表单、JSON 模式、实时流式输出
-- 云端试运行：工具栏「云端试运行」把当前保存的草稿导入用户专属沙箱 Dify 应用后真实执行（SSE 流式、计费与运行记录齐全），知识检索、子工作流、MCP 等云端专属节点无需发布即可验证；DSL 未变化的重复运行会复用沙箱跳过导入
-
-### 账号等级与节点权限
-
-| 账号等级 | 可发布、可执行节点 | 说明 |
-| -------- | ------------------ | ---- |
-| 免费版 | 开始、结束、大语言模型、文本处理、图片处理、视频处理、变量赋值、条件分支、多条件分支 | API 请求、代码执行、数组批处理、知识检索、子工作流、MCP 工具在节点面板中显示“专业版”并禁用 |
-| 专业版 / 企业版 | 免费版全部节点，以及 API 请求、代码执行、数组批处理 | 仍受各节点自身的运行边界和安全校验约束 |
-
-继续和中断节点当前对所有账号等级都不可运行或发布。节点面板负责提前提示并禁用无权限能力，网关在发布和执行入口还会再次校验，已有草稿或直接调用接口不能绕过权限。
-
-### 中文内容节点
-
-- **文本处理**：组合、格式化或传递文本，支持引用上游变量，输出 `text`
-- **图片处理**：接收图片 URL 与说明，提供画布预览，输出 `url`、`caption`、`mediaType`
-- **视频处理**：接收视频 URL、封面 URL 与说明，提供画布预览，输出 `url`、`poster`、`caption`、`mediaType`
-- 图片和视频节点负责承载、预览与传递媒体信息；两者还支持“生成”模式：选择供应商凭据与模型后由网关代为调用 OpenAI/Google/豆包/MiniMax 的图片/视频生成接口，凭据不出服务端，生成结果以 URL 资产回填节点输出
-
-### 代码节点调研与运行边界
-
-- FlowGram 示例工程原生带有代码节点表单，`runtime-js@1.0.12` 也带 JavaScript 执行器；原始示例默认使用异步函数，但当前浏览器运行器只能稳定执行同步 `main`
-- Dify 的代码节点支持 Python 和 JavaScript。首期选择**同步 JavaScript**，因为它可以同时在浏览器 QuickJS 和 Dify Sandbox 中执行，最容易保持“画布试运行 = 发布运行”的输入输出契约
-- 脚本需声明 `function main({ params })`，通过 `params` 读取输入，并返回与节点输出定义对应的对象；当前明确拒绝 `async function main`
-- Python 更适合数据分析和 Python 生态，但若现在开放，就必须新增服务端试运行接口、资源配额、依赖白名单和独立安全回归；在这些能力完成前不展示一个只能发布、不能本地可靠试跑的 Python 选项
-- 画布“试运行”由浏览器中的 FlowGram `runtime-js` 执行，其底层使用 QuickJS，仅用于编辑阶段预览与调试
-- 工作流发布后，网关会把代码节点转换为 Dify DSL，由独立的 Dify Sandbox 执行；浏览器试运行与发布运行是两个执行环境，浏览器结果不能视为生产安全边界
-- 当前集成目标 Dify 0.15.3 的代码节点输出结构不接受 `boolean` / `array[boolean]`；网关发布时会将布尔输出兼容为 `number` / `array[number]`，运行结果以 `1/0` 表示真/假，避免发布成功但云端执行失败
-
-### 数组批处理节点
-
-- 数组批处理面向首期可验证范围：每个工作流最多一个节点，单层串行执行，输入仅支持 `array[string]` / `array[number]`，最多 20 项；第 21 项会明确失败，不会静默截断
-- 子画布固定为“块开始 → 一个同步 JavaScript → 块结束”，逐项代码只能读取当前项 `item` 和序号 `index`，并且只能声明一个字符串或数字输出；布尔输出按数字 `1/0` 兼容
-- 当前不支持嵌套批处理、并行、继续、中断，以及批处理内部的 API、大语言模型、媒体或变量节点。整个数组批处理节点可以删除，但不能创建副本；其内部固定节点和连线不能删除、移出或复制，避免保存出本地能画但云端不能运行的结构
-- 发布时网关将子画布转换为 Dify 0.15.3 的 `iteration`、`iteration-start` 和内部 `code`，外部结束节点读取批处理的 `output`；本地 `runtime-js` 与 Dify 内部代码都执行 20 项上限门禁
-
-### API 请求节点
-
-- 请求方法：`GET`、`POST`、`PUT`、`PATCH`、`DELETE`、`HEAD`
-- 身份认证：无需认证、Bearer 令牌、API Key 自定义请求头、Basic 认证
-- 参数配置：请求 URL、查询参数和请求头均支持引用上游变量；请求体支持无请求体、JSON 和纯文本
-- 运行策略：可配置 `1–120000` 毫秒超时和 `0–10` 次网络失败重试；浏览器试运行会为每次重试创建独立超时信号
-- API Key 请求头名称必须是合法的固定 HTTP Header 名称；Basic 认证的用户名和密码必须使用非空常量；Bearer/API Key 的密钥可引用开始节点输入，避免把生产密钥写进画布
-- 输出字段：响应正文、响应头和状态码可以直接传给条件、文本、代码或结束节点
-- 浏览器试运行受浏览器 CORS 策略约束；发布后由 Dify HTTP 节点执行，并通过 SSRF Proxy 受控访问外部地址
-- 当前已覆盖扣子类 API 节点最常用的请求、认证、变量引用、超时、重试与结构化响应链路，但**不宣称与扣子完全等价**：文件/二进制上传、OAuth、独立凭据保险库、自动分页、SSL 开关和失败分支仍属于后续能力；未实现的选项不会在界面中伪装成可用
-
-### 运行结果导出
-
-本地试运行或已发布版本执行结束（成功或失败）后都可点击“打包下载 ZIP”。两种入口生成的压缩包都固定包含 `manifest.json`、`结果摘要.md`、`完整结果.json`、`节点执行记录.json`；存在对应数据时还会包含 `工作流输入.json`、`文本输出.txt` 和 `工作流输出.json`。
-
-- 已发布版本的运行面板会把流式文本、节点执行记录和令牌数、步骤数、耗时等统计写入压缩包
-- 本地浏览器试运行会从结束节点输出中提取常见文本字段，并把逐节点调试报告、运行状态、开始/结束时间、耗时和节点数写入压缩包；没有可提取文本时不会生成 `文本输出.txt`
-- 两种压缩包都会保留图片/视频 URL 等结构化结果，但不会主动抓取第三方媒体二进制，以避免浏览器 CORS、超大文件和服务端 SSRF 风险
-- 输入和结果中的凭据命名字段会隐藏；已识别的凭据值即使被上游回显到摘要、文本附件、节点记录或输出中，也会统一替换为“已隐藏”
-
-### 个人中心与工作流
-
-- 个人资料编辑（修改用户名/邮箱）
-- API Key 管理（创建/撤销）
-- 文件管理：multipart 上传（单文件 10 MB、扩展名白名单、每用户 200 个）、下载链接复制、删除；服务端随机文件名落盘，存储路径不回显
-- 工作流列表、空状态、统计信息
-- 模板库（问答、翻译、内容大纲）
-
-### 知识库与扩展节点
-
-- 知识库管理：JWT 鉴权代理 Dify datasets 生命周期（创建/列表/删除/按文本建文档/索引状态），economy 关键词索引保证默认部署无需 embedding 供应商；个人中心提供管理界面并内置「试检索」召回验证（economy 索引使用 keyword_search，无需 embedding 模型）
-- 知识检索节点：选择知识库 + 引用上游变量作为检索语句 + 返回数量 1-10，发布时转换为 Dify knowledge-retrieval
-- 子工作流节点：把同账号已发布工作流作为节点复用；发布时编译期内联展开（环检测、嵌套深度 ≤ 3、入参映射、出参按子图 End 输出映射重写）
-- MCP 工具节点：注册 MCP streamable HTTP 服务器（Bearer 令牌 AES-256-GCM 加密），画布选择服务器与工具、JSON 参数模板引用上游变量；发布时展开为受信网关代理调用，运行时仅携带 15 分钟窄权限短令牌，服务器地址与凭据永不进入 DSL
-- MCP 服务器管理界面：个人中心「MCP 服务器」区块支持注册/测试连接/删除；工具选择失败时可一键重试
-- 运行边界：知识检索、子工作流、MCP 工具节点的本地浏览器试运行（runtime-js）不实现这三类节点，包含它们的工作流点击本地试运行会得到明确报错；请使用工具栏「云端试运行」在本地 Dify 上真实执行，或发布后在云端运行
-
-### 网关与执行
-
-- JWT/API Key 双鉴权模式
-- VIP 等级节点权限控制
-- 扣费服务：预冻结 → 实际扣费 → 失败退款
-- DSL 转换器：FlowGram JSON ↔ Dify DSL
-- SSE 流式透传
-- 客户端断开会立即终止对应的 Dify 请求，并把运行标记为已取消、释放预冻结余额；事件流最多保留必要摘要，并设置 10,000 条 / 32 MiB 总量门禁
-- 已发布版本通过版本专属 Dify 应用运行；Dify 未配置时明确报错，不静默切换执行语义
-
-### 管理员后台
-
-- 仪表盘统计（用户/Key/工作流/运行数/Token/费用/7天趋势）
-- 用户管理（调整余额/修改VIP/封禁/删除）
-- API Key 管理（全站列表/吊销）
-- 工作流管理、运行记录、余额流水
-
-### 自动化触发器
-
-- Webhook 触发（一次性密钥 URL）
-- 定时触发（固定分钟间隔，或每日固定时间 HH:MM，网关本地时区）
-- 幂等保护（Idempotency-Key）
-- 管理员删除用户时级联清理其 Dify 工作流应用、草稿沙箱应用、知识库与落盘媒体/上传文件
-- 知识库按平台用户归属隔离：列表、文档与删除操作均校验创建者，发布与云端试运行也会拒绝引用他人知识库的草稿
-
----
-
-## 3. 三层 API Key 体系
+### 三层 API Key 体系
 
 | 层级                   | 用途                                 | 格式           | 来源                    | 管理方式                                          |
 | ---------------------- | ------------------------------------ | -------------- | ----------------------- | ------------------------------------------------- |
@@ -283,7 +204,7 @@ flowchart TD
 | **LLM API Key**  | Dify 模型节点调用 DeepSeek/OpenAI 等 | `sk-xxx`     | 环境变量`LLM_API_KEY` | 服务端同步到 Dify Provider，浏览器与画布不可见   |
 | **Dify Bridge**  | 网关调用 Dify Service API            | 不暴露         | 一键启动自动授权        | 每个发布版本独立建应用/Key，数据库 AES-GCM 加密保存 |
 
-### 平台 API Key（用户管理）
+- 平台 JWT：登录后签发，用于管理接口与网关鉴权（`Authorization: Bearer <JWT>`），和 `ff-` API Key 一起构成网关的 JWT/API Key 双鉴权模式。
 
 ```bash
 # 创建 API Key（需 JWT 登录）
@@ -299,7 +220,7 @@ curl -X POST http://localhost:3001/workflows/<WORKFLOW_ID>/execute \
   -d '{"inputs":{"query":"你好，请介绍 futureFlow"}}'
 ```
 
-### LLM API Key（服务端受控）
+LLM API Key 由服务端受控，在 `.env` 中配置：
 
 ```env
 # .env
@@ -308,202 +229,74 @@ LLM_API_HOST=https://api.deepseek.com
 LLM_DEFAULT_MODEL=deepseek-chat
 ```
 
-- 画布上的 LLM 节点只暴露模型名称、温度、提示词等业务参数
-- API Key 和 API Host 由网关读取；保存 Dify 管理员授权时，若 Provider 尚未配置，会自动写入并验证
-- Provider 已生效时不会重复覆盖；密钥轮换可临时设置 `DIFY_FORCE_LLM_PROVIDER_SYNC=true` 后重新保存授权
-- 首次 Provider 验证会调用一次模型接口，可能产生极少量供应商用量，界面会明确提示
-- LLM 密钥只由服务端管理，不进入画布 JSON、浏览器或运行结果包
+- 画布上的 LLM 节点只暴露模型名称、温度、提示词等业务参数；API Key 和 API Host 由网关读取，保存 Dify 管理员授权时若 Provider 尚未配置，会自动写入并验证。
+- Provider 已生效时不会重复覆盖；密钥轮换可临时设置 `DIFY_FORCE_LLM_PROVIDER_SYNC=true` 后重新保存授权。首次 Provider 验证会调用一次模型接口，可能产生极少量供应商用量，界面会明确提示。
+- LLM 密钥只由服务端管理，不进入画布 JSON、浏览器或运行结果包。
+
+### 技术栈
+
+| 层级     | 技术                                 |
+| -------- | ------------------------------------ |
+| 前端     | React + FlowGram + Semi UI + Rsbuild |
+| 网关     | NestJS + TypeORM + PostgreSQL        |
+| 执行引擎 | Dify 0.15.3 (Docker)                 |
+| 部署     | Docker Compose + pnpm workspace      |
 
 ---
 
-## 4. 执行引擎选择逻辑
+## 已实现功能
 
-```
-用户调用 POST /workflows/:id/execute
-        │
-        ▼
-   鉴权校验（JWT 或 ff- API Key）
-        │
-        ▼
-   已发布版本存在专属 Dify 应用？
-    ├─ 是 → 调用 Dify Service API（SSE 流式）
-    │      └─ Dify 执行代码、API 和模型节点
-    └─ 否 → 返回明确配置错误，不执行其他工作流或旧草稿
-```
+### 画布与节点编辑
 
-### 运行边界
+- 画布主界面、节点面板、节点标题、配置项与运行结果使用中文文案；左侧导航为创建画布、模板库、创建 Key；工具栏含适应视图、自动布局、切换连线、鸟瞰图、撤销/重做。
+- 草稿自动保存（停止操作 1.5 秒后）和手动保存（Ctrl/Command + S）；发布生成不可变快照与版本历史。
+- 可运行并可发布节点：开始、结束、大语言模型、文本处理、图片处理、视频处理、变量赋值、条件/多条件分支、数组批处理、API 请求、代码执行、知识检索、子工作流、MCP 工具，另有 SQL 查询与 Python 执行；实际可用范围同时受账号等级权限约束。
+- 变量节点支持新建变量，以及在线性或确定支配路径上修改已有顶层变量，分支汇合处存在歧义的赋值会用中文错误明确拒绝；全局变量当前未启用，需要跨节点传值时请使用开始节点输入、上游节点输出或变量赋值节点。
+- 注释和分组属于画布辅助节点，发布时会安全忽略；继续和中断节点仍标记为“暂不可运行”。
+- 统一视觉令牌和 Semi UI 覆盖样式，支持浅色/深色主题切换（跟随系统首选项，localStorage 持久化）；图标缺失时降级处理；品牌 logo 为黑色圆角标 + 白色 S 型流线贯穿三节点（`src/assets/logo.svg`），登录页使用白底黑线变体（`logo-mono.svg`）。
 
-草稿通过画布“试运行”在浏览器运行时调试；生产运行只接受已发布的不可变版本。Dify 未配置或发布版本尚未同步时，网关返回错误，不会偷偷改用不同引擎。
+### 账号等级与节点权限
 
----
+| 账号等级 | 可发布、可执行节点 | 说明 |
+| -------- | ------------------ | ---- |
+| 免费版 | 开始、结束、大语言模型、文本处理、图片处理、视频处理、变量赋值、条件分支、多条件分支 | API 请求、代码执行、数组批处理、知识检索、子工作流、MCP 工具在节点面板中显示“专业版”并禁用 |
+| 专业版 / 企业版 | 免费版全部节点，以及 API 请求、代码执行、数组批处理 | 仍受各节点自身的运行边界和安全校验约束 |
 
-## 5. 受控 Dify 集成
+节点面板负责提前提示并禁用无权限能力，网关在发布和执行入口还会再次校验，已有草稿或直接调用接口不能绕过权限。
 
-futureFlow 不要求把 Dify `app-*` Service API Key 或 Console Token 粘贴到 `.env`。本地一键启动会用自动生成的 Dify 管理员凭据登录，等待授权可用后将 access/refresh token 以 AES-256-GCM 加密保存到 PostgreSQL；失败会阻止网关进入就绪状态。此后平台在**每个工作流版本发布时**自动创建专属 Dify 工作流应用、导入并发布不可变 DSL 快照，再生成专属 Service API Key。接口、页面和日志均不回显凭据明文。
+### 关键节点能力
 
-下面的手动预检与授权接口主要用于外部 Dify、授权轮换或显式关闭自动初始化的部署；默认本地启动无需调用。
+- **失败分支**：大语言模型、API 请求和代码执行节点支持「失败时」开关，开启后节点出现独立失败出口，发布时映射为 Dify error_strategy=fail-branch，失败分支连线在发布与执行入口都会校验。
+- **文本 / 图片 / 视频处理**：文本处理支持组合、格式化和引用上游变量，输出 `text`；图片、视频处理接收 URL、封面与说明，提供画布预览并输出结构化字段，同时支持“生成”模式——选择供应商凭据与模型后由网关代调 OpenAI/Google/豆包/MiniMax 的生成接口，凭据不出服务端，结果以 URL 资产回填节点输出。
+- **API 请求**：方法 `GET`/`POST`/`PUT`/`PATCH`/`DELETE`/`HEAD`；支持查询参数、请求头、JSON/纯文本请求体和上游变量引用；认证支持无需认证、Bearer 令牌、API Key 自定义请求头、Basic；可配置 `1–120000` 毫秒超时和 `0–10` 次网络失败重试。浏览器试运行受 CORS 约束，发布后由 Dify HTTP 节点经 SSRF Proxy 受控访问外部地址。
+- **代码执行**：脚本需声明 `function main({ params })`，明确拒绝 `async function main`；浏览器 QuickJS 试运行仅用于编辑阶段预览，发布后由独立 Dify Sandbox 执行；Dify 0.15.3 不接受 `boolean` / `array[boolean]` 输出，网关发布时兼容为 `number` / `array[number]`（运行结果以 `1/0` 表示真/假）。
+- **数组批处理**：每个工作流最多一个节点，单层串行执行，输入仅支持 `array[string]` / `array[number]`，最多 20 项；子画布固定为「块开始 → 一个同步 JavaScript → 块结束」，不支持嵌套、并行、继续、中断及内部其他业务节点；发布时转换为 Dify `iteration`。
+- **SQL 查询**：连接 PostgreSQL 执行单条只读 SELECT/WITH（READ ONLY 事务、200 行上限、10 秒超时），连接信息随请求传入不落库，本地试运行经网关 `/db/query` 代理真实执行。
+- **Python 执行**：在本机 Python 3 执行 `main({params})` 并返回 JSON（独立临时目录、15 秒超时），本地试运行经网关 `/python/exec` 代理真实执行。
+- **知识检索 / 子工作流 / MCP 工具**：知识检索选择知识库、引用上游变量作为检索语句、返回数量 1-10，发布时转换为 Dify knowledge-retrieval；子工作流把同账号已发布工作流作为节点复用，发布时编译期内联展开（环检测、嵌套深度 ≤ 3）；MCP 工具注册 streamable HTTP 服务器（Bearer 令牌 AES-256-GCM 加密），发布时展开为受信网关代理调用，运行时仅携带 15 分钟窄权限短令牌，服务器地址与凭据永不进入 DSL。这三类节点的本地浏览器试运行会明确报错，请使用工具栏「云端试运行」或发布后在云端运行。
+- **云端试运行**：把当前保存的草稿导入用户专属沙箱 Dify 应用后真实执行（SSE 流式、计费与运行记录齐全），知识检索、子工作流、MCP 等云端专属节点无需发布即可验证；DSL 未变化的重复运行会复用沙箱跳过导入。
 
-### 安全预检与授权分级
+### 运行结果导出与自动化
 
-```bash
-# 零成本安全预检（不接触管理员凭据、不触发模型费用）
-curl -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
-  http://localhost:3001/admin/dify/preflight
+- 本地试运行或已发布版本执行结束（成功或失败）后都可「打包下载 ZIP」：固定包含 `manifest.json`、`结果摘要.md`、`完整结果.json`、`节点执行记录.json`，存在对应数据时还包含 `工作流输入.json`、`文本输出.txt`、`工作流输出.json`；媒体只保留图片/视频 URL 等结构化结果，凭据命名字段与已识别的凭据值统一替换为“已隐藏”。
+- 自动化触发器：Webhook 触发（一次性密钥 URL）、定时触发（固定分钟间隔或每日固定时间 HH:MM，网关本地时区）、幂等保护（Idempotency-Key）。
 
-# 只读验证管理员授权（不保存、不建应用/Key、不执行模型）
-curl -X POST http://localhost:3001/admin/dify/validate-authorization \
-  -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"<DIFY_PASSWORD>"}'
+### 个人中心、知识库与管理
 
-# 保存授权并启用自动建应用/Key
-curl -X POST http://localhost:3001/admin/dify/bootstrap \
-  -H "Authorization: Bearer <FUTUREFLOW_ADMIN_JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"<DIFY_PASSWORD>"}'
-```
+- 个人中心：资料编辑（用户名/邮箱）、API Key 创建/撤销、文件管理（multipart 上传，单文件 10 MB、扩展名白名单、每用户 200 个，服务端随机文件名落盘，路径不回显）、MCP 服务器注册/测试连接/删除（工具选择失败可一键重试）。
+- 工作流列表、空状态与统计信息；模板库（问答、翻译、内容大纲）。
+- 知识库管理：JWT 鉴权代理 Dify datasets 生命周期（创建/列表/删除/按文本建文档/索引状态），economy 关键词索引保证默认部署无需 embedding 供应商；个人中心提供管理界面并内置「试检索」召回验证。知识库按平台用户归属隔离，发布与云端试运行会拒绝引用他人知识库的草稿。
+- 管理员后台（http://localhost:3000/admin）：仪表盘统计（用户/Key/工作流/运行数/Token/费用/7 天趋势）、用户管理（调整余额/修改 VIP/封禁/删除）、全站 API Key 吊销、工作流管理、运行记录、余额流水；删除用户时级联清理其 Dify 工作流应用、草稿沙箱应用、知识库与落盘媒体/上传文件。
 
----
+### 网关与执行
 
-## 6. 管理员后台
-
-管理员后台地址：http://localhost:3000/admin
-
-### 功能模块
-
-| 模块                   | 功能说明                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| **仪表盘**       | 统计注册用户数、API Key 数、工作流数、运行总次数、Token 消耗与总费用；展示最近 7 天运行趋势 |
-| **用户管理**     | 查看所有用户、调整余额、修改 VIP 等级、封禁/解封、删除用户                                  |
-| **API Key 管理** | 查看全站所有 API Key，一键吊销任意 Key                                                      |
-| **工作流管理**   | 查看所有用户创建的工作流                                                                    |
-| **运行记录**     | 查看全站工作流运行历史                                                                      |
-| **余额流水**     | 查看所有余额变动记录                                                                        |
-
-### 管理员 API 接口
-
-所有接口需要 JWT Token 且 `role = 'admin'`：
-
-```
-GET    /admin/stats                    # 仪表盘统计
-GET    /admin/dify/status              # Dify 授权状态
-GET    /admin/dify/preflight           # 零凭据安全预检
-POST   /admin/dify/validate-authorization # 只读验证管理员授权
-POST   /admin/dify/bootstrap           # 保存授权并启用自动建应用
-POST   /admin/dify/rotate-key          # 轮换指定应用 Key
-GET    /admin/users                    # 用户列表
-PATCH  /admin/users/:id/balance        # 调整余额
-PATCH  /admin/users/:id/vip            # 修改 VIP
-PATCH  /admin/users/:id/status         # 修改状态
-DELETE /admin/users/:id                # 删除用户
-GET    /admin/api-keys                 # API Key 列表
-DELETE /admin/api-keys/:id             # 吊销 API Key
-GET    /admin/workflows                # 工作流列表
-GET    /admin/runs                     # 运行记录
-GET    /admin/balance-logs             # 余额流水
-```
+- JWT/API Key 双鉴权模式、VIP 等级节点权限控制、扣费服务（预冻结 → 实际扣费 → 失败退款）、DSL 转换器（FlowGram JSON ↔ Dify DSL）、SSE 流式透传。
+- 客户端断开会立即终止对应的 Dify 请求，并把运行标记为已取消、释放预冻结余额；事件流最多保留必要摘要，并设置 10,000 条 / 32 MiB 总量门禁。
+- 草稿通过画布「试运行」在浏览器调试，生产运行只接受已发布的不可变版本；已发布版本通过版本专属 Dify 应用运行，Dify 未配置或发布版本尚未同步时明确报错，不静默切换执行语义。
 
 ---
 
-## 7. 测试与验证
-
-### 快速验证（无需外部服务）
-
-```bash
-# 类型检查 + 核心测试 + 网关/前端生产构建
-pnpm run verify
-
-# 只运行平台核心测试
-pnpm run test:platform
-```
-
-### 模糊测试
-
-`test:platform` 包含 20,000 组以上 FlowGram-to-Dify 确定性回归测试（10,000 组合法图、10,000 组应拒绝的非法图，并附带数组批处理专项变异），覆盖 JSON/YAML DSL 序列化、节点与连线引用完整性、环、自环、孤儿节点、重复边、固定子画布和批处理类型边界等场景。数组批处理还可分别运行 `gateway` 包的 `test:batch-loop` 与根目录的 `test:batch-loop-runtime`，后者真实验证 `[1,2,3] → [2,4,6]`、空数组、布尔 `1/0` 兼容和 21 项拒绝。
-
-可通过环境变量调整：
-
-```bash
-FUTUREFLOW_FUZZ_SEED=0x1234      # 更换随机种子
-FUTUREFLOW_FUZZ_CASES=50000      # 控制每类数量（上限 100,000）
-```
-
-### 集成测试
-
-覆盖登录注册、工作流 CRUD、模板建流、发布快照与版本恢复、哈希 API Key、Webhook/定时触发器、SSE 执行、输入校验与幂等保护、扣费流水、管理员操作、用户删除与 Key 吊销。
-
-### 新节点与新模块专项冒烟
-
-`gateway` 包下每个新能力都有独立冒烟测试：`test:fail-branch`（失败分支导出与拒绝路径）、`test:knowledge`（知识检索节点转换契约）、`test:subworkflow`（内联展开与引用重写）、`test:mcp`（MCP 代理桥展开契约）、`test:files`（文件存储白名单与用户隔离）。
-
-### 一键启动后的在线验收
-
-```bash
-# GUI 模拟点击验收：登录 → 建画布 → 节点面板新节点 → LLM 失败分支开关 →
-# 云端试运行入口 → 插件商店(列表/详情/添加到工作流) → 任务中心(批量任务弹窗) →
-# 管理后台各 tab → 个人中心文件管理 → 退出，全程截图存证
-pnpm run test:gui-click "futureFlow@"
-
-# 知识库 / 文件上传 / MCP 注册三模块的端到端 API 验收（16 项）
-pnpm run test:new-modules <管理员密码>
-
-# 草稿云端试运行端到端验收：含知识检索节点的草稿经沙箱真实执行（12 项）
-pnpm run test:draft-run-online <管理员密码>
-
-# 任务中心批量任务端到端验收：建流 → 逐行真实执行 → 进度/结果 → 取消 → 异步列表（16 项）
-pnpm run test:task-center <管理员密码>
-```
-
-### 全新卷一键验收
-
-```bash
-# 仅检查随机容器名、端口、卷和网络隔离，不创建资源
-pnpm run test:fresh-volume -- --preflight-only
-
-# 创建并在结束时删除一组独立测试卷，真实验证冷启动和重启幂等性
-pnpm run test:fresh-volume -- --confirm-isolated-volumes
-```
-
-该验收不会调用手动 Dify 授权接口，也不会写入 Console Token；它会验证默认管理员登录、自动加密授权、两个无模型工作流各自的应用/DSL/执行 Key，以及完整重启后不重复创建。随机测试项目与现有容器、卷、端口和 `.env` 隔离。
-
----
-
-## 8. 生产部署
-
-### 环境变量配置
-
-网关在所有运行模式下都会拒绝缺失、过短或仍为占位符的 JWT 密钥；`pnpm run env:init` 会生成安全随机值。生产环境还会拒绝以下不安全配置：
-
-- 默认或过短的 JWT 密钥（< 32 字符）
-- 示例数据库密码
-- 通配符 CORS（`*`）
-- 缺失的执行引擎配置
-- 非正数的限流/超时参数
-
-### 启动前检查
-
-```bash
-# 执行数据库迁移
-pnpm --filter futureflow-gateway migration:run
-
-# 启动生产网关
-pnpm --filter futureflow-gateway start:prod
-
-# 健康检查
-curl http://localhost:3001/healthz
-```
-
-### Dify 版本锁定
-
-当前 `docker-compose.yml` 固定 Dify 版本为 **0.15.3**，代码执行环境固定为 Dify Sandbox **0.2.10**。升级前必须对 DSL 转换、Console 导入、代码/HTTP 节点与 SSE 执行做兼容性回归。
-
-Dify API 和 Worker 的代码、HTTP 节点依赖 Sandbox 与 SSRF Proxy。推荐使用 `pnpm start`，启动脚本会等待 Proxy、Sandbox 和 Dify API 健康；手动编排容器时也必须保持相同的依赖和健康检查顺序。Dify 0.15.3 固定要求代码执行请求启用 Sandbox 网络，因此默认 `ENABLE_NETWORK=true`；Sandbox 与 Proxy 仅在隔离的 Docker 网络通信，不向宿主机暴露端口，HTTP(S) 出网必须继续经过带 ACL 的 SSRF Proxy。
-
-Dify API、Dify 控制台和 futureFlow 网关默认都只绑定宿主机 `127.0.0.1`。`pnpm env:init` 会为两套 PostgreSQL、网关 JWT、可选管理员初始化、Dify 管理员、Dify `SECRET_KEY`、Sandbox 和凭据加密分别生成随机密钥。已有数据库卷升级时，脚本不会擅自轮换弱数据库密码；请先备份并同步修改数据库角色密码与 `.env`，再重启服务。其他持久密钥也应按对应迁移流程显式轮换，不要直接对在线数据自动重建。SSRF Proxy 会拒绝 loopback、私网、link-local、云元数据和内部域名目标，生产部署仍应结合出口防火墙与 DNS 策略做第二层限制。若受控桌面环境将公网域名合成解析到 `198.18.0.0/15`，可通过 `DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS` 逐个列出可信域名；默认 `.invalid` 不放行，IP 字面量和未列出的域名仍会被拒绝。
-
----
-
-## 9. 与扣子工作流的能力对比
+## 与扣子工作流的能力对比
 
 > 对比口径：扣子产品会随地区、版本和套餐持续变化。下表以扣子类成熟工作流平台的常见能力维度为参照，只统计 futureFlow 当前仓库已经暴露并可验证的能力；Dify 底层存在但 futureFlow 尚未提供节点、配置或完整链路的功能，仍记为“缺失”。“部分”表示基础链路可用，但不等同于扣子的完整实现。
 
@@ -536,38 +329,7 @@ Dify API、Dify 控制台和 futureFlow 网关默认都只绑定宿主机 `127.0
 
 ---
 
-## 10. 当前边界与下一阶段
+## 许可证
 
-| 状态     | 能力                               | 说明                                                                                     |
-| -------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| 本轮不做 | 团队空间、成员与 RBAC              | 现有数据按用户隔离；企业多租户需要 workspace、membership、角色策略和资源归属迁移后再实现 |
-| 已交付   | Dify 发布版本隔离                  | 每个发布版本拥有独立 Dify 应用与独立加密 Service API Key                                 |
-| 后续设计 | Cron、重试策略、取消与死信队列     | 当前提供固定间隔和执行失败记录                                                           |
-| 上线运维 | 真实模型供应商探针、告警、备份演练 | `/healthz` 只检查平台数据库                                                            |
-
----
-
-## 端口配置
-
-| 服务          | 默认端口 | 说明                                   |
-| ------------- | ---- | -------------------------------------- |
-| FlowGram 画布 | 3000 | 前端                                   |
-| 网关 API      | 3001 | 后端（默认仅绑定 `127.0.0.1`）         |
-| Dify 控制台   | 8080 | Dify Web                               |
-| Dify API      | 5001 | Dify Service API                       |
-| PostgreSQL    | 5432 | 网关数据库（冲突时自动改用 5433-5450） |
-
-> 网关端口可通过 `.env` 的 `GATEWAY_PORT` 与 `PUBLIC_GATEWAY_URL` 修改（两者需一致）。
-> 若宿主机其他进程/容器占用了默认端口导致浏览器请求被抢答（表现为 CORS 错误），
-> 请将网关迁移到空闲端口后重启 `pnpm start`。媒体生成网关端口跟随 `DIFY_MEDIA_GATEWAY_PORT`。
-
----
-
-## 技术栈
-
-| 层级     | 技术                                 |
-| -------- | ------------------------------------ |
-| 前端     | React + FlowGram + Semi UI + Rsbuild |
-| 网关     | NestJS + TypeORM + PostgreSQL        |
-| 执行引擎 | Dify 0.15.3 (Docker)                 |
-| 部署     | Docker Compose + pnpm workspace      |
+- 仓库根目录当前未包含 `LICENSE` 文件，根 `package.json` 也未声明许可证；在补充授权条款前，请视为保留所有权利，对外分发或商业使用前先与作者确认。
+- 前端画布包 `demo-free-layout` 派生自 FlowGram 官方示例工程，其 `package.json` 声明为 MIT，该声明仅适用于该包本身。
