@@ -4,50 +4,11 @@
   padding: 34px 40px 48px;
 }
 
-/* 区块级与页面级操作都跟着标题放左边：先读标题再读动作，视线不用甩到最右边 */
-.profile-section-header {
-  display: block;
-}
-
-.profile-section-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.profile-page-header {
-  margin-bottom: 24px;
-}
-
-.profile-page-header > div:last-child {
-  margin-top: 14px;
-}
-
+/* 页面头与区块头统一走全局 .page-head / .section-head，这里只保留页内布局 */
 .profile-page h1,
 .profile-page h2,
 .profile-page p {
   margin: 0;
-}
-
-.profile-page h1 {
-  color: var(--ff-text);
-  font-size: 24px;
-  line-height: 32px;
-}
-
-.profile-page-header > div > p {
-  margin-top: 6px;
-  color: var(--ff-muted);
-  font-size: 14px;
-  line-height: 22px;
-}
-
-.page-eyebrow {
-  margin-bottom: 5px;
-  color: var(--ff-primary);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .profile-summary,
@@ -200,23 +161,6 @@
   margin-top: 16px;
 }
 
-.profile-section-header {
-  margin-bottom: 18px;
-}
-
-.profile-section h2 {
-  color: var(--ff-text);
-  font-size: 16px;
-  line-height: 24px;
-}
-
-.profile-section-header p {
-  margin-top: 4px;
-  color: var(--ff-muted);
-  font-size: 13px;
-  line-height: 20px;
-}
-
 .profile-key-prefix {
   padding: 4px 8px;
   border-radius: 4px;
@@ -225,15 +169,26 @@
   font-size: 12px;
 }
 
+/* 空表格不再渲染表头 + 大片空白，只留一块克制的空状态 */
+.profile-table-empty {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+}
+
 .profile-secret {
   margin: 0 0 12px;
   padding: 14px;
   overflow: auto;
-  border: 1px solid var(--ff-primary-border);
+  border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
-  background: var(--ff-primary-soft);
-  color: var(--ff-primary-hover);
+  background: var(--ff-surface-muted);
+  color: var(--ff-text);
   font-size: 13px;
+}
+
+.profile-secret code {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
 }
 
 .profile-state {
@@ -285,12 +240,6 @@
 }
 
 @media (max-width: 560px) {
-  .profile-page-header,
-  .profile-section-header {
-    flex-direction: column;
-    gap: 12px;
-  }
-
   .profile-section {
     padding: 18px 16px 8px;
   }

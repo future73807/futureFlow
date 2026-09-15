@@ -353,12 +353,10 @@ export const PluginStorePage = () => {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <HeaderTitle>
-          <h3>插件商店</h3>
-          <p>平台内置工具插件，查看参数与运行统计，一键创建含该工具的画布。</p>
-        </HeaderTitle>
-      </PageHeader>
+      <header className="page-head">
+        <h1>插件商店</h1>
+        <p className="page-sub">平台内置工具插件，查看参数与运行统计，一键创建含该工具的画布。</p>
+      </header>
 
       <Toolbar>
         <Input
@@ -483,15 +481,34 @@ const DetailView = ({
 
   return (
     <PageContainer>
-      <DetailBar>
-        <Button
-          theme="borderless"
-          className="plugin-back"
-          icon={<IconArrowLeft aria-hidden="true" />}
-          aria-label="返回插件列表"
-          onClick={onBack}
-        />
-        <div className="plugin-detail-actions">
+      <header className="page-head">
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <PluginMark item={detail} size={36} labelSize={16} />
+          {detail.name}
+        </h1>
+        <p className="page-sub">
+          futureFlow 官方 · 内置工具 · {detail.category || '通用'}
+        </p>
+        <TagRow>
+          <Tag size="small" color="blue">
+            官方
+          </Tag>
+          <Tag size="small" type="ghost">
+            免费
+          </Tag>
+          {(detail.tags || []).map((tag) => (
+            <Tag key={tag} size="small" type="ghost">
+              {tag}
+            </Tag>
+          ))}
+        </TagRow>
+        <div className="page-actions">
+          <Button
+            theme="borderless"
+            icon={<IconArrowLeft aria-hidden="true" />}
+            aria-label="返回插件列表"
+            onClick={onBack}
+          />
           <Button
             theme={detail.favorited ? 'light' : 'borderless'}
             aria-label={detail.favorited ? '取消收藏' : '收藏该插件'}
@@ -507,45 +524,11 @@ const DetailView = ({
             {detail.favorited ? '已收藏' : '收藏'}
             {detail.favoriteCount ? `(${detail.favoriteCount})` : ''}
           </Button>
-          <Button
-            theme="solid"
-            type="primary"
-            loading={creating}
-            onClick={onAddToCanvas}
-          >
+          <Button theme="solid" type="primary" loading={creating} onClick={onAddToCanvas}>
             添加到我的工作流
           </Button>
         </div>
-      </DetailBar>
-
-      <DetailHeader>
-        <DetailIcon>
-          <PluginMark item={detail} size={94} labelSize={34} />
-        </DetailIcon>
-        <DetailHeading>
-          <h1>{detail.name}</h1>
-          <p>
-            futureFlow 官方
-            <span className="dot">·</span>
-            内置工具
-            <span className="dot">·</span>
-            {detail.category || '通用'}
-          </p>
-          <TagRow>
-            <Tag size="small" color="blue">
-              官方
-            </Tag>
-            <Tag size="small" type="ghost">
-              免费
-            </Tag>
-            {(detail.tags || []).map((tag) => (
-              <Tag key={tag} size="small" type="ghost">
-                {tag}
-              </Tag>
-            ))}
-          </TagRow>
-        </DetailHeading>
-      </DetailHeader>
+      </header>
 
       <StatStrip>
         <StatCell>
@@ -599,10 +582,9 @@ const DetailView = ({
         所以非激活面板用「移出视口但仍参与渲染」的方式隐藏。
       */}
       <TabPanel $active={activeTab === 'desc'} aria-hidden={activeTab !== 'desc'}>
-        <DescriptionBlock>
-          <p>{detail.description || detail.summary || '暂无说明。'}</p>
-          {detail.capability && <p className="capability">适用场景：{detail.capability}</p>}
-          <DescriptionActions>
+        <div className="section-head">
+          <div className="section-head-row">
+            <h2>插件描述</h2>
             <Button
               theme="light"
               type="primary"
@@ -613,11 +595,19 @@ const DetailView = ({
             >
               添加到我的工作流
             </Button>
-          </DescriptionActions>
-        </DescriptionBlock>
+          </div>
+          <p>{detail.description || detail.summary || '暂无说明。'}</p>
+          {detail.capability && <p>适用场景：{detail.capability}</p>}
+        </div>
       </TabPanel>
 
       <TabPanel $active={toolsTabActive} aria-hidden={!toolsTabActive}>
+        <div className="section-head">
+          <div className="section-head-row">
+            <h2>工具参数</h2>
+          </div>
+          <p>查看每个参数的示例值与说明，复制请求体 / 返回体 JSON。</p>
+        </div>
         {/* 只有一个工具时也保留 chip 行：它是「当前工具」的可见标识，与参考图一致 */}
         {tools.length > 0 && (
           <ToolChips>
@@ -731,28 +721,6 @@ const PageContainer = styled.div`
 
   @media (max-width: 720px) {
     padding: 16px 14px 32px;
-  }
-`;
-
-const PageHeader = styled.header`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-`;
-
-const HeaderTitle = styled.div`
-  h3 {
-    margin: 0;
-    color: var(--ff-text);
-    font-size: 24px;
-    line-height: 32px;
-  }
-
-  p {
-    margin: 6px 0 0;
-    color: var(--ff-muted);
-    font-size: 14px;
   }
 `;
 
@@ -907,77 +875,6 @@ const ErrorState = styled.div`
   gap: 12px;
 `;
 
-const DetailBar = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-
-  .plugin-back {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    color: var(--ff-text-secondary);
-  }
-
-  .plugin-detail-actions {
-    display: flex;
-    gap: 8px;
-  }
-`;
-
-const DetailHeader = styled.header`
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--ff-border);
-`;
-
-const DetailIcon = styled.div`
-  display: grid;
-  width: 96px;
-  height: 96px;
-  flex: 0 0 96px;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid var(--ff-border);
-  border-radius: 20px;
-  background: #ffffff;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-`;
-
-const DetailHeading = styled.div`
-  display: grid;
-  gap: 8px;
-
-  h1 {
-    margin: 0;
-    color: var(--ff-text);
-    font-size: 28px;
-    line-height: 36px;
-  }
-
-  p {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    color: var(--ff-muted);
-    font-size: 13px;
-  }
-
-  .dot {
-    color: var(--ff-subtle);
-    line-height: 1;
-  }
-`;
-
 const StatStrip = styled.div`
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1072,33 +969,6 @@ const TabPanel = styled.div<{ $active: boolean }>`
     overflow: hidden;
     pointer-events: none;
   `}
-`;
-
-const DescriptionBlock = styled.div`
-  display: grid;
-  gap: 10px;
-  padding: 18px 20px;
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  background: var(--ff-surface);
-
-  p {
-    margin: 0;
-    color: var(--ff-text-secondary);
-    font-size: 14px;
-    line-height: 24px;
-  }
-
-  .capability {
-    color: var(--ff-muted);
-    font-size: 13px;
-  }
-`;
-
-const DescriptionActions = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 4px;
 `;
 
 const ToolChips = styled.div`

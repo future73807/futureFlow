@@ -450,13 +450,10 @@ export const ProfilePage = () => {
 
   return (
     <main className="profile-page">
-      <header className="profile-page-header">
-        <div>
-          <div className="page-eyebrow">账户设置</div>
-          <h1>个人中心</h1>
-          <p>管理账户资料、访问密钥和工作流额度。</p>
-        </div>
-        <div style={{ display: 'inline-flex', gap: 8 }}>
+      <header className="page-head">
+        <h1>个人中心</h1>
+        <p className="page-sub">管理账户资料、访问密钥和工作流额度。</p>
+        <div className="page-actions">
           <Button onClick={() => setPasswordVisible(true)}>修改密码</Button>
           <Button icon={<IconEdit />} onClick={() => setEditVisible(true)}>
             编辑资料
@@ -511,8 +508,8 @@ export const ProfilePage = () => {
       </section>
 
       <section className="profile-section">
-        <div className="profile-section-header">
-          <div className="profile-section-title">
+        <div className="section-head">
+          <div className="section-head-row">
             <h2>API 密钥</h2>
             <Button type="primary" theme="solid" icon={<IconPlus />} onClick={() => setCreateVisible(true)}>
               创建 Key
@@ -520,11 +517,15 @@ export const ProfilePage = () => {
           </div>
           <p>每个环境使用独立 Key。明文仅在创建后显示一次。</p>
         </div>
+        {apiKeys.length === 0 ? (
+          <div className="profile-table-empty">
+            <Empty description="还没有 API Key" />
+          </div>
+        ) : (
         <Table
           dataSource={apiKeys}
           pagination={false}
           rowKey="id"
-          empty={<Empty description="还没有 API Key" />}
           columns={[
             {
               title: '名称',
@@ -535,7 +536,7 @@ export const ProfilePage = () => {
             {
               title: 'Key 前缀',
               dataIndex: 'keyPrefix',
-              render: (value: string) => <code className="profile-key-prefix">{value}...</code>,
+              render: (value: string) => <code className="cell-mono profile-key-prefix">{value}...</code>,
             },
             {
               title: '最后使用',
@@ -588,33 +589,38 @@ export const ProfilePage = () => {
             },
           ]}
         />
+        )}
       </section>
 
       <section className="profile-section">
-        <div className="profile-section-header">
-          <div className="profile-section-title">
+        <div className="section-head">
+          <div className="section-head-row">
             <h2>文件管理</h2>
             <label className="profile-upload-button">
-            <input
-              type="file"
-              style={{ display: 'none' }}
-              onChange={(event) => {
-                void handleFileUpload(event.target.files);
-                event.currentTarget.value = '';
-              }}
-            />
-            <Button type="primary" theme="solid" icon={<IconUpload />} loading={uploading}>
-              上传文件
-            </Button>
-          </label>
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  void handleFileUpload(event.target.files);
+                  event.currentTarget.value = '';
+                }}
+              />
+              <Button type="primary" theme="solid" icon={<IconUpload />} loading={uploading}>
+                上传文件
+              </Button>
+            </label>
           </div>
           <p>上传文档或图片获得可引用的下载链接（单文件 10 MB 以内）。</p>
         </div>
+        {files.length === 0 ? (
+          <div className="profile-table-empty">
+            <Empty description="还没有上传过文件" />
+          </div>
+        ) : (
         <Table
           dataSource={files}
           pagination={files.length > 8 ? { pageSize: 8 } : false}
           rowKey="id"
-          empty={<Empty description="还没有上传过文件" />}
           columns={[
             {
               title: '文件名',
@@ -680,11 +686,12 @@ export const ProfilePage = () => {
             },
           ]}
         />
+        )}
       </section>
 
       <section className="profile-section">
-        <div className="profile-section-header">
-          <div className="profile-section-title">
+        <div className="section-head">
+          <div className="section-head-row">
             <h2>知识库</h2>
             <Button icon={<IconPlus />} onClick={() => setCreateDatasetVisible(true)}>
               创建知识库
@@ -692,12 +699,16 @@ export const ProfilePage = () => {
           </div>
           <p>供画布「知识检索」节点使用的私有知识库，创建后即可在画布中选择。</p>
         </div>
+        {datasets !== null && datasets.length === 0 ? (
+          <div className="profile-table-empty">
+            <Empty description="还没有知识库" />
+          </div>
+        ) : (
         <Table
           dataSource={datasets || []}
           loading={datasets === null}
           pagination={false}
           rowKey="id"
-          empty={<Empty description="还没有知识库" />}
           columns={[
             {
               title: '名称',
@@ -750,11 +761,12 @@ export const ProfilePage = () => {
             },
           ]}
         />
+        )}
       </section>
 
       <section className="profile-section">
-        <div className="profile-section-header">
-          <div className="profile-section-title">
+        <div className="section-head">
+          <div className="section-head-row">
             <h2>MCP 服务器</h2>
             <Button icon={<IconPlus />} onClick={() => setCreateMcpVisible(true)}>
               注册服务器
@@ -762,12 +774,16 @@ export const ProfilePage = () => {
           </div>
           <p>注册 streamable HTTP 方式的 MCP 服务器，供画布「MCP 工具」节点调用；Bearer 令牌加密保存。</p>
         </div>
+        {mcpServers !== null && mcpServers.length === 0 ? (
+          <div className="profile-table-empty">
+            <Empty description="还没有注册 MCP 服务器" />
+          </div>
+        ) : (
         <Table
           dataSource={mcpServers || []}
           loading={mcpServers === null}
           pagination={false}
           rowKey="id"
-          empty={<Empty description="还没有注册 MCP 服务器" />}
           columns={[
             {
               title: '名称',
@@ -819,6 +835,7 @@ export const ProfilePage = () => {
             },
           ]}
         />
+        )}
       </section>
 
       <SideSheet

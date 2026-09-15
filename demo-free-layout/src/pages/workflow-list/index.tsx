@@ -1014,7 +1014,7 @@ export const WorkflowListPage = () => {
 
   const emptyDescriptionByTab: Record<ResourceTab, string> = {
     all: '创建你的第一个工作流，或在个人中心添加知识库与文件。',
-    workflow: '点击右上角按钮，开始你的第一个 AI 工作流。',
+    workflow: '点击上方「创建画布」，开始你的第一个 AI 工作流。',
     dataset: '知识库可在个人中心创建并管理。',
     file: '文件可在个人中心上传并管理。',
   };
@@ -1190,20 +1190,15 @@ export const WorkflowListPage = () => {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <HeaderTitle>
-          <div className="page-eyebrow">工作区</div>
-          <Typography.Title heading={3} style={{ margin: 0, fontWeight: 700 }}>
-            工作流
-          </Typography.Title>
-          <Typography.Text type="tertiary" style={{ marginTop: 5, display: 'block' }}>
-            在这里查看、编辑和发布你的 AI 工作流。
-          </Typography.Text>
-        </HeaderTitle>
-        <Button onClick={() => void openDifySettings()}>Dify 引擎</Button>
-      </PageHeader>
+      <header className="page-head">
+        <h1>工作流</h1>
+        <p className="page-sub">在这里查看、编辑和发布你的 AI 工作流。</p>
+        <div className="page-actions">
+          <Button onClick={() => void openDifySettings()}>Dify 引擎</Button>
+        </div>
+      </header>
 
-      {/* 标签行：左侧资源类型切换，右侧搜索与创建入口，底部通栏 1px 分隔线 */}
+      {/* 标签行只保留资源类型切换，筛选与操作挪到下面同一行工具条 */}
       <TabRow>
         <TabList role="tablist" aria-label="资源类型">
           {RESOURCE_TABS.map((tab) => (
@@ -1219,45 +1214,11 @@ export const WorkflowListPage = () => {
             </TabButton>
           ))}
         </TabList>
-        <TabTools>
-          <Input
-            className="resource-search"
-            prefix={<IconSearch />}
-            placeholder="搜索资源"
-            value={keyword}
-            onChange={(value) => setKeyword(value)}
-            showClear
-          />
-          <Button
-            theme="light"
-            icon={<IconUpload />}
-            loading={importing}
-            onClick={() => importInputRef.current?.click()}
-          >
-            导入
-          </Button>
-          <Button
-            type="primary"
-            theme="solid"
-            icon={<IconPlus />}
-            onClick={() => setCreateVisible(true)}
-          >
-            创建画布
-          </Button>
-          {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json,application/json"
-            hidden
-            onChange={(event) => void handleImportFile(event)}
-          />
-        </TabTools>
       </TabRow>
 
-      {/* 筛选行：仅「全部/工作流」按发布状态过滤；知识库与文件不支持该筛选 */}
-      {(activeTab === 'all' || activeTab === 'workflow') && (
-        <FilterRow>
+      {/* 工具条：筛选、搜索、导入、创建画布从左往右同一行；发布状态筛选仅对「全部/工作流」可见 */}
+      <ListToolbar className="list-toolbar">
+        {(activeTab === 'all' || activeTab === 'workflow') && (
           <Select
             value={publishFilter}
             onChange={(value) => setPublishFilter(String(value) as PublishFilter)}
@@ -1269,22 +1230,57 @@ export const WorkflowListPage = () => {
               { value: 'draft', label: '草稿' },
             ]}
           />
-        </FilterRow>
-      )}
+        )}
+        <Input
+          className="resource-search"
+          prefix={<IconSearch />}
+          placeholder="搜索资源"
+          value={keyword}
+          onChange={(value) => setKeyword(value)}
+          showClear
+        />
+        <Button
+          theme="light"
+          icon={<IconUpload />}
+          loading={importing}
+          onClick={() => importInputRef.current?.click()}
+        >
+          导入
+        </Button>
+        <Button
+          type="primary"
+          theme="solid"
+          icon={<IconPlus />}
+          onClick={() => setCreateVisible(true)}
+        >
+          创建画布
+        </Button>
+        {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(event) => void handleImportFile(event)}
+        />
+      </ListToolbar>
 
       <ResourceCard>
-        <TableHeader>
-          <span>资源</span>
-          <span>类型</span>
-          <span>编辑时间</span>
-          <span className="table-ops">操作</span>
-        </TableHeader>
+        {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
+        {(currentLoading || resourceRows.length > 0) && (
+          <TableHeader>
+            <span>资源</span>
+            <span>类型</span>
+            <span>编辑时间</span>
+            <span className="table-ops">操作</span>
+          </TableHeader>
+        )}
         {currentLoading ? (
           <TableBodyState>
             <Spin size="large" />
           </TableBodyState>
         ) : resourceRows.length === 0 ? (
-          <TableBodyState>
+          <TableEmptyState>
             <div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
               <Empty
                 title={keyword.trim() ? '没有匹配的资源' : emptyTitleByTab[activeTab]}
@@ -1298,7 +1294,7 @@ export const WorkflowListPage = () => {
                 <Button onClick={reloadCurrentTab}>重新加载</Button>
               )}
             </div>
-          </TableBodyState>
+          </TableEmptyState>
         ) : (
           resourceRows.map((row) => (
             <ResourceRowItem
@@ -2098,43 +2094,11 @@ const PageContainer = styled.div`
   }
 `;
 
-const PageHeader = styled.header`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-
-  @media (max-width: 560px) {
-    flex-direction: column;
-  }
-`;
-
-const HeaderTitle = styled.div`
-  min-width: 0;
-
-  .page-eyebrow {
-    margin-bottom: 5px;
-    color: var(--ff-primary);
-    font-size: 12px;
-    font-weight: 700;
-  }
-`;
-
 const TabRow = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   min-height: 48px;
   border-bottom: 1px solid var(--ff-border);
-
-  @media (max-width: 720px) {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-    padding-bottom: 12px;
-  }
 `;
 
 const TabList = styled.div`
@@ -2173,31 +2137,24 @@ const TabButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const TabTools = styled.div`
+/** 本页专用工具条：筛选/搜索/操作同一行左对齐 */
+const ListToolbar = styled.div`
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin-top: 14px;
 
   .resource-search {
-    width: 220px;
+    width: 240px;
   }
 
   @media (max-width: 720px) {
-    width: 100%;
-
     .resource-search {
       flex: 1;
       width: auto;
     }
   }
-`;
-
-const FilterRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 14px;
 `;
 
 const CreatePreview = styled.div`
@@ -2263,6 +2220,14 @@ const TableBodyState = styled.div`
   place-items: center;
   padding: 24px;
   border-top: 1px solid var(--ff-border);
+`;
+
+/** 空状态：不渲染表头时给一个克制的最小高度 */
+const TableEmptyState = styled.div`
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  padding: 24px;
 `;
 
 const ResourceRowItem = styled.div<{ $clickable?: boolean }>`

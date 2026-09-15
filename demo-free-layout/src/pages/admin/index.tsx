@@ -3,9 +3,10 @@
  * 仪表盘 + 用户管理 + API Key + 工作流 + 运行记录 + 余额流水
  */
 
+import './admin.css';
+
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography,
   Table,
   Tag,
   Button,
@@ -52,9 +53,168 @@ type WorkflowRow = any;
 type RunRow = any;
 type BalanceLogRow = any;
 
-/** 操作下拉选择器（提前定义，避免 TDZ 问题） */
+/** 详情弹窗的一行：标签 + 完整值（值可以是任意 React 节点） */
+type DetailField = { label: string; value: React.ReactNode };
+
+/** 表格时间统一 YYYY-MM-DD HH:mm：去掉秒，紧凑且等宽对齐，时间列不会被挤成多行 */
+function formatTime(value: unknown, fallback = '-'): string {
+  if (!value) return fallback;
+  const date = new Date(value as string);
+  if (Number.isNaN(date.getTime())) return fallback;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** 时间单元格：始终渲染成单个 span，由全局表格 nowrap 规则保证一行显示 */
+function TimeCell({ value, fallback }: { value: unknown; fallback?: string }) {
+  return <span className="admin-time">{formatTime(value, fallback)}</span>;
+}
+
+/** 统一的「查看」弹窗：完整展示整行字段，表格里被截断的内容在这里看全 */
+function RowDetail({
+  title,
+  fields,
+  visible,
+  onClose,
+}: {
+  title: string;
+  fields: DetailField[];
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} visible={visible} onCancel={onClose} footer={null} width={560}>
+      <div className="admin-detail">
+        {fields.map((f, i) => (
+          <div className="admin-detail-row" key={`${f.label}-${i}`}>
+            <div className="admin-detail-label">{f.label}</div>
+            <div className="admin-detail-value">{f.value ?? '-'}</div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+/** 查看弹窗状态：五个列表复用同一套开关逻辑 */
+function useRowDetail() {
+  const [detail, setDetail] = useState<{ title: string; fields: DetailField[] } | null>(null);
+  const showDetail = useCallback(
+    (title: string, fields: DetailField[]) => setDetail({ title, fields }),
+    [],
+  );
+  const detailNode = (
+    <RowDetail
+      title={detail?.title || ''}
+      fields={detail?.fields || []}
+      visible={!!detail}
+      onClose={() => setDetail(null)}
+    />
+  );
+  return { showDetail, detailNode };
+}
+
+/* ---- 各表详情字段：全部使用完整值，不在弹窗里做截断 ---- */
+
+const USER_STATUS_TEXT: Record<string, string> = {
+  active: '正常',
+  suspended: '暂停',
+  banned: '封禁',
+};
+
+const RUN_STATUS_TEXT: Record<string, string> = {
+  pending: '等待中',
+  running: '运行中',
+  succeeded: '成功',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+const BALANCE_TYPE_TEXT: Record<string, string> = {
+  freeze: '冻结',
+  deduct: '扣费',
+  unfreeze: '解冻',
+  refund: '退款',
+  recharge: '充值',
+};
+
+const userDetailFields = (r: UserRow): DetailField[] => [
+  { label: '用户 ID', value: <span className="cell-mono">{r.id || '-'}</span> },
+  { label: '用户名', value: r.username || '-' },
+  { label: '邮箱', value: r.email || '-' },
+  { label: '角色', value: r.role === 'admin' ? '管理员' : '普通用户' },
+  { label: 'VIP 等级', value: (r.vipLevel || 'free').toUpperCase() },
+  { label: '状态', value: USER_STATUS_TEXT[r.status] || r.status || '-' },
+  { label: '余额', value: `¥${Number(r.balance || 0).toFixed(2)}` },
+  { label: '冻结余额', value: `¥${Number(r.frozenBalance || 0).toFixed(2)}` },
+  { label: '注册时间', value: formatTime(r.createdAt) },
+  { label: '更新时间', value: formatTime(r.updatedAt) },
+];
+
+const apiKeyDetailFields = (r: ApiKeyRow): DetailField[] => [
+  { label: 'Key ID', value: <span className="cell-mono">{r.id || '-'}</span> },
+  { label: '名称', value: r.name || '-' },
+  { label: 'Key 前缀', value: <span className="cell-mono">{r.keyPrefix || '-'}</span> },
+  { label: '所属用户', value: r.username || '-' },
+  { label: '用户 ID', value: <span className="cell-mono">{r.userId || '-'}</span> },
+  { label: '状态', value: r.revoked ? '已吊销' : '正常' },
+  { label: '最后使用', value: formatTime(r.lastUsedAt, '从未使用') },
+  { label: '过期时间', value: r.expiresAt ? formatTime(r.expiresAt) : '永不过期' },
+  { label: '创建时间', value: formatTime(r.createdAt) },
+];
+
+const workflowDetailFields = (r: WorkflowRow): DetailField[] => [
+  { label: '工作流 ID', value: <span className="cell-mono">{r.id || '-'}</span> },
+  { label: '名称', value: r.name || '-' },
+  { label: '描述', value: r.description || '暂无描述' },
+  { label: '所属用户', value: r.username || '-' },
+  { label: '用户 ID', value: <span className="cell-mono">{r.userId || '-'}</span> },
+  { label: '版本', value: `v${r.version ?? 1}` },
+  { label: '状态', value: r.status || '-' },
+  { label: '创建时间', value: formatTime(r.createdAt) },
+  { label: '更新时间', value: formatTime(r.updatedAt) },
+];
+
+const runDetailFields = (r: RunRow): DetailField[] => [
+  { label: '运行 ID', value: <span className="cell-mono">{r.id || '-'}</span> },
+  { label: '状态', value: RUN_STATUS_TEXT[r.status] || r.status || '-' },
+  { label: '用户', value: r.username || '-' },
+  { label: '用户 ID', value: <span className="cell-mono">{r.userId || '-'}</span> },
+  { label: '来源', value: r.source || '-' },
+  { label: 'Token 消耗', value: Number(r.totalTokens || 0).toLocaleString() },
+  { label: '执行步数', value: String(r.totalSteps ?? 0) },
+  { label: '预估费用', value: `¥${Number(r.estimatedCost || 0).toFixed(4)}` },
+  { label: '实际费用', value: `¥${Number(r.actualCost || 0).toFixed(4)}` },
+  { label: '耗时', value: `${Number(r.elapsedTime || 0).toFixed(2)}s` },
+  { label: '错误信息', value: r.errorMessage || '-' },
+  { label: '创建时间', value: formatTime(r.createdAt) },
+];
+
+const balanceLogDetailFields = (r: BalanceLogRow): DetailField[] => [
+  { label: '流水 ID', value: <span className="cell-mono">{r.id || '-'}</span> },
+  { label: '类型', value: BALANCE_TYPE_TEXT[r.type] || r.type || '-' },
+  { label: '用户', value: r.username || '-' },
+  { label: '用户 ID', value: <span className="cell-mono">{r.userId || '-'}</span> },
+  {
+    label: '金额',
+    value: `${Number(r.amount || 0) >= 0 ? '+' : ''}${Number(r.amount || 0).toFixed(4)}`,
+  },
+  { label: '变动后余额', value: `¥${Number(r.balanceAfter || 0).toFixed(4)}` },
+  { label: '备注', value: r.remark || '-' },
+  { label: '关联运行 ID', value: <span className="cell-mono">{r.workflowRunId || '-'}</span> },
+  { label: '时间', value: formatTime(r.createdAt) },
+];
+
+/** 操作下拉选择器（提前定义，避免 TDZ 问题）。宽度按「企业版」三字 + 箭头算足，避免文字被省略 */
 const ActionSelect = (props: any) => (
-  <Select {...props} size="small" style={{ width: 100, ...props.style }} />
+  <Select {...props} size="small" style={{ width: 92, ...props.style }} />
+);
+
+/** 每一行都有的查看按钮：打开完整字段弹窗 */
+const ViewButton = ({ onClick }: { onClick: () => void }) => (
+  <Button size="small" onClick={onClick}>
+    查看
+  </Button>
 );
 
 export const AdminPage = () => {
@@ -128,13 +288,18 @@ export const AdminPage = () => {
   const refresh = () => loadTab(tab, page);
 
   return (
-    <PageContainer>
-      <Typography.Title heading={3} style={{ marginBottom: 4, fontWeight: 600 }}>
-        管理员后台
-      </Typography.Title>
-      <Typography.Text type="tertiary" style={{ marginBottom: 20, display: 'block' }}>
-        欢迎，{me?.username}。你可以在这里管理系统用户、API Key、工作流和余额流水。
-      </Typography.Text>
+    <div className="admin-page">
+      <header className="page-head">
+        <h1>管理员后台</h1>
+        <p className="page-sub">
+          欢迎，{me?.username}。你可以在这里管理系统用户、API Key、工作流和余额流水。
+        </p>
+        <div className="page-actions">
+          <Button size="small" onClick={refresh} loading={loading}>
+            刷新
+          </Button>
+        </div>
+      </header>
 
       <Tabs
         type="line"
@@ -149,14 +314,17 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconUser />} text="用户管理" />} itemKey="users">
-          <div style={{ marginBottom: 12 }}>
+          <div className="admin-filters">
             <Input
               placeholder="搜索用户名或邮箱"
               value={userSearch}
               showClear
               style={{ width: 280 }}
               onChange={(value: string) => setUserSearch(value)}
-              onEnterPress={() => { setPage(1); loadTab('users', 1); }}
+              onEnterPress={() => {
+                setPage(1);
+                loadTab('users', 1);
+              }}
             />
           </div>
           <UsersView
@@ -191,7 +359,7 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconActivity />} text="运行记录" />} itemKey="runs">
-          <div style={{ marginBottom: 12 }}>
+          <div className="admin-filters">
             <Select
               value={runSource || 'all'}
               style={{ width: 200 }}
@@ -228,7 +396,7 @@ export const AdminPage = () => {
           />
         </TabPane>
       </Tabs>
-    </PageContainer>
+    </div>
   );
 };
 
@@ -273,11 +441,11 @@ const DashboardView = ({ stats, loading }: { stats: Stats | null; loading: boole
         </StatCard>
         <StatCard>
           <StatLabel>Token 消耗</StatLabel>
-          <StatValue $accent>{stats.totalTokens.toLocaleString()}</StatValue>
+          <StatValue>{stats.totalTokens.toLocaleString()}</StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>总费用（元）</StatLabel>
-          <StatValue $accent>¥ {stats.totalCost.toFixed(4)}</StatValue>
+          <StatValue>¥ {stats.totalCost.toFixed(4)}</StatValue>
         </StatCard>
       </StatsGrid>
 
@@ -332,6 +500,7 @@ const UsersView = ({
     user: null,
     visible: false,
   });
+  const { showDetail, detailNode } = useRowDetail();
 
   const handleAdjustBalance = async (values: any) => {
     try {
@@ -378,19 +547,19 @@ const UsersView = ({
     {
       title: '用户名',
       dataIndex: 'username',
-      width: 120,
+      width: 140,
       render: (t: string, r: UserRow) => (
         <span>
           {t} {r.role === 'admin' && <Tag size="small" color="orange">管理员</Tag>}
         </span>
       ),
     },
-    { title: '邮箱', dataIndex: 'email', width: 180 },
+    { title: '邮箱', dataIndex: 'email', width: 200 },
     {
       title: 'VIP',
       dataIndex: 'vipLevel',
       width: 100,
-      render: (vip: string, r: UserRow) => (
+      render: (vip: string) => (
         <Tag
           size="small"
           color={vip === 'enterprise' ? 'purple' : vip === 'pro' ? 'blue' : 'grey'}
@@ -403,15 +572,15 @@ const UsersView = ({
       title: '余额',
       dataIndex: 'balance',
       width: 100,
-      render: (b: number) => `¥${b?.toFixed(2)}`,
+      render: (b: number) => `¥${Number(b || 0).toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 80,
+      width: 90,
       render: (s: string) => (
         <Tag size="small" color={s === 'active' ? 'green' : 'red'}>
-          {s === 'active' ? '正常' : s === 'banned' ? '封禁' : '暂停'}
+          {USER_STATUS_TEXT[s] || s}
         </Tag>
       ),
     },
@@ -419,17 +588,15 @@ const UsersView = ({
       title: '注册时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
+      render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 280,
+      width: 320,
       render: (_: any, r: UserRow) => (
-        <ActionGroup>
-          <Button
-            size="small"
-            onClick={() => setBalanceModal({ user: r, visible: true })}
-          >
+        <div className="admin-actions">
+          <ViewButton onClick={() => showDetail(`用户详情 - ${r.username || ''}`, userDetailFields(r))} />
+          <Button size="small" onClick={() => setBalanceModal({ user: r, visible: true })}>
             调整余额
           </Button>
           <ActionSelect
@@ -457,7 +624,7 @@ const UsersView = ({
               </Button>
             </Popconfirm>
           )}
-        </ActionGroup>
+        </div>
       ),
     },
   ];
@@ -469,6 +636,7 @@ const UsersView = ({
         columns={columns}
         rowKey="id"
         loading={loading}
+        scroll={{ x: 'max-content' }}
         pagination={{
           currentPage: page,
           pageSize,
@@ -507,6 +675,7 @@ const UsersView = ({
           </div>
         </Form>
       </Modal>
+      {detailNode}
     </div>
   );
 };
@@ -528,6 +697,8 @@ const ApiKeysView = ({
   onPageChange: (p: number) => void;
   refresh: () => void;
 }) => {
+  const { showDetail, detailNode } = useRowDetail();
+
   const handleRevoke = async (id: string) => {
     try {
       await revokeApiKey(id);
@@ -539,22 +710,24 @@ const ApiKeysView = ({
   };
 
   const columns = [
-    { title: '名称', dataIndex: 'name', width: 120 },
+    { title: '名称', dataIndex: 'name', width: 140, render: (t: string) => t || '-' },
     {
       title: 'Key 前缀',
       dataIndex: 'keyPrefix',
-      width: 120,
-      render: (t: string) => <code style={{ color: 'var(--ff-primary)' }}>{t}...</code>,
+      width: 150,
+      // 等宽中性色，不用品牌蓝
+      render: (t: string) => <span className="cell-mono">{t ? `${t}...` : '-'}</span>,
     },
     {
       title: '所属用户',
       dataIndex: 'username',
-      width: 100,
+      width: 120,
+      render: (t: string) => t || '-',
     },
     {
       title: '状态',
       dataIndex: 'revoked',
-      width: 80,
+      width: 90,
       render: (r: boolean) =>
         r ? (
           <Tag size="small" color="red">已吊销</Tag>
@@ -566,42 +739,53 @@ const ApiKeysView = ({
       title: '最后使用',
       dataIndex: 'lastUsedAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '从未使用'),
+      render: (t: string) => <TimeCell value={t} fallback="从未使用" />,
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
+      render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 100,
-      render: (_: any, r: ApiKeyRow) =>
-        !r.revoked && (
-          <Popconfirm title="确认吊销此 API Key？" onConfirm={() => handleRevoke(r.id)}>
-            <Button size="small" type="danger">
-              吊销
-            </Button>
-          </Popconfirm>
-        ),
+      width: 160,
+      render: (_: any, r: ApiKeyRow) => (
+        <div className="admin-actions">
+          <ViewButton onClick={() => showDetail(`API Key 详情 - ${r.name || ''}`, apiKeyDetailFields(r))} />
+          {r.revoked ? (
+            // 已吊销的行也要给出内容，避免操作列空白
+            <span className="admin-muted">已吊销</span>
+          ) : (
+            <Popconfirm title="确认吊销此 API Key？" onConfirm={() => handleRevoke(r.id)}>
+              <Button size="small" type="danger">
+                吊销
+              </Button>
+            </Popconfirm>
+          )}
+        </div>
+      ),
     },
   ];
 
   return (
-    <Table
-      dataSource={data.items}
-      columns={columns}
-      rowKey="id"
-      loading={loading}
-      pagination={{
-        currentPage: page,
-        pageSize,
-        total: data.total,
-        onPageChange,
-      }}
-      empty={<Empty description="暂无 API Key" />}
-    />
+    <div>
+      <Table
+        dataSource={data.items}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total: data.total,
+          onPageChange,
+        }}
+        empty={<Empty description="暂无 API Key" />}
+      />
+      {detailNode}
+    </div>
   );
 };
 
@@ -620,49 +804,65 @@ const WorkflowsView = ({
   pageSize: number;
   onPageChange: (p: number) => void;
 }) => {
+  const { showDetail, detailNode } = useRowDetail();
+
   const columns = [
-    { title: '名称', dataIndex: 'name', width: 160 },
+    { title: '名称', dataIndex: 'name', width: 180, render: (t: string) => t || '-' },
     {
       title: '描述',
       dataIndex: 'description',
-      width: 200,
+      width: 220,
+      ellipsis: true,
       render: (t: string) => t || '暂无描述',
     },
-    { title: '所属用户', dataIndex: 'username', width: 100 },
+    { title: '所属用户', dataIndex: 'username', width: 120, render: (t: string) => t || '-' },
     {
       title: '版本',
       dataIndex: 'version',
-      width: 60,
-      render: (v: number) => `v${v}`,
+      width: 70,
+      render: (v: number) => `v${v ?? 1}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 80,
-      render: (s: string) => <Tag size="small">{s}</Tag>,
+      width: 90,
+      render: (s: string) => <Tag size="small">{s || '-'}</Tag>,
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
+      render: (t: string) => <TimeCell value={t} />,
+    },
+    {
+      title: '操作',
+      width: 140,
+      render: (_: any, r: WorkflowRow) => (
+        <div className="admin-actions">
+          <ViewButton onClick={() => showDetail(`工作流详情 - ${r.name || ''}`, workflowDetailFields(r))} />
+        </div>
+      ),
     },
   ];
 
   return (
-    <Table
-      dataSource={data.items}
-      columns={columns}
-      rowKey="id"
-      loading={loading}
-      pagination={{
-        currentPage: page,
-        pageSize,
-        total: data.total,
-        onPageChange,
-      }}
-      empty={<Empty description="暂无工作流" />}
-    />
+    <div>
+      <Table
+        dataSource={data.items}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total: data.total,
+          onPageChange,
+        }}
+        empty={<Empty description="暂无工作流" />}
+      />
+      {detailNode}
+    </div>
   );
 };
 
@@ -681,6 +881,8 @@ const RunsView = ({
   pageSize: number;
   onPageChange: (p: number) => void;
 }) => {
+  const { showDetail, detailNode } = useRowDetail();
+
   const columns = [
     {
       title: '状态',
@@ -689,40 +891,34 @@ const RunsView = ({
       render: (s: string) => {
         const color =
           s === 'succeeded' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'grey';
-        const label: Record<string, string> = {
-          pending: '等待中',
-          running: '运行中',
-          succeeded: '成功',
-          failed: '失败',
-          cancelled: '已取消',
-        };
-        return <Tag size="small" color={color}>{label[s] || s}</Tag>;
+        return <Tag size="small" color={color}>{RUN_STATUS_TEXT[s] || s}</Tag>;
       },
     },
-    { title: '用户', dataIndex: 'username', width: 100 },
-    { title: '来源', dataIndex: 'source', width: 100, render: (v: string) => v || '-' },
+    { title: '用户', dataIndex: 'username', width: 120, render: (v: string) => v || '-' },
+    { title: '来源', dataIndex: 'source', width: 110, render: (v: string) => v || '-' },
     {
       title: 'Token',
       dataIndex: 'totalTokens',
       width: 100,
       render: (t: number) => (t || 0).toLocaleString(),
     },
-    { title: '步数', dataIndex: 'totalSteps', width: 60 },
+    { title: '步数', dataIndex: 'totalSteps', width: 70, render: (t: number) => t ?? 0 },
     {
       title: '费用',
       dataIndex: 'actualCost',
-      width: 80,
-      render: (c: number) => `¥${(c || 0).toFixed(4)}`,
+      width: 90,
+      render: (c: number) => `¥${Number(c || 0).toFixed(4)}`,
     },
     {
       title: '耗时',
       dataIndex: 'elapsedTime',
-      width: 80,
-      render: (t: number) => `${(t || 0).toFixed(2)}s`,
+      width: 90,
+      render: (t: number) => `${Number(t || 0).toFixed(2)}s`,
     },
     {
       title: '错误',
       dataIndex: 'errorMessage',
+      width: 220,
       ellipsis: true,
       render: (t: string) => t || '-',
     },
@@ -730,24 +926,37 @@ const RunsView = ({
       title: '时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
+      render: (t: string) => <TimeCell value={t} />,
+    },
+    {
+      title: '操作',
+      width: 120,
+      render: (_: any, r: RunRow) => (
+        <div className="admin-actions">
+          <ViewButton onClick={() => showDetail('运行记录详情', runDetailFields(r))} />
+        </div>
+      ),
     },
   ];
 
   return (
-    <Table
-      dataSource={data.items}
-      columns={columns}
-      rowKey="id"
-      loading={loading}
-      pagination={{
-        currentPage: page,
-        pageSize,
-        total: data.total,
-        onPageChange,
-      }}
-      empty={<Empty description="暂无运行记录" />}
-    />
+    <div>
+      <Table
+        dataSource={data.items}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total: data.total,
+          onPageChange,
+        }}
+        empty={<Empty description="暂无运行记录" />}
+      />
+      {detailNode}
+    </div>
   );
 };
 
@@ -766,29 +975,24 @@ const LogsView = ({
   pageSize: number;
   onPageChange: (p: number) => void;
 }) => {
-  const typeLabel: Record<string, string> = {
-    freeze: '冻结',
-    deduct: '扣费',
-    unfreeze: '解冻',
-    refund: '退款',
-    recharge: '充值',
-  };
+  const { showDetail, detailNode } = useRowDetail();
 
   const columns = [
     {
       title: '类型',
       dataIndex: 'type',
       width: 80,
-      render: (t: string) => <Tag size="small">{typeLabel[t] || t}</Tag>,
+      render: (t: string) => <Tag size="small">{BALANCE_TYPE_TEXT[t] || t}</Tag>,
     },
-    { title: '用户', dataIndex: 'username', width: 100 },
+    { title: '用户', dataIndex: 'username', width: 120, render: (t: string) => t || '-' },
     {
       title: '金额',
       dataIndex: 'amount',
-      width: 100,
+      width: 110,
       render: (a: number) => (
-        <span style={{ color: a >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)', fontWeight: 600 }}>
-          {a >= 0 ? '+' : ''}{a.toFixed(4)}
+        <span style={{ color: Number(a) >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)', fontWeight: 600 }}>
+          {Number(a) >= 0 ? '+' : ''}
+          {Number(a || 0).toFixed(4)}
         </span>
       ),
     },
@@ -796,31 +1000,44 @@ const LogsView = ({
       title: '变动后余额',
       dataIndex: 'balanceAfter',
       width: 120,
-      render: (b: number) => `¥${b.toFixed(4)}`,
+      render: (b: number) => `¥${Number(b || 0).toFixed(4)}`,
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (t: string) => t || '-' },
+    { title: '备注', dataIndex: 'remark', width: 220, ellipsis: true, render: (t: string) => t || '-' },
     {
       title: '时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => (t ? new Date(t).toLocaleString('zh-CN') : '-'),
+      render: (t: string) => <TimeCell value={t} />,
+    },
+    {
+      title: '操作',
+      width: 120,
+      render: (_: any, r: BalanceLogRow) => (
+        <div className="admin-actions">
+          <ViewButton onClick={() => showDetail('流水详情', balanceLogDetailFields(r))} />
+        </div>
+      ),
     },
   ];
 
   return (
-    <Table
-      dataSource={data.items}
-      columns={columns}
-      rowKey="id"
-      loading={loading}
-      pagination={{
-        currentPage: page,
-        pageSize,
-        total: data.total,
-        onPageChange,
-      }}
-      empty={<Empty description="暂无流水记录" />}
-    />
+    <div>
+      <Table
+        dataSource={data.items}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total: data.total,
+          onPageChange,
+        }}
+        empty={<Empty description="暂无流水记录" />}
+      />
+      {detailNode}
+    </div>
   );
 };
 
@@ -833,17 +1050,11 @@ const TabIcon = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
   </span>
 );
 
-const PageContainer = styled.div`
-  padding: 34px 38px 48px;
-  height: 100%;
-  overflow-y: auto;
-`;
-
 const Center = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 200px;
+  min-height: 160px;
 `;
 
 const StatsGrid = styled.div`
@@ -870,17 +1081,10 @@ const StatLabel = styled.div`
   margin-bottom: 8px;
 `;
 
-const StatValue = styled.div<{ $accent?: boolean }>`
+const StatValue = styled.div`
   font-size: 28px;
   font-weight: 700;
-  color: ${(p) => (p.$accent ? 'var(--ff-primary)' : 'var(--ff-text)')};
-`;
-
-const ActionGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  color: var(--ff-text);
 `;
 
 const ChartWrap = styled.div`

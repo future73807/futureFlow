@@ -303,20 +303,20 @@ export const TaskCenterPage = () => {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <HeaderTitle>
-          <h3>任务中心</h3>
-          <p>把一批输入逐行投入工作流执行，并跟踪 Webhook / 定时触发的异步运行。</p>
-        </HeaderTitle>
-        <Button
-          theme="solid"
-          type="primary"
-          icon={<IconPlus aria-hidden="true" />}
-          onClick={() => setCreateVisible(true)}
-        >
-          创建任务
-        </Button>
-      </PageHeader>
+      <header className="page-head">
+        <h1>任务中心</h1>
+        <p className="page-sub">把一批输入逐行投入工作流执行，并跟踪 Webhook / 定时触发的异步运行。</p>
+        <div className="page-actions">
+          <Button
+            theme="solid"
+            type="primary"
+            icon={<IconPlus aria-hidden="true" />}
+            onClick={() => setCreateVisible(true)}
+          >
+            创建任务
+          </Button>
+        </div>
+      </header>
 
       <TabRow>
         <TabButton type="button" $active={activeTab === 'batch'} onClick={() => setActiveTab('batch')}>
@@ -326,6 +326,25 @@ export const TaskCenterPage = () => {
           异步任务
         </TabButton>
       </TabRow>
+
+      {/* 列表区块头：标题与刷新按钮同行靠左，说明另起一行 */}
+      <div className="section-head">
+        <div className="section-head-row">
+          <h2>{activeTab === 'batch' ? '任务列表' : '运行记录'}</h2>
+          <Button
+            icon={<IconRefresh aria-hidden="true" />}
+            onClick={() => void refresh()}
+            loading={loading}
+          >
+            刷新
+          </Button>
+        </div>
+        <p>
+          {activeTab === 'batch'
+            ? '逐行查看每个批量任务的进度与结果，点击卡片查看每行输出。'
+            : 'Webhook、定时计划与平台 API 触发的运行都会记录在这里。'}
+        </p>
+      </div>
 
       <FilterRow>
         {activeTab === 'batch' ? (
@@ -355,13 +374,6 @@ export const TaskCenterPage = () => {
             style={{ width: 160 }}
           />
         )}
-        <Button
-          icon={<IconRefresh aria-hidden="true" />}
-          onClick={() => void refresh()}
-          loading={loading}
-        >
-          刷新
-        </Button>
       </FilterRow>
 
       {error && (
@@ -846,28 +858,6 @@ const PageContainer = styled.div`
 
   @media (max-width: 720px) {
     padding: 16px 14px 32px;
-  }
-`;
-
-const PageHeader = styled.header`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-`;
-
-const HeaderTitle = styled.div`
-  h3 {
-    margin: 0;
-    color: var(--ff-text);
-    font-size: 24px;
-    line-height: 32px;
-  }
-
-  p {
-    margin: 6px 0 0;
-    color: var(--ff-muted);
-    font-size: 14px;
   }
 `;
 

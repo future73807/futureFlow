@@ -406,76 +406,77 @@ export const CanvasPage = () => {
               )}
             </div>
           </div>
+
+          <div className="canvas-save-actions">
+              <Tooltip content="版本管理">
+              <Button
+                className="canvas-icon-action"
+                theme="borderless"
+                aria-label="版本管理"
+                icon={<IconBranch aria-hidden="true" />}
+                onClick={() => setVersionsVisible(true)}
+              />
+              </Tooltip>
+              <Tooltip content="运行记录">
+              <Button
+                className="canvas-icon-action"
+                theme="borderless"
+                aria-label="运行记录"
+                icon={<IconHistory aria-hidden="true" />}
+                onClick={() => void openRuns()}
+              />
+              </Tooltip>
+              <Button
+              aria-label="保存工作流"
+              icon={<IconSave aria-hidden="true" />}
+              loading={saving}
+              onClick={() => void saveWorkflow(true)}
+              >
+              保存
+              </Button>
+              <Button
+              theme="solid"
+              type="primary"
+              aria-label="发布工作流"
+              icon={<IconSend aria-hidden="true" />}
+              loading={publishing}
+              onClick={() => void handlePublish()}
+              >
+              发布
+              </Button>
+              <Dropdown
+              trigger="click"
+              position="bottomRight"
+              menu={[
+                {
+                  node: 'item',
+                  name: '导出工作流',
+                  icon: <IconDownload />,
+                  onClick: handleExport,
+                },
+                {
+                  node: 'item',
+                  name: '复制工作流',
+                  icon: <IconCopy />,
+                  onClick: () => void handleDuplicate(),
+                },
+                {
+                  node: 'item',
+                  name: '删除工作流',
+                  icon: <IconDelete />,
+                  type: 'danger',
+                  onClick: handleDelete,
+                },
+              ]}
+              >
+              <Button
+                className="canvas-icon-action"
+                theme="borderless"
+                aria-label="更多操作"
+                icon={<IconMore aria-hidden="true" />}
+              />
+              </Dropdown>
         </div>
-        <div className="canvas-save-actions">
-          <Tooltip content="版本管理">
-            <Button
-              className="canvas-icon-action"
-              theme="borderless"
-              aria-label="版本管理"
-              icon={<IconBranch aria-hidden="true" />}
-              onClick={() => setVersionsVisible(true)}
-            />
-          </Tooltip>
-          <Tooltip content="运行记录">
-            <Button
-              className="canvas-icon-action"
-              theme="borderless"
-              aria-label="运行记录"
-              icon={<IconHistory aria-hidden="true" />}
-              onClick={() => void openRuns()}
-            />
-          </Tooltip>
-          <Button
-            aria-label="保存工作流"
-            icon={<IconSave aria-hidden="true" />}
-            loading={saving}
-            onClick={() => void saveWorkflow(true)}
-          >
-            保存
-          </Button>
-          <Button
-            theme="solid"
-            type="primary"
-            aria-label="发布工作流"
-            icon={<IconSend aria-hidden="true" />}
-            loading={publishing}
-            onClick={() => void handlePublish()}
-          >
-            发布
-          </Button>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            menu={[
-              {
-                node: 'item',
-                name: '导出工作流',
-                icon: <IconDownload />,
-                onClick: handleExport,
-              },
-              {
-                node: 'item',
-                name: '复制工作流',
-                icon: <IconCopy />,
-                onClick: () => void handleDuplicate(),
-              },
-              {
-                node: 'item',
-                name: '删除工作流',
-                icon: <IconDelete />,
-                type: 'danger',
-                onClick: handleDelete,
-              },
-            ]}
-          >
-            <Button
-              className="canvas-icon-action"
-              theme="borderless"
-              aria-label="更多操作"
-              icon={<IconMore aria-hidden="true" />}
-            />
-          </Dropdown>
         </div>
       </header>
 

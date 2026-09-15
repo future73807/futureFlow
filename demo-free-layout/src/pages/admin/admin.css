@@ -1,0 +1,69 @@
+/**
+ * 管理员后台局部样式。
+ * 表头高度/底色/字号、单元格 nowrap、.cell-mono 等统一观感由 src/styles/index.css 提供，
+ * 这里只放本页特有的东西：操作列排布、时间单元格、详情弹窗。
+ */
+
+.admin-page {
+  height: 100%;
+  padding: 34px 38px 48px;
+  overflow-y: auto;
+}
+
+/* 筛选行（搜索框 / 来源下拉）：靠左排列，和页头操作区保持同一种对齐 */
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* 行内操作：始终单行排开不换行；列宽给足后由表格横向滚动兜底 */
+.admin-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 弱化文案（如已吊销 Key 的状态说明） */
+.admin-muted {
+  color: var(--ff-subtle);
+  font-size: 13px;
+}
+
+/* 时间列：等宽数字，纵向对齐；配合全局 nowrap 保证一行显示 */
+.admin-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 详情弹窗：完整展示整行字段，长文本换行不截断 */
+.admin-detail {
+  display: grid;
+}
+
+.admin-detail-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ff-border);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.admin-detail-row:last-child {
+  border-bottom: none;
+}
+
+.admin-detail-label {
+  color: var(--ff-muted);
+}
+
+.admin-detail-value {
+  min-width: 0;
+  color: var(--ff-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

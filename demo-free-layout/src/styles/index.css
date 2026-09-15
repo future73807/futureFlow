@@ -366,3 +366,86 @@ textarea:focus-visible {
   font-size: 11px;
   line-height: 18px;
 }
+/* ============================================================
+   统一版式（所有页面共用，别再各页各写一套）
+   页面头：标题 → 说明 → 左对齐操作区。没有蓝色 eyebrow 标签。
+   区块头：标题与操作同一行靠左，说明另起一行。
+   表格：单元格默认不换行（时间/状态被挤断行是最常见的丑）
+   ============================================================ */
+.page-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.page-head h1 {
+  margin: 0;
+  color: var(--ff-text);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.page-head .page-sub {
+  margin: 0;
+  color: var(--ff-muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.page-head .page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.section-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.section-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+  color: var(--ff-text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.section-head p {
+  margin: 0;
+  color: var(--ff-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* 表格：默认不换行，长文本用 .cell-wrap 单独放开 */
+.semi-table-thead > .semi-table-row > .semi-table-row-head,
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell {
+  white-space: nowrap;
+}
+
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell .cell-wrap {
+  white-space: normal;
+}
+
+/* 表格里的等宽标识（Key 前缀、ID）保持中性色，不再整片蓝 */
+.semi-table .cell-mono {
+  color: var(--ff-text-secondary);
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+}
+
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell .semi-button-size-small {
+  min-height: 24px;
+}

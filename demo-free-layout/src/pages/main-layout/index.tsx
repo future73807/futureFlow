@@ -7,9 +7,6 @@ import {
   IconApps,
   IconExit,
   IconGridView,
-  IconKey,
-  IconList,
-  IconPlus,
   IconSetting,
   IconTickCircle,
   IconUser,
@@ -52,10 +49,6 @@ export const MainLayout = () => {
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  const openWorkflowAction = (action: 'create' | 'templates') => {
-    navigate('/?action=' + action);
-  };
-
   return (
     <div className="app-layout">
       <aside className="app-sidebar">
@@ -66,35 +59,6 @@ export const MainLayout = () => {
           <strong>futureFlow</strong>
         </button>
 
-        <div className="sidebar-actions">
-          <Button
-            className="sidebar-create"
-            icon={<IconPlus />}
-            onClick={() => openWorkflowAction('create')}
-          >
-            创建
-          </Button>
-          <Button
-            className="sidebar-command"
-            type="tertiary"
-            theme="borderless"
-            icon={<IconList />}
-            onClick={() => openWorkflowAction('templates')}
-          >
-            模板库
-          </Button>
-          <Button
-            className="sidebar-command"
-            type="tertiary"
-            theme="borderless"
-            icon={<IconKey />}
-            onClick={() => navigate('/profile?action=create-key')}
-          >
-            创建密钥
-          </Button>
-        </div>
-
-        <div className="sidebar-label">工作区</div>
         <nav className="sidebar-nav" aria-label="主导航">
           {NAV_ITEMS
             .filter((item) => !item.adminOnly || user?.role === 'admin')
