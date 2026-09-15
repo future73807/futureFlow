@@ -259,3 +259,25 @@
     gap: 6px;
   }
 }
+
+/* 运行记录侧栏顶部：已发布版本的执行入口 */
+.canvas-run-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface-muted);
+}
+
+.canvas-run-actions span {
+  color: var(--ff-text-secondary);
+  font-size: 13px;
+}
+
+.canvas-run-actions.muted span {
+  color: var(--ff-subtle);
+}

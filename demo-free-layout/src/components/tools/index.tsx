@@ -12,6 +12,7 @@ import { IconUndo, IconRedo } from '@douyinfe/semi-icons';
 
 import { TestRunButton } from '../testrun/testrun-button';
 import { GatewayRunButton } from '../gateway-run';
+import { resolveRunEngine, runEngineHint } from '../../utils/run-engine';
 import { AddNode } from '../add-node';
 import { ZoomSelect } from './zoom-select';
 import { SwitchLine } from './switch-line';
@@ -29,6 +30,7 @@ import { NodeSearch } from './node-search';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
+  const runEngine = resolveRunEngine();
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
@@ -89,9 +91,21 @@ export const DemoTools = () => {
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <div className="canvas-tool-group canvas-tool-group-primary">
           <AddNode disabled={playground.config.readonly} />
-          <TestRunButton disabled={playground.config.readonly} />
-          <GatewayRunButton mode="draft" disabled={playground.config.readonly} />
-          <GatewayRunButton disabled={playground.config.readonly} />
+          {/* 只保留一个「试运行」：本地开发用浏览器本地执行，服务器部署走云端执行，
+              引擎由部署形态决定，用户不需要在三个按钮之间做选择 */}
+          <Tooltip content={runEngineHint(runEngine)}>
+            <span className="canvas-run-entry">
+              {runEngine === 'local' ? (
+                <TestRunButton disabled={playground.config.readonly} />
+              ) : (
+                <GatewayRunButton
+                  mode="draft"
+                  label="试运行"
+                  disabled={playground.config.readonly}
+                />
+              )}
+            </span>
+          </Tooltip>
         </div>
       </ToolSection>
     </ToolContainer>

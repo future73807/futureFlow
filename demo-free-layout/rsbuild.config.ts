@@ -57,6 +57,8 @@ export default defineConfig({
       __GATEWAY_URL__: JSON.stringify(
         process.env.PUBLIC_GATEWAY_URL || 'http://localhost:3001',
       ),
+      // 试运行引擎：local=浏览器本地执行，cloud=服务端 Dify 执行，auto=按访问域名自动判定
+      __RUN_ENGINE__: JSON.stringify(process.env.PUBLIC_RUN_ENGINE || 'auto'),
     },
     entry: {
       index: './src/app.tsx',

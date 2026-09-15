@@ -5,8 +5,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Dropdown, Input, Modal, SideSheet, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import {
   IconArrowLeft,
+  IconBranch,
   IconCopy,
   IconDelete,
+  IconDownload,
   IconHistory,
   IconInfoCircle,
   IconMore,
@@ -27,6 +29,10 @@ import '@flowgram.ai/free-layout-editor/index.css';
 import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
 import { useEditorProps } from '../../hooks';
+import { GatewayRunButton } from '../../components/gateway-run';
+import { VersionPanel } from '../../components/version-panel';
+import { buildWorkflowExport, downloadJsonFile } from '../../utils/workflow-io';
+import { formatVersionLabel } from '../../utils/version';
 import { GetGlobalVariableSchema } from '../../plugins/variable-panel-plugin';
 import { ApiError, apiJson } from '../../utils/api';
 import { normalizeCanvasLocale } from '../../utils/normalize-canvas-data';
@@ -50,6 +56,7 @@ export const CanvasPage = () => {
   // 是否存在「已保存但尚未发布」的改动：编辑即置位，发布成功才复位。
   const [publishDirty, setPublishDirty] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [versionsVisible, setVersionsVisible] = useState(false);
   const [runsVisible, setRunsVisible] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
@@ -263,6 +270,37 @@ export const CanvasPage = () => {
     }
   }, [id]);
 
+  const handleExport = useCallback(() => {
+    const context = editorRef.current;
+    if (!context) {
+      Toast.warning('编辑器尚未就绪');
+      return;
+    }
+    const flowgram = context.document.toJSON();
+    downloadJsonFile(
+      workflowName.trim() || 'workflow',
+      buildWorkflowExport(workflowName.trim(), workflowDescription, flowgram as any),
+    );
+    Toast.success('已导出工作流文件');
+  }, [workflowDescription, workflowName]);
+
+  const handleRestored = useCallback(() => {
+    // 回退只改服务端草稿，画布必须重新拉一次，否则用户还在看旧图
+    if (!id) return;
+    apiJson<{ name: string; description?: string; publishedVersion?: number | null; flowgramJson?: any }>(
+      '/workflows/' + id,
+    )
+      .then((workflow) => {
+        setWorkflowName(workflow.name);
+        setWorkflowDescription(workflow.description || '');
+        setPublishedVersion(workflow.publishedVersion || null);
+        setFlowgramData(normalizeCanvasLocale(workflow.flowgramJson || { nodes: [], edges: [] }));
+        setPublishDirty(true);
+        setChangeRevision((previous) => previous + 1);
+      })
+      .catch((error: any) => Toast.error(error?.message || '重新加载画布失败'));
+  }, [id]);
+
   const handleDuplicate = useCallback(async () => {
     if (!id) return;
     try {
@@ -360,7 +398,9 @@ export const CanvasPage = () => {
               {publishDirty ? (
                 <span className="canvas-publish-state dirty">有尚未发布的修改</span>
               ) : publishedVersion ? (
-                <span className="canvas-publish-state">已发布 v{publishedVersion}</span>
+                <span className="canvas-publish-state">
+                  已发布 v{formatVersionLabel(publishedVersion) ?? publishedVersion}
+                </span>
               ) : (
                 <span className="canvas-publish-state">尚未发布</span>
               )}
@@ -368,6 +408,15 @@ export const CanvasPage = () => {
           </div>
         </div>
         <div className="canvas-save-actions">
+          <Tooltip content="版本管理">
+            <Button
+              className="canvas-icon-action"
+              theme="borderless"
+              aria-label="版本管理"
+              icon={<IconBranch aria-hidden="true" />}
+              onClick={() => setVersionsVisible(true)}
+            />
+          </Tooltip>
           <Tooltip content="运行记录">
             <Button
               className="canvas-icon-action"
@@ -399,6 +448,12 @@ export const CanvasPage = () => {
             trigger="click"
             position="bottomRight"
             menu={[
+              {
+                node: 'item',
+                name: '导出工作流',
+                icon: <IconDownload />,
+                onClick: handleExport,
+              },
               {
                 node: 'item',
                 name: '复制工作流',
@@ -435,6 +490,13 @@ export const CanvasPage = () => {
         </SemiLocaleProvider>
       </section>
 
+      <VersionPanel
+        workflowId={id || ''}
+        visible={versionsVisible}
+        onClose={() => setVersionsVisible(false)}
+        onRestored={handleRestored}
+      />
+
       <SideSheet
         title="运行记录"
         visible={runsVisible}
@@ -442,6 +504,18 @@ export const CanvasPage = () => {
         footer={null}
         onCancel={() => setRunsVisible(false)}
       >
+        {/* 工具栏只剩一个「试运行」入口，已发布版本的执行能力收到这里，
+            它的语义是「按线上快照跑一次」，和画布草稿试运行不是同一件事 */}
+        {publishedVersion ? (
+          <div className="canvas-run-actions">
+            <span>已发布 v{formatVersionLabel(publishedVersion) ?? publishedVersion}</span>
+            <GatewayRunButton disabled={saving} />
+          </div>
+        ) : (
+          <div className="canvas-run-actions muted">
+            <span>尚未发布，发布后可在这里运行线上版本</span>
+          </div>
+        )}
         {runsLoading ? (
           <div className="canvas-loading">
             <Spin size="large" tip="加载运行记录" />

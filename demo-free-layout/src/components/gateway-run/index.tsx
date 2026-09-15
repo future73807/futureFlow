@@ -172,10 +172,13 @@ const NODE_STATUS_LABELS: Record<NodeStatus['status'], string> = {
 export const GatewayRunButton = ({
   disabled,
   mode = 'published',
+  label,
 }: {
   disabled?: boolean;
   /** published：执行不可变发布版本；draft：把当前草稿导入用户沙箱应用真实执行。 */
   mode?: 'published' | 'draft';
+  /** 覆盖按钮文案：统一「试运行」入口后不再区分本地/云端字样。 */
+  label?: string;
 }) => {
   const { id: workflowId } = useParams<{ id: string }>();
   const refresh = useRefresh();
@@ -536,7 +539,7 @@ export const GatewayRunButton = ({
         disabled={disabled || result.status === 'running'}
         onClick={() => void handleOpen()}
       >
-        {mode === 'draft' ? '云端试运行' : '运行已发布版本'}
+        {label ?? (mode === 'draft' ? '云端试运行' : '运行已发布版本')}
       </Button>
 
       <SideSheet

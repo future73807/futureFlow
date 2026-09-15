@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -12,7 +13,14 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { WorkflowCrudService } from './workflow-crud.service';
-import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/workflow-crud.dto';
+import {
+  CreateWorkflowDto,
+  UpdateWorkflowDto,
+  CreateWorkflowVersionDto,
+  UpdateVersionCommentDto,
+  ImportWorkflowDto,
+} from './dto/workflow-crud.dto';
+import { formatVersionLabel } from '../database/entities/workflow-version.entity';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -46,6 +54,27 @@ export class WorkflowCrudController {
     return this.crudService.listVersions(id, req.user.id);
   }
 
+  /** 另存为版本：把当前草稿固化成可回溯记录，请求体只携带说明。 */
+  @Post(':id/versions')
+  async createVersion(
+    @Param('id') id: string,
+    @Body() dto: CreateWorkflowVersionDto,
+    @Request() req,
+  ) {
+    return this.crudService.createManualVersion(id, req.user.id, dto);
+  }
+
+  @Patch(':id/versions/:version')
+  async updateVersionComment(
+    @Param('id') id: string,
+    @Param('version') version = '',
+    @Body() dto: UpdateVersionCommentDto,
+    @Request() req,
+  ) {
+    const normalizedVersion = Number.parseInt(version, 10);
+    return this.crudService.updateVersionComment(id, req.user.id, normalizedVersion, dto);
+  }
+
   /** 子工作流节点配置数据：目标工作流已发布快照的入参出参契约。 */
   @Get(':id/subflow-meta')
   async subflowMeta(@Param('id') id: string, @Request() req) {
@@ -55,6 +84,12 @@ export class WorkflowCrudController {
   @Post()
   async create(@Body() dto: CreateWorkflowDto, @Request() req) {
     return this.crudService.create(req.user.id, dto);
+  }
+
+  /** 导入接口独立于 POST /workflows：flowgram 传 JSON 对象，名称可省略。 */
+  @Post('import')
+  async importWorkflow(@Body() dto: ImportWorkflowDto, @Request() req) {
+    return this.crudService.importWorkflow(req.user.id, dto);
   }
 
   @Put(':id')
@@ -85,7 +120,7 @@ export class WorkflowCrudController {
       workflow,
       endpoint: `/workflows/${workflow.id}/execute`,
       dify: difySync,
-      message: `已发布版本 v${workflow.publishedVersion}`,
+      message: `已发布版本 v${formatVersionLabel(workflow.publishedVersion as number)}`,
     };
   }
 

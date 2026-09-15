@@ -7,10 +7,19 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { Workflow } from '../database/entities/workflow.entity';
-import { WorkflowVersion } from '../database/entities/workflow-version.entity';
+import {
+  WorkflowVersion,
+  formatVersionLabel,
+} from '../database/entities/workflow-version.entity';
 import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { User } from '../database/entities/user.entity';
-import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/workflow-crud.dto';
+import {
+  CreateWorkflowDto,
+  UpdateWorkflowDto,
+  CreateWorkflowVersionDto,
+  UpdateVersionCommentDto,
+  ImportWorkflowDto,
+} from './dto/workflow-crud.dto';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConsoleService, DifySyncResult } from '../dify/dify-console.service';
@@ -150,17 +159,31 @@ export class WorkflowCrudService {
         where: { workflowId: published.id, version: published.version },
       });
       if (!existing) {
-        await versionRepo.save(
-          versionRepo.create({
-            workflowId: published.id,
-            userId,
-            version: published.version,
-            name: published.name,
-            description: published.description || '',
-            flowgramJson: this.cloneJson(published.flowgramJson),
-            publishedAt,
-          }),
+        await this.createVersionRow(
+          versionRepo,
+          published,
+          userId,
+          published.version,
+          publishedAt,
         );
+      } else if (!this.isSameSnapshot(existing, published)) {
+        // 另存为版本可能已经占用了草稿修订号；发布新内容时必须顺延编号补写历史，
+        // 否则线上快照会缺少可回溯记录。
+        const latest = await versionRepo.findOne({
+          where: { workflowId: published.id },
+          order: { version: 'DESC' },
+        });
+        const nextVersion = (latest?.version ?? published.version) + 1;
+        await this.createVersionRow(
+          versionRepo,
+          published,
+          userId,
+          nextVersion,
+          publishedAt,
+        );
+        // publishedVersion 必须始终指向真实存在的历史行，否则「当前线上版本」标记会丢失。
+        published.publishedVersion = nextVersion;
+        await workflowRepo.save(published);
       }
 
       // The same PostgreSQL row lock must cover remote provisioning/import.
@@ -266,21 +289,72 @@ export class WorkflowCrudService {
     };
   }
 
-  /** List metadata only. The full canvas is returned solely by a restore action. */
+  /** 列表按版本号倒序返回，最新在前；只暴露元信息，完整画布仅在回退时下发。 */
   async listVersions(id: string, userId: string) {
-    await this.getById(id, userId);
+    const workflow = await this.getById(id, userId);
     const items = await this.workflowVersionRepo.find({
       where: { workflowId: id, userId },
       order: { version: 'DESC' },
       take: 100,
     });
-    return items.map((item) => ({
-      id: item.id,
-      version: item.version,
-      name: item.name,
-      description: item.description,
-      publishedAt: item.publishedAt,
-    }));
+    const latestVersion = items.length > 0 ? items[0].version : 0;
+    return items.map((item) =>
+      this.toVersionItem(item, workflow.publishedVersion, latestVersion),
+    );
+  }
+
+  /**
+   * 另存为版本：把当前草稿固化成一条可回溯记录。
+   * 编号取 max(version)+1，即便之后回退旧版本也不会复用已占用的版本号。
+   */
+  async createManualVersion(id: string, userId: string, dto: CreateWorkflowVersionDto) {
+    return this.workflowRepo.manager.transaction(async (manager) => {
+      const versionRepo = manager.getRepository(WorkflowVersion);
+      const wf = await this.getLockedWorkflow(manager, id, userId);
+      const latest = await versionRepo.findOne({
+        where: { workflowId: id },
+        order: { version: 'DESC' },
+      });
+      // 未修改的草稿重复另存只会污染历史，这里直接拒绝。
+      if (latest && this.isSameSnapshot(latest, wf)) {
+        throw new BadRequestException('草稿与最新版本一致，无需另存');
+      }
+      const created = await versionRepo.save(
+        versionRepo.create({
+          workflowId: id,
+          userId,
+          version: (latest?.version ?? 0) + 1,
+          name: wf.name,
+          description: wf.description || '',
+          flowgramJson: this.cloneJson(wf.flowgramJson),
+          comment: (dto.comment || '').trim(),
+          source: 'manual',
+        }),
+      );
+      return this.toVersionItem(created, wf.publishedVersion, created.version);
+    });
+  }
+
+  /** 版本说明可以随时补充或清空，但历史快照本身保持不可变。 */
+  async updateVersionComment(
+    id: string,
+    userId: string,
+    version: number,
+    dto: UpdateVersionCommentDto,
+  ) {
+    this.assertVersionNumber(version);
+    const workflow = await this.getById(id, userId);
+    const row = await this.workflowVersionRepo.findOne({
+      where: { workflowId: id, userId, version },
+    });
+    if (!row) throw new NotFoundException('指定的版本不存在');
+    row.comment = (dto.comment || '').trim();
+    const saved = await this.workflowVersionRepo.save(row);
+    const latest = await this.workflowVersionRepo.findOne({
+      where: { workflowId: id, userId },
+      order: { version: 'DESC' },
+    });
+    return this.toVersionItem(saved, workflow.publishedVersion, latest?.version ?? saved.version);
   }
 
   /**
@@ -288,9 +362,7 @@ export class WorkflowCrudService {
    * snapshot remains untouched until the owner explicitly publishes again.
    */
   async restoreVersion(id: string, userId: string, version: number) {
-    if (!Number.isInteger(version) || version < 1) {
-      throw new BadRequestException('版本号必须是正整数');
-    }
+    this.assertVersionNumber(version);
     return this.workflowRepo.manager.transaction(async (manager) => {
       const workflowRepo = manager.getRepository(Workflow);
       const wf = await this.getLockedWorkflow(manager, id, userId);
@@ -303,8 +375,34 @@ export class WorkflowCrudService {
       wf.description = history.description;
       wf.flowgramJson = this.cloneJson(history.flowgramJson);
       wf.version = Number(wf.version) + 1;
-      return workflowRepo.save(wf);
+      const restored = await workflowRepo.save(wf);
+      // 带上展示标签，前端才能直接提示「已回退到 v1.2」。
+      return Object.assign(restored, { label: formatVersionLabel(history.version) });
     });
+  }
+
+  /**
+   * 从外部 JSON 导入工作流。结构自检先给出精确定位的错误，
+   * 再复用发布路径同款门禁，避免导入出永远无法执行的工作流。
+   */
+  async importWorkflow(userId: string, dto: ImportWorkflowDto): Promise<Workflow> {
+    const flowgram = this.assertImportableFlowgram(dto.flowgram);
+    try {
+      this.converter.validateFlowGram(flowgram as FlowGramJSON);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : 'flowgram 结构校验失败';
+      throw new BadRequestException(message);
+    }
+    const name = dto.name === undefined ? '导入的工作流' : dto.name.trim();
+    if (!name) throw new BadRequestException('工作流名称不能为空');
+    const wf = this.workflowRepo.create({
+      userId,
+      name,
+      description: dto.description || '',
+      flowgramJson: this.cloneJson(flowgram),
+    });
+    return this.workflowRepo.save(wf);
   }
 
   private parseFlowgram(value: string): Record<string, any> {
@@ -341,6 +439,127 @@ export class WorkflowCrudService {
 
   private cloneJson(value: Record<string, any>): Record<string, any> {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  private assertVersionNumber(version: number): void {
+    if (!Number.isInteger(version) || version < 1) {
+      throw new BadRequestException('版本号必须是正整数');
+    }
+  }
+
+  /** 各端点共用同一份字段映射，保证版本返回结构完全一致。 */
+  private toVersionItem(
+    item: WorkflowVersion,
+    publishedVersion: number | null,
+    latestVersion: number,
+  ) {
+    return {
+      id: item.id,
+      version: item.version,
+      label: formatVersionLabel(item.version),
+      comment: item.comment || '',
+      source: item.source || 'publish',
+      name: item.name,
+      description: item.description || '',
+      createdAt: item.publishedAt,
+      isPublished: publishedVersion !== null && publishedVersion === item.version,
+      isLatest: item.version === latestVersion,
+    };
+  }
+
+  /** 历史行与工作流快照的一致性判断：名称和画布都相同才算「未修改」。 */
+  private isSameSnapshot(version: WorkflowVersion, workflow: Workflow): boolean {
+    return (
+      version.name === workflow.name
+      && this.isSameFlowgram(version.flowgramJson, workflow.flowgramJson)
+    );
+  }
+
+  /** jsonb 读出的键顺序已被规范化，直接序列化比较即可判定内容逐字节一致。 */
+  private isSameFlowgram(
+    left: Record<string, any>,
+    right: Record<string, any>,
+  ): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  private async createVersionRow(
+    versionRepo: Repository<WorkflowVersion>,
+    workflow: Workflow,
+    userId: string,
+    version: number,
+    publishedAt: Date,
+  ): Promise<WorkflowVersion> {
+    return versionRepo.save(
+      versionRepo.create({
+        workflowId: workflow.id,
+        userId,
+        version,
+        name: workflow.name,
+        description: workflow.description || '',
+        flowgramJson: this.cloneJson(workflow.flowgramJson),
+        comment: `发布 v${formatVersionLabel(version)}`,
+        source: 'publish',
+        publishedAt,
+      }),
+    );
+  }
+
+  /**
+   * 导入前的基础结构自检：逐节点、逐连线定位错误，
+   * 比转换器更早给出「是哪个节点/哪条连线」的精确提示。
+   */
+  private assertImportableFlowgram(value: Record<string, any>): Record<string, any> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException('flowgram 必须是包含 nodes 与 edges 的 JSON 对象');
+    }
+    const nodes: unknown = value.nodes;
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+      throw new BadRequestException('flowgram.nodes 必须是非空数组');
+    }
+    const nodeIds = new Set<string>();
+    nodes.forEach((node: any, index: number) => {
+      if (!node || typeof node !== 'object' || Array.isArray(node)) {
+        throw new BadRequestException(`节点 #${index + 1} 必须是对象`);
+      }
+      if (typeof node.id !== 'string' || !node.id.trim()) {
+        throw new BadRequestException(`节点 #${index + 1} 缺少有效的 id`);
+      }
+      if (typeof node.type !== 'string' || !node.type.trim()) {
+        throw new BadRequestException(`节点 ${node.id} 缺少有效的 type`);
+      }
+      if (nodeIds.has(node.id)) {
+        throw new BadRequestException(`节点 id 重复: ${node.id}`);
+      }
+      nodeIds.add(node.id);
+    });
+    const edges: unknown = value.edges;
+    if (edges === undefined) {
+      // 允许导入单节点画布省略 edges；补空数组后仍交给发布同款门禁复核。
+      value.edges = [];
+    } else {
+      if (!Array.isArray(edges)) {
+        throw new BadRequestException('flowgram.edges 必须是数组');
+      }
+      edges.forEach((edge: any, index: number) => {
+        if (!edge || typeof edge !== 'object' || Array.isArray(edge)) {
+          throw new BadRequestException(`连线 #${index + 1} 必须是对象`);
+        }
+        const label =
+          typeof edge.id === 'string' && edge.id ? `「${edge.id}」` : `#${index + 1}`;
+        if (typeof edge.sourceNodeID !== 'string' || !nodeIds.has(edge.sourceNodeID)) {
+          throw new BadRequestException(
+            `连线 ${label} 的 sourceNodeID「${edge.sourceNodeID ?? ''}」不存在对应节点`,
+          );
+        }
+        if (typeof edge.targetNodeID !== 'string' || !nodeIds.has(edge.targetNodeID)) {
+          throw new BadRequestException(
+            `连线 ${label} 的 targetNodeID「${edge.targetNodeID ?? ''}」不存在对应节点`,
+          );
+        }
+      });
+    }
+    return value;
   }
 
   /**

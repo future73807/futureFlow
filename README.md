@@ -57,6 +57,11 @@ pnpm start
 | 密码     | `futureFlow@`                   |
 | 角色     | 管理员（可访问「平台管理」后台） |
 
+> **密码里的 `@` 必须是半角。** 中文输入法常把它打成全角 `＠`，两者看起来几乎一样但认证必然失败。
+> 登录页现在会在输入时直接提示全角字符，看到提示请切换英文输入法（或直接复制上面这行密码粘贴）。
+> 想确认自己有没有踩坑，可以用命令行验证一次：`curl -s -X POST http://localhost:3001/auth/login -H "Content-Type: application/json" -d '{"account":"admin","password":"futureFlow@"}'`，
+> 返回 `accessToken` 即说明账号密码本身没问题。
+
 - 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_USERNAME` / `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD`；账号已存在时不会重复创建或覆盖。
 - 修改密码后旧密码立即失效，并强制下线其他会话（token 版本号机制）。
 - **登录防暴力破解**：15 分钟内失败 8 次会锁定该「IP+账号」15 分钟（正确密码也会被拒）。连续看到「账号或密码错误」时，先检查中文输入法是否把 `@` 打成全角 `＠`（登录页会自动提示）；误触发锁定后**重启网关即可立即清除计数**，或用 `.env` 的 `LOGIN_RATE_LIMIT_*` 阈值放宽。
@@ -73,8 +78,10 @@ pnpm start
     `pnpm run test:draft-run-online "futureFlow@"`
   - 任务中心批量执行端到端（16 项，自建专用工作流后两行输入逐行真实执行 + 校验/取消/异步列表）：
     `pnpm run test:task-center "futureFlow@"`
+  - 版本管理与导入导出（15 项，发布自动存版本 → 版本号递增 → 手动另存 → 注释 → 回退 → 导入校验）：
+    `pnpm run test:versions "futureFlow@"`
 
-**完整测试 = 以上全部（105 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
+**完整测试 = 以上全部（120 项）。Dify 未启动时，依赖 Dify 的测试会直接失败——这是预期行为，请先 `pnpm start` 启动完整栈。**
 
 ### 访问地址
 

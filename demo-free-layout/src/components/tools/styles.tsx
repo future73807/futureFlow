@@ -74,7 +74,7 @@ export const ToolSection = styled.div`
     background: var(--ff-border) !important;
   }
 
-  /* 节点配置面板展开时画布变窄：工具栏收成内容宽度并居中，不再是整条通栏白条 */
+  /* 节点配置/版本等右侧面板展开时画布变窄：工具栏收成内容宽度并居中，不再是整条通栏白条 */
   .gedit-flow-panel-layer-wrap-floating:has(.gedit-flow-panel-right-area .gedit-flow-panel-wrap) & {
     width: max-content;
     max-width: 100%;
@@ -83,6 +83,15 @@ export const ToolSection = styled.div`
 
     &::-webkit-scrollbar {
       display: none;
+    }
+
+    /* 空间不够时图标组可以滚走，但「添加节点 / 试运行」必须钉在可见区域 */
+    .canvas-tool-group-primary {
+      position: sticky;
+      right: 0;
+      padding-left: 6px;
+      background: #ffffff;
+      box-shadow: -8px 0 8px -6px rgba(15, 23, 42, 0.12);
     }
   }
 

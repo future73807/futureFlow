@@ -27,11 +27,14 @@ import {
   IconPlus,
   IconSearch,
   IconTickCircle,
+  IconUpload,
   IconUser,
 } from '@douyinfe/semi-icons';
 
 import { GATEWAY_URL } from '../../utils/config';
 import { apiJson } from '../../utils/api';
+import { parseWorkflowFile } from '../../utils/workflow-io';
+import { formatVersionLabel } from '../../utils/version';
 
 interface Workflow {
   id: string;
@@ -247,6 +250,8 @@ export const WorkflowListPage = () => {
     file: false,
   });
   const [createVisible, setCreateVisible] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<Workflow | null>(null);
@@ -703,6 +708,38 @@ export const WorkflowListPage = () => {
       }
     },
     [navigate]
+  );
+
+  /** 导入工作流文件：本地先做结构自检，语义校验交给网关，避免两套规则漂移 */
+  const handleImportFile = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      // 选同一个文件第二次也要能触发 change
+      event.target.value = '';
+      if (!file) return;
+      setImporting(true);
+      try {
+        const text = await file.text();
+        const fallbackName = file.name.replace(/\.(futureflow\.)?json$/i, '');
+        const { data, error } = parseWorkflowFile(text, fallbackName || '导入的工作流');
+        if (!data) {
+          Toast.error(error || '文件解析失败');
+          return;
+        }
+        const created = await apiJson<Workflow>('/workflows/import', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+        Toast.success(`已导入「${created.name}」`);
+        void loadWorkflows(true);
+        navigate(`/canvas/${created.id}`);
+      } catch (error: any) {
+        Toast.error(error?.message || '导入失败');
+      } finally {
+        setImporting(false);
+      }
+    },
+    [loadWorkflows, navigate],
   );
 
   const handleDelete = useCallback(
@@ -1192,6 +1229,14 @@ export const WorkflowListPage = () => {
             showClear
           />
           <Button
+            theme="light"
+            icon={<IconUpload />}
+            loading={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
+            导入
+          </Button>
+          <Button
             type="primary"
             theme="solid"
             icon={<IconPlus />}
@@ -1199,6 +1244,14 @@ export const WorkflowListPage = () => {
           >
             创建画布
           </Button>
+          {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(event) => void handleImportFile(event)}
+          />
         </TabTools>
       </TabRow>
 
@@ -1269,8 +1322,11 @@ export const WorkflowListPage = () => {
                     {row.kind === 'workflow' && !!row.workflow?.publishedVersion && (
                       <span
                         className="resource-published"
-                        title={`已发布 v${row.workflow.publishedVersion}`}
-                        aria-label={`已发布 v${row.workflow.publishedVersion}`}
+                        title={`已发布 v${
+                          formatVersionLabel(row.workflow.publishedVersion) ??
+                          row.workflow.publishedVersion
+                        }`}
+                        aria-label={`已发布`}
                       >
                         <IconTickCircle />
                       </span>

@@ -207,9 +207,13 @@ async function main() {
         record('T4c LLM 节点表单包含「失败时」失败分支开关', false, '画布无节点可点');
       }
 
-      // T4f 云端试运行入口：工具栏应存在「云端试运行」按钮（草稿直连 Dify）
-      const draftRunBtn = page.getByRole('button', { name: '云端试运行' }).first();
-      record('T4f 工具栏提供「云端试运行」按钮（草稿真实执行入口）', (await draftRunBtn.count()) >= 1);
+      // T4f 试运行入口：工具栏只保留一个「试运行」，引擎由部署形态决定；
+      //     「运行已发布版本」收在运行记录侧栏里，不再占用工具栏
+      const runButtons = page.getByRole('button', { name: /^(试运行|云端试运行)$/ });
+      const runCount = await runButtons.count();
+      record('T4f 工具栏只有一个「试运行」入口', runCount === 1, `找到 ${runCount} 个`);
+      const versionBtn = page.getByRole('button', { name: '版本管理' });
+      record('T4g 头部提供「版本管理」入口', (await versionBtn.count()) >= 1);
 
       await page.goto(`${FRONT}/`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);

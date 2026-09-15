@@ -9,3 +9,4 @@ declare module '*.jpg'
 declare module '*.module.less'
 
 declare const __GATEWAY_URL__: string;
+declare const __RUN_ENGINE__: string;
