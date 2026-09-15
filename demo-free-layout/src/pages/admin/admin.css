@@ -105,7 +105,9 @@
 }
 
 /* 唯一的纵向滚动条在这里；分页器在卡片里、不参与滚动 */
+/* 表格滚动区预留滚动条轨道，避免滚动条压住最后一列 */
 .admin-table-scroll {
+  scrollbar-gutter: stable;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
