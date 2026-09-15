@@ -72,14 +72,14 @@ textarea:focus-visible {
 .semi-button {
   min-height: 34px;
   border-radius: var(--ff-radius) !important;
-  border-color: var(--ff-border-strong);
-  background: #ffffff;
+  border-color: #e5e6eb;
+  background: #f2f3f5;
   color: var(--ff-text-secondary);
   font-weight: 500;
   box-shadow: none !important;
 }
 
-.semi-button:hover { border-color: var(--ff-border-hover); background: var(--ff-surface-muted); }
+.semi-button:hover { border-color: var(--ff-border-hover); background: #e9eaec; color: var(--ff-text); }
 
 .semi-button-primary.semi-button-solid {
   background: var(--ff-primary) !important;
@@ -92,15 +92,16 @@ textarea:focus-visible {
   border-color: var(--ff-primary-hover) !important;
 }
 
-/* 轻主题按钮统一为中性浅灰；避免整页浮起一层浅蓝按钮 */
+/* 轻主题按钮（Semi 默认 theme=light，即所有次级按钮）统一浅灰填充；
+   白底+描边在白底页面上看不出是按钮，浅灰填充保证可辨识 */
 .semi-button.semi-button-light {
-  background: #ffffff !important;
-  border-color: var(--ff-border) !important;
+  background: #f2f3f5 !important;
+  border-color: #e5e6eb !important;
   color: var(--ff-text-secondary) !important;
 }
 
 .semi-button.semi-button-light:hover {
-  background: var(--ff-surface-muted) !important;
+  background: #e9eaec !important;
   border-color: var(--ff-border-hover) !important;
   color: var(--ff-text) !important;
 }
@@ -497,7 +498,14 @@ textarea:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  /* 与上方 tab 行拉开间距：二者都属于固定头部，贴在一起会读成一行 */
+  margin-top: 14px;
   margin-bottom: 14px;
+}
+
+/* flex 布局下相邻 margin 不会合并；页头直接接工具条时去掉叠加的那份间距 */
+.page-shell > .page-head + .list-toolbar {
+  margin-top: 0;
 }
 
 .list-toolbar .toolbar-actions {
@@ -539,6 +547,22 @@ textarea:focus-visible {
   text-align: center;
 }
 
+/* 表头与单元格统一居中：数据、按钮、图标都要对齐到列中线 */
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell { text-align: center; }
+/* 单元格内的 flex 内容同样居中 */
+.semi-table-tbody > .semi-table-row > .semi-table-row-cell > div { justify-content: center; }
+
+/* 页面骨架：头部固定不随内容滚动，只有内容区滚动 */
+.page-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.page-shell > .page-fixed { flex: 0 0 auto; }
+.page-shell > .page-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+/* 窄屏下由页面跟随 body 一起滚动（与 app-content 的移动端行为一致），避免出现内层滚动条 */
+@media (max-width: 720px) {
+  .page-shell { height: auto; }
+  .page-shell > .page-scroll { overflow: visible; }
+}
+
 /* 加载态统一单行：转圈与文字并排，避免两行占位 */
 .loading-inline {
   display: inline-flex;
@@ -552,5 +576,11 @@ textarea:focus-visible {
 /* 弹窗/侧栏打开时锁住底层页面滚动：否则弹窗内一条、页面外一条，出现两条滚动条 */
 body:has(.semi-modal-mask) .app-content > *,
 body:has(.semi-sidesheet-mask) .app-content > * {
+  overflow: hidden !important;
+}
+
+/* 页面滚动区在 page-shell 内层，同样要在弹窗打开时锁住，否则底层仍能滚动 */
+body:has(.semi-modal-mask) .app-content .page-scroll,
+body:has(.semi-sidesheet-mask) .app-content .page-scroll {
   overflow: hidden !important;
 }

@@ -306,8 +306,8 @@ export const TaskCenterPage = () => {
   );
 
   return (
-    <PageContainer>
-      <header className="page-head">
+    <PageContainer className="page-shell">
+      <header className="page-head page-fixed">
         <h1>任务中心</h1>
         <p className="page-sub">把一批输入逐行投入工作流执行，并跟踪 Webhook / 定时触发的异步运行。</p>
         <div className="page-actions">
@@ -322,7 +322,7 @@ export const TaskCenterPage = () => {
         </div>
       </header>
 
-      <TabRow>
+      <TabRow className="page-fixed">
         <TabButton type="button" $active={activeTab === 'batch'} onClick={() => setActiveTab('batch')}>
           批量任务
         </TabButton>
@@ -332,7 +332,7 @@ export const TaskCenterPage = () => {
       </TabRow>
 
       {/* 区块头已删除：列表本身可读，不再占用一行标题；操作与筛选统一放工具条 */}
-      <div className="list-toolbar">
+      <div className="list-toolbar page-fixed">
         <div className="toolbar-actions">
           <Button
             icon={<IconRefresh aria-hidden="true" />}
@@ -373,119 +373,121 @@ export const TaskCenterPage = () => {
         </div>
       </div>
 
-      {error && (
-        <ErrorBanner>
-          <Typography.Text type="danger">{error}</Typography.Text>
-          <Button size="small" onClick={() => void refresh()}>
-            重试
-          </Button>
-        </ErrorBanner>
-      )}
+      <ScrollArea className="page-scroll">
+        {error && (
+          <ErrorBanner>
+            <Typography.Text type="danger">{error}</Typography.Text>
+            <Button size="small" onClick={() => void refresh()}>
+              重试
+            </Button>
+          </ErrorBanner>
+        )}
 
-      {loading && !error ? (
-        <LoadingCenter>
-          <div className="loading-inline">
-            <Spin size="small" />
-            <span>加载任务</span>
-          </div>
-        </LoadingCenter>
-      ) : activeTab === 'batch' ? (
-        batchTasks.length === 0 ? (
-          <BatchEmptyState
-            onCreate={() => setCreateVisible(true)}
-            onGuide={() => setGuideVisible(true)}
-          />
+        {loading && !error ? (
+          <LoadingCenter>
+            <div className="loading-inline">
+              <Spin size="small" />
+              <span>加载任务</span>
+            </div>
+          </LoadingCenter>
+        ) : activeTab === 'batch' ? (
+          batchTasks.length === 0 ? (
+            <BatchEmptyState
+              onCreate={() => setCreateVisible(true)}
+              onGuide={() => setGuideVisible(true)}
+            />
+          ) : (
+            <TaskList>
+              {batchTasks.map((task) => (
+                <TaskCard key={task.id} type="button" onClick={() => setDetailId(task.id)}>
+                  <TaskCardMain>
+                    <TaskNameRow>
+                      <strong>{task.name}</strong>
+                      <Tag size="small" color={STATUS_META[task.status]?.color || 'grey'}>
+                        {STATUS_META[task.status]?.text || task.status}
+                      </Tag>
+                      <Tag size="small" type="ghost">
+                        {task.mode === 'draft' ? '草稿' : '已发布'}
+                      </Tag>
+                    </TaskNameRow>
+                    <TaskMeta>
+                      <span>工作流：{task.workflowName || '已删除的工作流'}</span>
+                      <span>创建于 {formatTime(task.createdAt)}</span>
+                      {task.finishedAt && <span>完成于 {formatTime(task.finishedAt)}</span>}
+                    </TaskMeta>
+                    <Progress
+                      percent={
+                        task.totalCount > 0
+                          ? Math.round(((task.succeededCount + task.failedCount) / task.totalCount) * 100)
+                          : 0
+                      }
+                      showInfo={false}
+                      stroke={
+                        task.failedCount > 0 && task.status !== 'running' ? 'var(--ff-danger)' : undefined
+                      }
+                    />
+                  </TaskCardMain>
+                  <TaskCardSide>
+                    <TaskCounts>
+                      <b>
+                        {task.succeededCount}/{task.totalCount}
+                      </b>
+                      <span>成功 / 总数</span>
+                    </TaskCounts>
+                    {task.failedCount > 0 && <TaskFailCount>失败 {task.failedCount}</TaskFailCount>}
+                    {(task.status === 'running' || task.status === 'pending') && (
+                      <Button
+                        size="small"
+                        type="danger"
+                        theme="borderless"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleCancel(task.id);
+                        }}
+                      >
+                        取消
+                      </Button>
+                    )}
+                  </TaskCardSide>
+                </TaskCard>
+              ))}
+            </TaskList>
+          )
+        ) : asyncRuns.length === 0 ? (
+          <SimpleEmptyState>
+            <IconClock size="large" />
+            <strong>暂无异步任务</strong>
+            <p>在工作流里配置 Webhook 或定时触发计划后，每次触发都会在这里留下运行记录。</p>
+            <Button theme="borderless" type="primary" onClick={() => navigate('/')}>
+              去配置触发方式
+            </Button>
+          </SimpleEmptyState>
         ) : (
           <TaskList>
-            {batchTasks.map((task) => (
-              <TaskCard key={task.id} type="button" onClick={() => setDetailId(task.id)}>
+            {asyncRuns.map((run) => (
+              <TaskCard key={run.id} type="button" onClick={() => run.workflowId && navigate(`/canvas/${run.workflowId}`)}>
                 <TaskCardMain>
                   <TaskNameRow>
-                    <strong>{task.name}</strong>
-                    <Tag size="small" color={STATUS_META[task.status]?.color || 'grey'}>
-                      {STATUS_META[task.status]?.text || task.status}
+                    <strong>{run.workflowName || '画布试运行'}</strong>
+                    <Tag size="small" color={STATUS_META[run.status]?.color || 'grey'}>
+                      {STATUS_META[run.status]?.text || run.status}
                     </Tag>
                     <Tag size="small" type="ghost">
-                      {task.mode === 'draft' ? '草稿' : '已发布'}
+                      {SOURCE_LABELS[run.source] || run.source}
                     </Tag>
                   </TaskNameRow>
                   <TaskMeta>
-                    <span>工作流：{task.workflowName || '已删除的工作流'}</span>
-                    <span>创建于 {formatTime(task.createdAt)}</span>
-                    {task.finishedAt && <span>完成于 {formatTime(task.finishedAt)}</span>}
+                    <span>开始于 {formatTime(run.createdAt)}</span>
+                    {run.finishedAt && <span>完成于 {formatTime(run.finishedAt)}</span>}
+                    <span>令牌 {run.tokens || 0}</span>
+                    <span>费用 ¥{Number(run.cost || 0).toFixed(4)}</span>
                   </TaskMeta>
-                  <Progress
-                    percent={
-                      task.totalCount > 0
-                        ? Math.round(((task.succeededCount + task.failedCount) / task.totalCount) * 100)
-                        : 0
-                    }
-                    showInfo={false}
-                    stroke={
-                      task.failedCount > 0 && task.status !== 'running' ? 'var(--ff-danger)' : undefined
-                    }
-                  />
                 </TaskCardMain>
-                <TaskCardSide>
-                  <TaskCounts>
-                    <b>
-                      {task.succeededCount}/{task.totalCount}
-                    </b>
-                    <span>成功 / 总数</span>
-                  </TaskCounts>
-                  {task.failedCount > 0 && <TaskFailCount>失败 {task.failedCount}</TaskFailCount>}
-                  {(task.status === 'running' || task.status === 'pending') && (
-                    <Button
-                      size="small"
-                      type="danger"
-                      theme="borderless"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleCancel(task.id);
-                      }}
-                    >
-                      取消
-                    </Button>
-                  )}
-                </TaskCardSide>
               </TaskCard>
             ))}
           </TaskList>
-        )
-      ) : asyncRuns.length === 0 ? (
-        <SimpleEmptyState>
-          <IconClock size="large" />
-          <strong>暂无异步任务</strong>
-          <p>在工作流里配置 Webhook 或定时触发计划后，每次触发都会在这里留下运行记录。</p>
-          <Button theme="borderless" type="primary" onClick={() => navigate('/')}>
-            去配置触发方式
-          </Button>
-        </SimpleEmptyState>
-      ) : (
-        <TaskList>
-          {asyncRuns.map((run) => (
-            <TaskCard key={run.id} type="button" onClick={() => run.workflowId && navigate(`/canvas/${run.workflowId}`)}>
-              <TaskCardMain>
-                <TaskNameRow>
-                  <strong>{run.workflowName || '画布试运行'}</strong>
-                  <Tag size="small" color={STATUS_META[run.status]?.color || 'grey'}>
-                    {STATUS_META[run.status]?.text || run.status}
-                  </Tag>
-                  <Tag size="small" type="ghost">
-                    {SOURCE_LABELS[run.source] || run.source}
-                  </Tag>
-                </TaskNameRow>
-                <TaskMeta>
-                  <span>开始于 {formatTime(run.createdAt)}</span>
-                  {run.finishedAt && <span>完成于 {formatTime(run.finishedAt)}</span>}
-                  <span>令牌 {run.tokens || 0}</span>
-                  <span>费用 ¥{Number(run.cost || 0).toFixed(4)}</span>
-                </TaskMeta>
-              </TaskCardMain>
-            </TaskCard>
-          ))}
-        </TaskList>
-      )}
+        )}
+      </ScrollArea>
 
       <CreateTaskModal
         visible={createVisible}
@@ -854,16 +856,28 @@ const CreateTaskModal = ({
 
 const PageContainer = styled.div`
   display: flex;
+  height: 100%;
   min-height: 0;
-  flex: 1;
   flex-direction: column;
-  gap: 16px;
-  padding: 26px 32px 40px;
-  overflow: auto;
+  padding: 26px 32px 0;
   background: var(--ff-page);
 
   @media (max-width: 720px) {
-    padding: 16px 14px 32px;
+    height: auto;
+    padding: 16px 14px 0;
+  }
+`;
+
+/** 滚动区：错误条/加载态/任务列表整体滚动，保持原有的 16px 节奏 */
+const ScrollArea = styled.div`
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 40px;
+
+  @media (max-width: 720px) {
+    padding-bottom: 32px;
   }
 `;
 

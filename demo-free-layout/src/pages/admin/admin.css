@@ -5,9 +5,75 @@
  */
 
 .admin-page {
+  display: flex;
   height: 100%;
-  padding: 34px 38px 48px;
+  min-height: 0;
+  flex-direction: column;
+  padding: 34px 38px 0;
+}
+
+/* 页头固定后，Tabs 占据剩余高度：页签行固定，只有面板内容滚动 */
+.admin-page .admin-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-page .admin-tabs > .semi-tabs-bar {
+  flex: 0 0 auto;
+}
+
+.admin-page .admin-tabs > .semi-tabs-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.admin-page .admin-tabs .semi-tabs-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* TabPane 会把 children 包进 motion-overlay，这一层也要撑满才能让内部滚动区拿到高度 */
+.admin-page .admin-tabs .semi-tabs-pane > .semi-tabs-pane-motion-overlay {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* 面板内的工具条/筛选行同样不随内容滚动 */
+.admin-page .admin-tabs .semi-tabs-pane .page-fixed {
+  flex: 0 0 auto;
+}
+
+.admin-page .admin-tabs .semi-tabs-pane .page-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  padding-bottom: 48px;
+}
+
+@media (max-width: 720px) {
+  .admin-page {
+    height: auto;
+    padding: 24px 16px 0;
+  }
+
+  .admin-page .admin-tabs,
+  .admin-page .admin-tabs > .semi-tabs-content,
+  .admin-page .admin-tabs .semi-tabs-pane,
+  .admin-page .admin-tabs .semi-tabs-pane > .semi-tabs-pane-motion-overlay {
+    flex: 0 0 auto;
+  }
+
+  .admin-page .admin-tabs .semi-tabs-pane .page-scroll {
+    overflow: visible;
+    padding-bottom: 32px;
+  }
 }
 
 /* 表格铺满内容区：列宽用百分比分摊，内容少时右侧也不留空档 */

@@ -358,14 +358,14 @@ export const PluginStorePage = () => {
   }
 
   return (
-    <PageContainer>
-      <header className="page-head">
+    <PageContainer className="page-shell">
+      <header className="page-head page-fixed">
         <h1>插件商店</h1>
         <p className="page-sub">平台内置工具插件，查看参数与运行统计，一键创建含该工具的画布。</p>
       </header>
 
       {/* 工具条：分类 chips 在左、搜索在右，两簇同一行；标题区不动 */}
-      <div className="list-toolbar">
+      <div className="list-toolbar page-fixed">
         <div className="toolbar-actions">
           <CategoryRow>
             {categories.map((item) => (
@@ -394,44 +394,46 @@ export const PluginStorePage = () => {
         </div>
       </div>
 
-      {visibleItems.length === 0 ? (
-        <EmptyState>没有匹配的插件，换个关键词试试。</EmptyState>
-      ) : (
-        <PluginGrid>
-          {visibleItems.map((item) => (
-            <PluginCard key={item.id} type="button" onClick={() => navigate(`/plugins/${item.id}`)}>
-              <CardTop>
-                <PluginIcon>
-                  <PluginMark item={item} size={30} />
-                </PluginIcon>
-                <div>
-                  <strong>{item.name}</strong>
-                  <small>{item.category || '内置工具'}</small>
-                </div>
-              </CardTop>
-              <CardSummary>{item.summary || '暂无说明'}</CardSummary>
-              <TagRow>
-                {(item.tags || []).slice(0, 3).map((tag) => (
-                  <Tag key={tag} size="small" type="ghost">
-                    {tag}
-                  </Tag>
-                ))}
-              </TagRow>
-              <CardStats>
-                <span>
-                  调用量 <b>{formatCount(item.stats?.runs)}</b>
-                </span>
-                <span>
-                  成功率 <b>{formatPercent(item.stats?.successRate)}</b>
-                </span>
-                <span>
-                  平均耗时 <b>{formatDuration(item.stats?.avgDurationMs)}</b>
-                </span>
-              </CardStats>
-            </PluginCard>
-          ))}
-        </PluginGrid>
-      )}
+      <ScrollArea className="page-scroll">
+        {visibleItems.length === 0 ? (
+          <EmptyState>没有匹配的插件，换个关键词试试。</EmptyState>
+        ) : (
+          <PluginGrid>
+            {visibleItems.map((item) => (
+              <PluginCard key={item.id} type="button" onClick={() => navigate(`/plugins/${item.id}`)}>
+                <CardTop>
+                  <PluginIcon>
+                    <PluginMark item={item} size={30} />
+                  </PluginIcon>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>{item.category || '内置工具'}</small>
+                  </div>
+                </CardTop>
+                <CardSummary>{item.summary || '暂无说明'}</CardSummary>
+                <TagRow>
+                  {(item.tags || []).slice(0, 3).map((tag) => (
+                    <Tag key={tag} size="small" type="ghost">
+                      {tag}
+                    </Tag>
+                  ))}
+                </TagRow>
+                <CardStats>
+                  <span>
+                    调用量 <b>{formatCount(item.stats?.runs)}</b>
+                  </span>
+                  <span>
+                    成功率 <b>{formatPercent(item.stats?.successRate)}</b>
+                  </span>
+                  <span>
+                    平均耗时 <b>{formatDuration(item.stats?.avgDurationMs)}</b>
+                  </span>
+                </CardStats>
+              </PluginCard>
+            ))}
+          </PluginGrid>
+        )}
+      </ScrollArea>
     </PageContainer>
   );
 };
@@ -493,8 +495,8 @@ const DetailView = ({
   };
 
   return (
-    <PageContainer>
-      <header className="page-head">
+    <PageContainer className="page-shell">
+      <header className="page-head page-fixed">
         <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <PluginMark item={detail} size={36} labelSize={16} />
           {detail.name}
@@ -543,7 +545,8 @@ const DetailView = ({
         </div>
       </header>
 
-      <StatStrip>
+      {/* 概览统计属于详情页头部信息，保持常驻；工具页签行同样固定 */}
+      <StatStrip className="page-fixed">
         <StatCell>
           <b>{detail.toolCount ?? tools.length}</b>
           <span>工具</span>
@@ -570,7 +573,7 @@ const DetailView = ({
         </StatCell>
       </StatStrip>
 
-      <TabBar role="tablist" aria-label="插件详情">
+      <TabBar role="tablist" aria-label="插件详情" className="page-fixed">
         <TabButton
           type="button"
           role="tab"
@@ -589,6 +592,7 @@ const DetailView = ({
         </TabButton>
       </TabBar>
 
+      <ScrollArea $topGap={14} className="page-scroll">
       {/*
         两个面板始终挂载：冒烟测试读取 body.innerText 断言详情页文案，
         而 display:none / visibility:hidden 会把文案从 innerText 里剔除，
@@ -698,6 +702,7 @@ const DetailView = ({
           <EmptyState>该插件暂未登记工具参数。</EmptyState>
         )}
       </TabPanel>
+      </ScrollArea>
     </PageContainer>
   );
 };
@@ -722,16 +727,24 @@ const sampleForType = (type?: string) => {
 
 const PageContainer = styled.div`
   display: flex;
+  height: 100%;
   min-height: 0;
-  flex: 1;
   flex-direction: column;
-  gap: 18px;
-  padding: 26px 32px 40px;
-  overflow: auto;
+  padding: 26px 32px 0;
   background: var(--ff-page);
 
   @media (max-width: 720px) {
-    padding: 16px 14px 32px;
+    height: auto;
+    padding: 16px 14px 0;
+  }
+`;
+
+/** 滚动区：只让详情面板/卡片网格滚动，头部与工具条保持可见 */
+const ScrollArea = styled.div<{ $topGap?: number }>`
+  padding: ${(props) => `${props.$topGap ?? 0}px 0 40px`};
+
+  @media (max-width: 720px) {
+    padding-bottom: 32px;
   }
 `;
 
@@ -884,6 +897,8 @@ const StatStrip = styled.div`
   grid-template-columns: repeat(6, minmax(0, 1fr));
   border-bottom: 1px solid var(--ff-border);
   padding-bottom: 20px;
+  /* 与下方页签行保持与其它页面一致的间距 */
+  margin-bottom: 14px;
 
   @media (max-width: 960px) {
     grid-template-columns: repeat(3, minmax(0, 1fr));

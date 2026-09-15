@@ -1,0 +1,13 @@
+/goal 你需要使用模拟点击的方法来测试一下，然后你要页面所有功能、全流程、全功能测试可用，所有页面的按钮、功能、对话、样式都要检查一遍！！！！
+特别是复杂的工作流能不能正常使用，现在没有图片的模型，先用其他节点测试吧，先生成文字、测试循环、文本处理、api请求（比如说每日诗词）、代码执行、知识库、子工作流、python执行、条件分支、批处理、sql查询、mcp等等，全部都要覆盖到，
+apikey和模型配置用这个：
+api-key：sk-b7bbee5fcb503d926a6005f29e3547831aee005a265318efcdb9714bb2ca749b
+{
+	"id": "glm-5.3",
+	"name": "glm-5.3",
+	"url": "https://matchfit.top/v1",
+	"toolCalling": true,
+	"vision": false,
+	"maxInputTokens": 1000000,
+	"maxOutputTokens": 128000
+}

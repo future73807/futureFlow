@@ -1,7 +1,14 @@
 .profile-page {
+  display: flex;
   height: 100%;
-  overflow-y: auto;
-  padding: 34px 40px 48px;
+  min-height: 0;
+  flex-direction: column;
+  padding: 34px 40px 0;
+}
+
+/* 滚动区底部留白：放在滚动内容内，最后一个区块不会贴住视口底边 */
+.profile-page .page-scroll {
+  padding-bottom: 48px;
 }
 
 /* 页面头与区块头统一走全局 .page-head / .section-head，这里只保留页内布局 */
@@ -220,8 +227,7 @@
 @media (max-width: 760px) {
   .profile-page {
     height: auto;
-    overflow: visible;
-    padding: 24px 16px 32px;
+    padding: 24px 16px 0;
   }
 
   .profile-identity {

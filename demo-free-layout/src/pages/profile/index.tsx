@@ -449,8 +449,8 @@ export const ProfilePage = () => {
   const usedKeyCount = apiKeys.filter((key) => key.lastUsedAt).length;
 
   return (
-    <main className="profile-page">
-      <header className="page-head">
+    <main className="profile-page page-shell">
+      <header className="page-head page-fixed">
         <h1>个人中心</h1>
         <p className="page-sub">管理账户资料、访问密钥和工作流额度。</p>
         <div className="page-actions">
@@ -461,6 +461,8 @@ export const ProfilePage = () => {
         </div>
       </header>
 
+      {/* 滚动区：账户概览与各管理区块随内容滚动，页头保持可见 */}
+      <div className="page-scroll">
       <section className="profile-summary">
         <div className="profile-identity">
         <div className="profile-identity-main">
@@ -566,7 +568,6 @@ export const ProfilePage = () => {
             {
               title: '操作',
               width: 72,
-              align: 'right' as const,
               render: (_: unknown, record: ApiKey) => (
                 <Popconfirm
                   title="确认撤销此 API Key？"
@@ -643,7 +644,6 @@ export const ProfilePage = () => {
             {
               title: '操作',
               width: 120,
-              align: 'right' as const,
               render: (_: unknown, record: StoredFile) => (
                 <div style={{ display: 'inline-flex', gap: 4 }}>
                   <Tooltip content="复制下载链接">
@@ -729,7 +729,6 @@ export const ProfilePage = () => {
             {
               title: '操作',
               width: 150,
-              align: 'right' as const,
               render: (_: unknown, record: KnowledgeDataset) => (
                 <div style={{ display: 'inline-flex', gap: 4 }}>
                   <Button
@@ -805,7 +804,6 @@ export const ProfilePage = () => {
             {
               title: '操作',
               width: 150,
-              align: 'right' as const,
               render: (_: unknown, record: McpServerRow) => (
                 <div style={{ display: 'inline-flex', gap: 4 }}>
                   <Button
@@ -837,6 +835,7 @@ export const ProfilePage = () => {
         />
         )}
       </section>
+      </div>
 
       <SideSheet
         title={docSheetDataset ? `文档管理 · ${docSheetDataset.name}` : '文档管理'}
@@ -955,7 +954,6 @@ export const ProfilePage = () => {
                   {
                     title: '操作',
                     width: 72,
-                    align: 'right' as const,
                     render: (_: unknown, record: KnowledgeDocument) => (
                       <Popconfirm
                         title="确认删除此文档？"

@@ -5,7 +5,7 @@
 
 import './admin.css';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table,
   Tag,
@@ -50,6 +50,9 @@ type ApiKeyRow = any;
 type WorkflowRow = any;
 type RunRow = any;
 type BalanceLogRow = any;
+
+/** 各表格统一的分页档位 */
+const PAGE_SIZE_OPTS = [10, 20, 50, 100];
 
 /** 详情弹窗的一行：标签 + 完整值（值可以是任意 React 节点） */
 type DetailField = { label: string; value: React.ReactNode };
@@ -225,7 +228,9 @@ export const AdminPage = () => {
 
   // 分页
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(20);
+  // 档位切换要立即按新 pageSize 发请求，又要避免把 pageSize 放进 loadTab 依赖后重复触发 effect
+  const pageSizeRef = useRef(20);
   const [userSearch, setUserSearch] = useState('');
   const [runSource, setRunSource] = useState('');
 
@@ -239,25 +244,25 @@ export const AdminPage = () => {
   }, []);
 
   const loadTab = useCallback(
-    async (key: string, p = 1) => {
+    async (key: string, p = 1, size = pageSizeRef.current) => {
       setLoading(true);
       try {
         if (key === 'dashboard') {
           await loadStats();
         } else if (key === 'users') {
-          const data = await listUsers(p, pageSize, userSearch);
+          const data = await listUsers(p, size, userSearch);
           setUsers(data);
         } else if (key === 'apikeys') {
-          const data = await listApiKeys(p, pageSize);
+          const data = await listApiKeys(p, size);
           setApiKeys(data);
         } else if (key === 'workflows') {
-          const data = await listWorkflows(p, pageSize);
+          const data = await listWorkflows(p, size);
           setWorkflows(data);
         } else if (key === 'runs') {
-          const data = await listRuns(p, pageSize, runSource);
+          const data = await listRuns(p, size, runSource);
           setRuns(data);
         } else if (key === 'logs') {
-          const data = await listBalanceLogs(p, 50);
+          const data = await listBalanceLogs(p, size);
           setLogs(data);
         }
       } catch (e: any) {
@@ -278,11 +283,19 @@ export const AdminPage = () => {
     loadTab(tab, p);
   };
 
+  const handlePageSizeChange = (size: number) => {
+    pageSizeRef.current = size;
+    setPageSize(size);
+    // 换档位后当前页码可能越界，统一回到第 1 页重新请求
+    setPage(1);
+    loadTab(tab, 1, size);
+  };
+
   const refresh = () => loadTab(tab, page);
 
   return (
-    <div className="admin-page">
-      <header className="page-head">
+    <div className="admin-page page-shell">
+      <header className="page-head page-fixed">
         <h1>管理员后台</h1>
         <p className="page-sub">
           欢迎，{me?.username}。你可以在这里管理系统用户、API Key、工作流和余额流水。
@@ -295,6 +308,7 @@ export const AdminPage = () => {
       </header>
 
       <Tabs
+        className="admin-tabs"
         type="line"
         activeKey={tab}
         onChange={(k) => {
@@ -303,11 +317,13 @@ export const AdminPage = () => {
         }}
       >
         <TabPane tab={<TabIcon icon={<IconActivity />} text="仪表盘" />} itemKey="dashboard">
-          <DashboardView stats={stats} loading={loading} />
+          <div className="page-scroll">
+            <DashboardView stats={stats} loading={loading} />
+          </div>
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconUser />} text="用户管理" />} itemKey="users">
-          <div className="list-toolbar">
+          <div className="list-toolbar page-fixed">
             <div className="toolbar-filters">
               <Input
                 placeholder="搜索用户名或邮箱"
@@ -322,39 +338,48 @@ export const AdminPage = () => {
               />
             </div>
           </div>
-          <UsersView
-            data={users}
-            loading={loading}
-            page={page}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-            refresh={refresh}
-          />
+          <div className="page-scroll">
+            <UsersView
+              data={users}
+              loading={loading}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+              refresh={refresh}
+            />
+          </div>
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconKey />} text="API Key" />} itemKey="apikeys">
-          <ApiKeysView
-            data={apiKeys}
-            loading={loading}
-            page={page}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-            refresh={refresh}
-          />
+          <div className="page-scroll">
+            <ApiKeysView
+              data={apiKeys}
+              loading={loading}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+              refresh={refresh}
+            />
+          </div>
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconBranch />} text="工作流" />} itemKey="workflows">
-          <WorkflowsView
-            data={workflows}
-            loading={loading}
-            page={page}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-          />
+          <div className="page-scroll">
+            <WorkflowsView
+              data={workflows}
+              loading={loading}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconActivity />} text="运行记录" />} itemKey="runs">
-          <div className="list-toolbar">
+          <div className="list-toolbar page-fixed">
             <div className="toolbar-filters">
             <Select
               value={runSource || 'all'}
@@ -374,23 +399,29 @@ export const AdminPage = () => {
             />
             </div>
           </div>
-          <RunsView
-            data={runs}
-            loading={loading}
-            page={page}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-          />
+          <div className="page-scroll">
+            <RunsView
+              data={runs}
+              loading={loading}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconList />} text="余额流水" />} itemKey="logs">
-          <LogsView
-            data={logs}
-            loading={loading}
-            page={page}
-            pageSize={50}
-            onPageChange={handlePageChange}
-          />
+          <div className="page-scroll">
+            <LogsView
+              data={logs}
+              loading={loading}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
         </TabPane>
       </Tabs>
     </div>
@@ -484,6 +515,7 @@ const UsersView = ({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
   refresh,
 }: {
   data: { items: UserRow[]; total: number };
@@ -491,6 +523,7 @@ const UsersView = ({
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
   refresh: () => void;
 }) => {
   const [adjustModal, setAdjustModal] = useState<{ user: UserRow; visible: boolean }>({
@@ -615,7 +648,10 @@ const UsersView = ({
           currentPage: page,
           pageSize,
           total: data.total,
+          pageSizeOpts: PAGE_SIZE_OPTS,
+          showSizeChanger: true,
           onPageChange,
+          onPageSizeChange,
         }}
         empty={<Empty description="暂无用户" />}
       />
@@ -696,6 +732,7 @@ const ApiKeysView = ({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
   refresh,
 }: {
   data: { items: ApiKeyRow[]; total: number };
@@ -703,6 +740,7 @@ const ApiKeysView = ({
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
   refresh: () => void;
 }) => {
   const { showDetail, detailNode } = useRowDetail();
@@ -787,7 +825,10 @@ const ApiKeysView = ({
           currentPage: page,
           pageSize,
           total: data.total,
+          pageSizeOpts: PAGE_SIZE_OPTS,
+          showSizeChanger: true,
           onPageChange,
+          onPageSizeChange,
         }}
         empty={<Empty description="暂无 API Key" />}
       />
@@ -804,12 +845,14 @@ const WorkflowsView = ({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
 }: {
   data: { items: WorkflowRow[]; total: number };
   loading: boolean;
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
 }) => {
   const { showDetail, detailNode } = useRowDetail();
 
@@ -863,7 +906,10 @@ const WorkflowsView = ({
           currentPage: page,
           pageSize,
           total: data.total,
+          pageSizeOpts: PAGE_SIZE_OPTS,
+          showSizeChanger: true,
           onPageChange,
+          onPageSizeChange,
         }}
         empty={<Empty description="暂无工作流" />}
       />
@@ -880,12 +926,14 @@ const RunsView = ({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
 }: {
   data: { items: RunRow[]; total: number };
   loading: boolean;
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
 }) => {
   const { showDetail, detailNode } = useRowDetail();
 
@@ -956,7 +1004,10 @@ const RunsView = ({
           currentPage: page,
           pageSize,
           total: data.total,
+          pageSizeOpts: PAGE_SIZE_OPTS,
+          showSizeChanger: true,
           onPageChange,
+          onPageSizeChange,
         }}
         empty={<Empty description="暂无运行记录" />}
       />
@@ -973,12 +1024,14 @@ const LogsView = ({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
 }: {
   data: { items: BalanceLogRow[]; total: number };
   loading: boolean;
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
 }) => {
   const { showDetail, detailNode } = useRowDetail();
 
@@ -1036,7 +1089,10 @@ const LogsView = ({
           currentPage: page,
           pageSize,
           total: data.total,
+          pageSizeOpts: PAGE_SIZE_OPTS,
+          showSizeChanger: true,
           onPageChange,
+          onPageSizeChange,
         }}
         empty={<Empty description="暂无流水记录" />}
       />
