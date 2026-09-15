@@ -615,13 +615,19 @@ body:has(.semi-sidesheet-mask) .app-content .page-scroll {
   overflow: hidden !important;
 }
 
-/* 表格滚动条：轨道透明 + 细滚动条，表头区域不再出现一条灰色滚动条；
-   gutter 仍保留，滚动条不会压住最后一列 */
+/* 表格滚动条：贯穿整个表格高度（含表头那一段），表头背景铺满整行不留缺口。
+   因此不再预留 gutter —— 预留轨道会让表头右侧空出一块；
+   改成细滚动条(8px)叠在右边缘，并给最后一列留出等宽内边距，内容不会被压住。 */
 .admin-table-scroll,
 .ff-table-scroll {
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
   scrollbar-width: thin;
   scrollbar-color: #d8dbe0 transparent;
+}
+
+.admin-table-scroll .semi-table-tbody .semi-table-row-cell:last-child,
+.ff-table-scroll .semi-table-tbody .semi-table-row-cell:last-child {
+  padding-right: 18px;
 }
 
 .admin-table-scroll::-webkit-scrollbar,
