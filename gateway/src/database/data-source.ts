@@ -31,6 +31,8 @@ import { AddTriggerCronExpression1722912000000 } from './migrations/172291200000
 import { AddUserTokenVersion1723004800000 } from './migrations/1723004800000-add-user-token-version';
 import { BatchTask } from './entities/batch-task.entity';
 import { AddBatchTasks1723091200000 } from './migrations/1723091200000-add-batch-tasks';
+import { PluginFavorite } from './entities/plugin-favorite.entity';
+import { AddPluginFavorites1723177600000 } from './migrations/1723177600000-add-plugin-favorites';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -79,6 +81,7 @@ export default new DataSource({
     DraftSandbox,
     KnowledgeDatasetOwner,
     BatchTask,
+    PluginFavorite,
   ],
   migrations: [
     InitialPlatformSchema1721952000000,
@@ -94,6 +97,7 @@ export default new DataSource({
     AddTriggerCronExpression1722912000000,
     AddUserTokenVersion1723004800000,
     AddBatchTasks1723091200000,
+    AddPluginFavorites1723177600000,
   ],
   synchronize: false,
   logging: false,

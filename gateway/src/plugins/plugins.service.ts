@@ -1,7 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
+import { PluginFavorite } from '../database/entities/plugin-favorite.entity';
 import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { PLUGIN_CATALOG, PluginCatalogEntry, PluginTool } from './plugin-catalog';
 
@@ -14,6 +15,13 @@ export interface PluginStats {
   lastRunAt: string | null;
 }
 
+export interface PluginFavoriteState {
+  /** 当前用户是否已收藏。 */
+  favorited: boolean;
+  /** 全平台收藏总数。 */
+  favoriteCount: number;
+}
+
 export interface PluginSummary {
   id: string;
   nodeType: string;
@@ -24,6 +32,8 @@ export interface PluginSummary {
   icon?: string;
   toolCount: number;
   stats: PluginStats;
+  favorited: boolean;
+  favoriteCount: number;
 }
 
 export interface PluginDetail extends PluginSummary {
@@ -57,28 +67,67 @@ export class PluginsService {
   constructor(
     @InjectRepository(WorkflowRun)
     private readonly runRepo: Repository<WorkflowRun>,
+    @InjectRepository(PluginFavorite)
+    private readonly favoriteRepo: Repository<PluginFavorite>,
   ) {}
 
-  async list(): Promise<PluginSummary[]> {
+  async list(userId: string): Promise<PluginSummary[]> {
     const stats = await this.loadStats();
-    return PLUGIN_CATALOG.map((entry) => this.toSummary(entry, stats.get(entry.nodeType)));
+    const favorites = await this.loadFavorites(
+      userId,
+      PLUGIN_CATALOG.map((entry) => entry.id),
+    );
+    return PLUGIN_CATALOG.map((entry) =>
+      this.toSummary(entry, stats.get(entry.nodeType), favorites.get(entry.id)),
+    );
   }
 
-  async detail(id: string): Promise<PluginDetail> {
+  async detail(id: string, userId: string): Promise<PluginDetail> {
     const entry = PLUGIN_CATALOG.find((item) => item.id === id);
     if (!entry) {
       throw new NotFoundException(`插件不存在: ${id}`);
     }
     const stats = await this.loadStats();
+    const favorites = await this.loadFavorites(userId, [entry.id]);
     return {
-      ...this.toSummary(entry, stats.get(entry.nodeType)),
+      ...this.toSummary(entry, stats.get(entry.nodeType), favorites.get(entry.id)),
       description: entry.description,
       capability: entry.capability,
       tools: entry.tools,
     };
   }
 
-  private toSummary(entry: PluginCatalogEntry, stats: PluginStats | undefined): PluginSummary {
+  /**
+   * 收藏 / 取消收藏：已收藏则删除，未收藏则插入，返回切换后的最新状态。
+   * 收藏是即时交互，不用缓存；并发重复点击由唯一索引兜底，插入冲突静默忽略。
+   */
+  async toggleFavorite(userId: string, pluginId: string): Promise<PluginFavoriteState> {
+    if (!PLUGIN_CATALOG.some((item) => item.id === pluginId)) {
+      throw new NotFoundException('插件不存在');
+    }
+
+    const existing = await this.favoriteRepo.findOne({ where: { userId, pluginId } });
+    if (existing) {
+      await this.favoriteRepo.delete({ id: existing.id });
+    } else {
+      await this.favoriteRepo
+        .createQueryBuilder()
+        .insert()
+        .into(PluginFavorite)
+        .values({ userId, pluginId })
+        .orIgnore()
+        .execute();
+    }
+
+    const favoriteCount = await this.favoriteRepo.count({ where: { pluginId } });
+    return { favorited: !existing, favoriteCount };
+  }
+
+  private toSummary(
+    entry: PluginCatalogEntry,
+    stats: PluginStats | undefined,
+    favorite: PluginFavoriteState | undefined,
+  ): PluginSummary {
     return {
       id: entry.id,
       nodeType: entry.nodeType,
@@ -90,7 +139,35 @@ export class PluginsService {
       ...(entry.icon ? { icon: entry.icon } : {}),
       toolCount: entry.tools.length,
       stats: stats || this.emptyStats(),
+      favorited: favorite?.favorited ?? false,
+      favoriteCount: favorite?.favoriteCount ?? 0,
     };
+  }
+
+  /**
+   * 收藏不参与 60 秒统计缓存：用户点完收藏必须立即生效。
+   * 一次 IN 查询取回全部相关收藏行后在内存聚合，
+   * 同时得到全平台收藏数与本用户是否收藏，不逐插件查库。
+   */
+  private async loadFavorites(
+    userId: string,
+    pluginIds: string[],
+  ): Promise<Map<string, PluginFavoriteState>> {
+    const result = new Map<string, PluginFavoriteState>();
+    if (pluginIds.length === 0) return result;
+
+    const rows = await this.favoriteRepo.find({
+      where: { pluginId: In(pluginIds) },
+      select: ['userId', 'pluginId'],
+    });
+
+    for (const row of rows) {
+      const state = result.get(row.pluginId) ?? { favorited: false, favoriteCount: 0 };
+      state.favoriteCount += 1;
+      if (row.userId === userId) state.favorited = true;
+      result.set(row.pluginId, state);
+    }
+    return result;
   }
 
   private emptyStats(): PluginStats {

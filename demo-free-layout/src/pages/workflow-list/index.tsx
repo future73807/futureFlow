@@ -1297,6 +1297,23 @@ export const WorkflowListPage = () => {
         style={{ borderRadius: 12 }}
       >
         <Form onSubmit={handleCreate}>
+          {/* 与参考图一致：先给一张「要创建什么」的示意图卡，再填名称 */}
+          <CreatePreview>
+            <svg width="228" height="96" viewBox="0 0 228 96" fill="none" aria-hidden="true">
+              <rect x="1" y="1" width="226" height="94" rx="8" fill="#f5f8ff" stroke="#dbe4f7" />
+              <rect x="18" y="18" width="72" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
+              <rect x="18" y="42" width="120" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
+              <rect x="18" y="66" width="92" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
+              <circle cx="196" cy="30" r="13" fill="#e4edff" />
+              <path d="M190 30h12M196 24v12" stroke="#2563eb" strokeWidth="2.4" strokeLinecap="round" />
+              <circle cx="196" cy="66" r="13" fill="#ffffff" stroke="#cfdcf6" />
+              <path d="M190 66l4 4 8-9" stroke="#16803c" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div>
+              <strong>创建画布</strong>
+              <span>从空白画布开始，用节点编排你的 AI 工作流。</span>
+            </div>
+          </CreatePreview>
           <Form.Input
             field="name"
             label="工作流名称"
@@ -2125,6 +2142,31 @@ const FilterRow = styled.div`
   align-items: center;
   gap: 10px;
   padding-top: 14px;
+`;
+
+const CreatePreview = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-surface);
+
+  strong {
+    display: block;
+    color: var(--ff-text);
+    font-size: 15px;
+  }
+
+  span {
+    display: block;
+    margin-top: 4px;
+    color: var(--ff-muted);
+    font-size: 13px;
+    line-height: 20px;
+  }
 `;
 
 const ResourceCard = styled.section`

@@ -7,7 +7,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Input, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconCopy, IconPlus, IconSearch } from '@douyinfe/semi-icons';
+import {
+  IconArrowLeft,
+  IconCopy,
+  IconPlus,
+  IconSearch,
+  IconStar,
+  IconStarStroked,
+} from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 
 import { apiJson } from '../../utils/api';
@@ -45,6 +52,8 @@ interface PluginSummary {
   tags?: string[];
   icon?: string;
   toolCount?: number;
+  favorited?: boolean;
+  favoriteCount?: number;
   stats?: PluginStats;
 }
 
@@ -200,6 +209,24 @@ export const PluginStorePage = () => {
    * 把插件节点加进一张新画布：节点的默认数据取自画布注册表的 onAdd()，
    * 与「添加节点」面板创建的节点完全一致，避免前端维护第二份默认值。
    */
+  const handleToggleFavorite = useCallback(async () => {
+    if (!detail) return;
+    try {
+      const result = await apiJson<{ favorited: boolean; favoriteCount: number }>(
+        `/plugins/${detail.id}/favorite`,
+        { method: 'POST' },
+      );
+      setDetail((previous) =>
+        previous
+          ? { ...previous, favorited: result.favorited, favoriteCount: result.favoriteCount }
+          : previous,
+      );
+      Toast.success(result.favorited ? '已收藏' : '已取消收藏');
+    } catch (err: any) {
+      Toast.error(err?.message || '操作失败');
+    }
+  }, [detail]);
+
   const handleAddToCanvas = useCallback(async () => {
     if (!detail) return;
     setCreating(true);
@@ -318,6 +345,7 @@ export const PluginStorePage = () => {
         onToolSelect={setActiveToolIndex}
         onBack={() => navigate('/plugins')}
         onAddToCanvas={handleAddToCanvas}
+        onToggleFavorite={handleToggleFavorite}
         creating={creating}
       />
     );
@@ -424,6 +452,7 @@ const DetailView = ({
   onToolSelect,
   onBack,
   onAddToCanvas,
+  onToggleFavorite,
   creating,
 }: {
   detail: PluginDetail;
@@ -431,6 +460,7 @@ const DetailView = ({
   onToolSelect: (index: number) => void;
   onBack: () => void;
   onAddToCanvas: () => void;
+  onToggleFavorite: () => void;
   creating: boolean;
 }) => {
   const tools = detail.tools || [];
@@ -462,6 +492,21 @@ const DetailView = ({
           onClick={onBack}
         />
         <div className="plugin-detail-actions">
+          <Button
+            theme={detail.favorited ? 'light' : 'borderless'}
+            aria-label={detail.favorited ? '取消收藏' : '收藏该插件'}
+            icon={
+              detail.favorited ? (
+                <IconStar aria-hidden="true" />
+              ) : (
+                <IconStarStroked aria-hidden="true" />
+              )
+            }
+            onClick={onToggleFavorite}
+          >
+            {detail.favorited ? '已收藏' : '收藏'}
+            {detail.favoriteCount ? `(${detail.favoriteCount})` : ''}
+          </Button>
           <Button
             theme="solid"
             type="primary"
@@ -573,7 +618,8 @@ const DetailView = ({
       </TabPanel>
 
       <TabPanel $active={toolsTabActive} aria-hidden={!toolsTabActive}>
-        {tools.length > 1 && (
+        {/* 只有一个工具时也保留 chip 行：它是「当前工具」的可见标识，与参考图一致 */}
+        {tools.length > 0 && (
           <ToolChips>
             {tools.map((tool, index) => (
               <ToolChip
