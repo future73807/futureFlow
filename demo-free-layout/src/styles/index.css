@@ -614,3 +614,31 @@ body:has(.semi-modal-mask) .app-content .page-scroll,
 body:has(.semi-sidesheet-mask) .app-content .page-scroll {
   overflow: hidden !important;
 }
+
+/* 表格滚动条：轨道透明 + 细滚动条，表头区域不再出现一条灰色滚动条；
+   gutter 仍保留，滚动条不会压住最后一列 */
+.admin-table-scroll,
+.ff-table-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #d8dbe0 transparent;
+}
+
+.admin-table-scroll::-webkit-scrollbar,
+.ff-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.admin-table-scroll::-webkit-scrollbar-track,
+.ff-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-table-scroll::-webkit-scrollbar-thumb,
+.ff-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #d8dbe0;
+  background-clip: content-box;
+}

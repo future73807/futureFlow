@@ -1305,7 +1305,7 @@ export const WorkflowListPage = () => {
       <ScrollArea className="page-scroll ff-scroll-fill">
         <ResourceCard>
           {/* 数据区是卡片里唯一的滚动容器：表头 sticky 吸附，分页条留在卡片底部不参与滚动 */}
-          <ResourceTableScroll>
+          <ResourceTableScroll className="ff-table-scroll">
             {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
             {(currentLoading || resourceRows.length > 0) && (
               <TableHeader>
@@ -2276,8 +2276,6 @@ const ResourceCard = styled.section`
 /** 数据区：卡片里唯一的滚动容器，表头用 sticky 吸附在这里的顶部 */
 const ResourceTableScroll = styled.div`
   flex: 1 1 auto;
-  /* 为滚动条预留轨道：否则滚动条会压在最后一列（操作列）上面 */
-  scrollbar-gutter: stable;
   min-height: 0;
   overflow: auto;
 `;

@@ -49,7 +49,7 @@ export const DemoTools = () => {
   }, [playground]);
 
   return (
-    <ToolContainer className="demo-free-layout-tools">
+    <ToolContainer className="futureflow-tools">
       <ToolSection>
         <div className="canvas-tool-group canvas-tool-group-view">
           <Interactive />
