@@ -557,10 +557,39 @@ textarea:focus-visible {
 .page-shell > .page-fixed { flex: 0 0 auto; }
 .page-shell > .page-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 
+/* 滚动收进卡片：滚动区只负责布局，卡片的表头吸附、数据区自己滚、分页固定在卡片底部。
+   用后代选择器：admin 的滚动区嵌在 Tabs 里，不是 .page-shell 的直接子元素 */
+.page-shell .page-scroll.ff-scroll-fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表头吸附：Semi 的 .semi-table-body 自带 overflow:auto，会把 sticky 限制在它内部而失效；
+   把表格自身的滚动关掉，让外层滚动区成为唯一滚动容器，表头才能吸附在它的顶部 */
+.page-scroll .semi-table-wrapper,
+.page-scroll .semi-table-body {
+  overflow: visible;
+}
+
+.page-scroll .semi-table-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ff-surface-muted);
+}
+
+/* thead 吸附时行背景要盖住下方的数据行，否则滚动内容会透出 */
+.page-scroll .semi-table-thead > .semi-table-row > .semi-table-row-head {
+  background: var(--ff-surface-muted);
+}
+
 /* 窄屏下由页面跟随 body 一起滚动（与 app-content 的移动端行为一致），避免出现内层滚动条 */
 @media (max-width: 720px) {
   .page-shell { height: auto; }
   .page-shell > .page-scroll { overflow: visible; }
+  /* 窄屏没有固定高度可分配，卡片回归普通文档流，跟随页面一起滚 */
+  .page-shell .page-scroll.ff-scroll-fill { display: block; overflow: visible; }
 }
 
 /* 加载态统一单行：转圈与文字并排，避免两行占位 */

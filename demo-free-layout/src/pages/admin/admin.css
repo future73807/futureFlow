@@ -30,15 +30,18 @@
   min-height: 0;
 }
 
-.admin-page .admin-tabs .semi-tabs-pane {
+/* 只给激活面板设 display:flex：Semi 用 .semi-tabs-pane-inactive{display:none} 隐藏其它面板，
+   若选择器写成 .semi-tabs-pane 会连隐藏规则一起覆盖，六个面板会同时排成一行（表格被挤成 215px 宽） */
+.admin-page .admin-tabs .semi-tabs-pane-active {
   display: flex;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
 }
 
 /* TabPane 会把 children 包进 motion-overlay，这一层也要撑满才能让内部滚动区拿到高度 */
-.admin-page .admin-tabs .semi-tabs-pane > .semi-tabs-pane-motion-overlay {
+.admin-page .admin-tabs .semi-tabs-pane-active > .semi-tabs-pane-motion-overlay {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
@@ -46,15 +49,26 @@
 }
 
 /* 面板内的工具条/筛选行同样不随内容滚动 */
-.admin-page .admin-tabs .semi-tabs-pane .page-fixed {
+.admin-page .admin-tabs .semi-tabs-pane-active .page-fixed {
   flex: 0 0 auto;
 }
 
-.admin-page .admin-tabs .semi-tabs-pane .page-scroll {
+.admin-page .admin-tabs .semi-tabs-pane-active .page-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 48px;
+}
+
+/* 列表面板的滚动收进表格卡片内部（见 .admin-table-scroll），页面滚动区只负责布局。
+   admin 的滚动区嵌在 Tabs 里，全局的 .page-shell > .page-scroll 选择器覆盖不到，
+   这里补上同样的 flex 布局；overflow:hidden 还必须显式写，否则上一条
+   .page-scroll 的 overflow-y:auto 优先级更高，卡片会撑高、分页器又跟着页面滚 */
+.admin-page .admin-tabs .semi-tabs-pane-active .page-scroll.ff-scroll-fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 20px;
 }
 
 @media (max-width: 720px) {
@@ -65,18 +79,83 @@
 
   .admin-page .admin-tabs,
   .admin-page .admin-tabs > .semi-tabs-content,
-  .admin-page .admin-tabs .semi-tabs-pane,
-  .admin-page .admin-tabs .semi-tabs-pane > .semi-tabs-pane-motion-overlay {
+  .admin-page .admin-tabs .semi-tabs-pane-active,
+  .admin-page .admin-tabs .semi-tabs-pane-active > .semi-tabs-pane-motion-overlay {
     flex: 0 0 auto;
   }
 
-  .admin-page .admin-tabs .semi-tabs-pane .page-scroll {
+  .admin-page .admin-tabs .semi-tabs-pane-active .page-scroll {
     overflow: visible;
     padding-bottom: 32px;
   }
 }
 
-/* 表格铺满内容区：列宽用百分比分摊，内容少时右侧也不留空档 */
+/* ============ 表格卡片：表头吸附 + 数据区滚动 + 分页固定底栏 ============ */
+
+.admin-table-card {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+}
+
+/* 唯一的纵向滚动条在这里；分页器在卡片里、不参与滚动 */
+.admin-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Semi 的 .semi-table-body 自带 overflow:auto，表头 sticky 会被限制在它内部失效；
+   把滚动交给外层 .admin-table-scroll，保证表头吸附且只有一条滚动条 */
+.admin-table-scroll .semi-table-wrapper,
+.admin-table-scroll .semi-table-body {
+  overflow: visible;
+}
+
+/* 固定列宽：列宽只由列定义里的 px 决定，长内容/标签不会再挤压相邻列 */
+.admin-table-card .semi-table {
+  table-layout: fixed;
+}
+
+/* 单元格内边距比 Semi 默认 16px 收窄：10 列的表（运行记录）在 1366 宽下也放得下 */
+.admin-table-card .semi-table-thead > .semi-table-row > .semi-table-row-head,
+.admin-table-card .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.admin-table-card .semi-table-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ff-surface-muted);
+}
+
+/* 分页底栏：每页条数 → 共 N 页 → 页码，整体右对齐，固定在卡片底部 */
+.admin-table-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--ff-border);
+  background: var(--ff-surface);
+}
+
+.admin-footer-label {
+  color: var(--ff-muted);
+  font-size: 13px;
+}
+
+/* 表格铺满卡片宽度（列宽由列定义里的 px 决定，见 .admin-table-card） */
 .admin-page .semi-table {
   width: 100%;
 }
@@ -95,11 +174,12 @@
   margin-bottom: 12px;
 }
 
-/* 行内操作：始终单行排开不换行；列宽给足后由表格横向滚动兜底 */
+/* 行内操作：始终单行横向排开不换行，居中于操作列 */
 .admin-actions {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 

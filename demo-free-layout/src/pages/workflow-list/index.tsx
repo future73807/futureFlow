@@ -1302,102 +1302,111 @@ export const WorkflowListPage = () => {
         </div>
       </div>
 
-      <ScrollArea className="page-scroll">
+      <ScrollArea className="page-scroll ff-scroll-fill">
         <ResourceCard>
-          {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
-          {(currentLoading || resourceRows.length > 0) && (
-            <TableHeader>
-              <span>资源</span>
-              <span>类型</span>
-              <span>编辑时间</span>
-              <span>操作</span>
-            </TableHeader>
-          )}
-          {currentLoading ? (
-            <TableBodyState>
-              <Spin size="large" />
-            </TableBodyState>
-          ) : resourceRows.length === 0 ? (
-            <TableEmptyState>
-              <div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
-                <Empty
-                  title={keyword.trim() ? '没有匹配的资源' : emptyTitleByTab[activeTab]}
-                  description={
-                    keyword.trim()
-                      ? '换个关键词试试。'
-                      : currentError || emptyDescriptionByTab[activeTab]
+          {/* 数据区是卡片里唯一的滚动容器：表头 sticky 吸附，分页条留在卡片底部不参与滚动 */}
+          <ResourceTableScroll>
+            {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
+            {(currentLoading || resourceRows.length > 0) && (
+              <TableHeader>
+                <span>资源</span>
+                <span>类型</span>
+                <span>编辑时间</span>
+                <span>操作</span>
+              </TableHeader>
+            )}
+            {currentLoading ? (
+              <TableBodyState>
+                <Spin size="large" />
+              </TableBodyState>
+            ) : resourceRows.length === 0 ? (
+              <TableEmptyState>
+                <div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
+                  <Empty
+                    title={keyword.trim() ? '没有匹配的资源' : emptyTitleByTab[activeTab]}
+                    description={
+                      keyword.trim()
+                        ? '换个关键词试试。'
+                        : currentError || emptyDescriptionByTab[activeTab]
+                    }
+                  />
+                  {currentError && !keyword.trim() && (
+                    <Button onClick={reloadCurrentTab}>重新加载</Button>
+                  )}
+                </div>
+              </TableEmptyState>
+            ) : (
+              pagedRows.map((row) => (
+                <ResourceRowItem
+                  key={row.key}
+                  $clickable={row.kind === 'workflow'}
+                  onClick={
+                    row.kind === 'workflow' && row.workflow
+                      ? () => navigate(`/canvas/${row.workflow?.id}`)
+                      : undefined
                   }
-                />
-                {currentError && !keyword.trim() && (
-                  <Button onClick={reloadCurrentTab}>重新加载</Button>
-                )}
-              </div>
-            </TableEmptyState>
-          ) : (
-            pagedRows.map((row) => (
-              <ResourceRowItem
-                key={row.key}
-                $clickable={row.kind === 'workflow'}
-                onClick={
-                  row.kind === 'workflow' && row.workflow
-                    ? () => navigate(`/canvas/${row.workflow?.id}`)
-                    : undefined
-                }
-              >
-                <ResourceCell>
-                  <RowIcon $tint={cardTint(row.name || row.key)} aria-hidden="true">
-                    {(row.name || '?').trim().slice(0, 1).toUpperCase()}
-                  </RowIcon>
-                  <ResourceText>
-                    <div className="resource-name">
-                      <span className="resource-name-text" title={row.name}>
-                        {row.name}
-                      </span>
-                      {row.kind === 'workflow' && !!row.workflow?.publishedVersion && (
-                        <span
-                          className="resource-published"
-                          title={`已发布 v${
-                            formatVersionLabel(row.workflow.publishedVersion) ??
-                            row.workflow.publishedVersion
-                          }`}
-                          aria-label={`已发布`}
-                        >
-                          <IconTickCircle />
+                >
+                  <ResourceCell>
+                    <RowIcon $tint={cardTint(row.name || row.key)} aria-hidden="true">
+                      {(row.name || '?').trim().slice(0, 1).toUpperCase()}
+                    </RowIcon>
+                    <ResourceText>
+                      <div className="resource-name">
+                        <span className="resource-name-text" title={row.name}>
+                          {row.name}
                         </span>
-                      )}
-                    </div>
-                    <div className="resource-desc" title={row.description}>
-                      {row.description}
-                    </div>
-                  </ResourceText>
-                </ResourceCell>
-                <TypeCell>{TYPE_LABELS[row.kind]}</TypeCell>
-                <TimeCell>{formatDateTime(row.editedAt)}</TimeCell>
-                <OpsCell>{renderRowActions(row)}</OpsCell>
-              </ResourceRowItem>
-            ))
+                        {row.kind === 'workflow' && !!row.workflow?.publishedVersion && (
+                          <span
+                            className="resource-published"
+                            title={`已发布 v${
+                              formatVersionLabel(row.workflow.publishedVersion) ??
+                              row.workflow.publishedVersion
+                            }`}
+                            aria-label={`已发布`}
+                          >
+                            <IconTickCircle />
+                          </span>
+                        )}
+                      </div>
+                      <div className="resource-desc" title={row.description}>
+                        {row.description}
+                      </div>
+                    </ResourceText>
+                  </ResourceCell>
+                  <TypeCell>{TYPE_LABELS[row.kind]}</TypeCell>
+                  <TimeCell>{formatDateTime(row.editedAt)}</TimeCell>
+                  <OpsCell>{renderRowActions(row)}</OpsCell>
+                </ResourceRowItem>
+              ))
+            )}
+          </ResourceTableScroll>
+
+          {/* 分页固定在卡片底部：每页条数 → 共 N 页 → 页码，整体右对齐 */}
+          {!currentLoading && resourceRows.length > 0 && (
+            <PaginationBar>
+              <span className="pagination-label">每页条数：</span>
+              <Select
+                value={pageSize}
+                style={{ width: 88 }}
+                aria-label="每页条数"
+                optionList={PAGE_SIZE_OPTS.map((size) => ({ value: size, label: String(size) }))}
+                onChange={(value) => {
+                  setPageSize(Number(value));
+                  setPage(1);
+                }}
+              />
+              <span className="pagination-pages">共 {totalPages} 页</span>
+              <Pagination
+                currentPage={page}
+                pageSize={pageSize}
+                total={resourceRows.length}
+                showSizeChanger={false}
+                showTotal={false}
+                onPageChange={(nextPage) => setPage(nextPage)}
+              />
+            </PaginationBar>
           )}
         </ResourceCard>
-
-        {/* 前端分页：左对齐显示总条数，右侧提供 10/20/50/100 档位与翻页 */}
-        {!currentLoading && resourceRows.length > 0 && (
-          <PaginationBar>
-            <span className="pagination-total">共 {resourceRows.length} 条</span>
-            <Pagination
-              currentPage={page}
-              pageSize={pageSize}
-              total={resourceRows.length}
-              pageSizeOpts={PAGE_SIZE_OPTS}
-              showSizeChanger
-              showTotal={false}
-              onPageChange={(nextPage) => setPage(nextPage)}
-              onPageSizeChange={(nextSize) => {
-                setPageSize(nextSize);
-                setPage(1);
-              }}
-            />
-          </PaginationBar>
-        )}
       </ScrollArea>
 
       <Modal
@@ -2154,24 +2163,29 @@ const PageContainer = styled.div`
   }
 `;
 
-/** 滚动区：底部留白放在滚动内容里，最后一行不会贴住视口底边 */
+/** 滚动区：滚动收进表格卡片（见 .ff-scroll-fill），本层只负责布局，不再出现内外两条滚动条 */
 const ScrollArea = styled.div`
-  padding-bottom: 48px;
+  padding-bottom: 24px;
 
   @media (max-width: 720px) {
     padding-bottom: 32px;
   }
 `;
 
-/** 分页条：总数在左，档位选择与翻页紧随其后，整体左对齐 */
+/** 分页条：固定在卡片底部不随数据滚动；每页条数 → 共 N 页 → 页码，整体右对齐 */
 const PaginationBar = styled.div`
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  margin-top: 14px;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--ff-border);
+  background: var(--ff-surface);
 
-  .pagination-total {
+  .pagination-label,
+  .pagination-pages {
     color: var(--ff-muted);
     font-size: 13px;
   }
@@ -2247,7 +2261,11 @@ const CreatePreview = styled.div`
 `;
 
 const ResourceCard = styled.section`
-  /* 与上方工具条的间距由 .list-toolbar 的 margin-bottom 提供，这里不再叠加 */
+  /* 卡片撑满滚动区，数据区自己滚、分页条固定在卡片底部 */
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
@@ -2255,20 +2273,36 @@ const ResourceCard = styled.section`
   box-shadow: var(--ff-shadow-sm);
 `;
 
+/** 数据区：卡片里唯一的滚动容器，表头用 sticky 吸附在这里的顶部 */
+const ResourceTableScroll = styled.div`
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+`;
+
 /** 表格列：资源自适应（至少 40%），类型/编辑时间/操作固定宽度 */
 const TABLE_GRID = 'minmax(40%, 1fr) 140px 180px 90px';
 
 const TableHeader = styled.div`
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   align-items: center;
   height: 44px;
   grid-template-columns: ${TABLE_GRID};
   padding: 0 18px;
+  border-bottom: 1px solid var(--ff-border);
+  background: var(--ff-surface-muted);
   color: var(--ff-muted);
   font-size: 12px;
   font-weight: 600;
-  /* 表头与单元格一致：列标题居中 */
+  /* 类型/编辑时间/操作列标题居中；资源列与数据行一致靠左 */
   text-align: center;
+
+  & > span:first-child {
+    text-align: left;
+  }
 
   @media (max-width: 720px) {
     grid-template-columns: minmax(0, 1fr) 84px 118px 72px;
@@ -2313,12 +2347,12 @@ const ResourceRowItem = styled.div<{ $clickable?: boolean }>`
   }
 `;
 
-/** 资源列：色块 + 名称/描述作为一个整体在列内居中 */
+/** 资源列：色块 + 名称/描述整体靠左对齐（用户要求首列左对齐，其余列居中） */
 const ResourceCell = styled.div`
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 12px;
 `;
 
@@ -2336,6 +2370,8 @@ const RowIcon = styled.div<{ $tint: { bg: string; fg: string } }>`
 `;
 
 const ResourceText = styled.div`
+  /* 占满色块右侧空间，名称/描述超长时按列宽省略号截断 */
+  flex: 1 1 auto;
   min-width: 0;
 
   .resource-name {

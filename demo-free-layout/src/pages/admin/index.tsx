@@ -21,6 +21,7 @@ import {
   Select,
   Input,
   InputNumber,
+  Pagination,
 } from '@douyinfe/semi-ui';
 import {
   IconUser,
@@ -213,6 +214,75 @@ const ViewButton = ({ onClick }: { onClick: () => void }) => (
   </Button>
 );
 
+/** 表格分页底栏：每页条数 → 共 N 页 → 页码，整体右对齐；放在卡片底部不随数据滚动 */
+function TableFooter({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  // 页数由接口返回的总条数算出，展示「共 N 页」而不是「共 N 条」
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div className="admin-table-footer">
+      <span className="admin-footer-label">每页条数：</span>
+      <Select
+        value={pageSize}
+        style={{ width: 84 }}
+        aria-label="每页条数"
+        onChange={(value) => onPageSizeChange(Number(value))}
+        optionList={PAGE_SIZE_OPTS.map((size) => ({ value: size, label: String(size) }))}
+      />
+      <span className="admin-footer-label">共 {pageCount} 页</span>
+      <Pagination
+        currentPage={page}
+        pageSize={pageSize}
+        total={total}
+        showSizeChanger={false}
+        showTotal={false}
+        onPageChange={onPageChange}
+      />
+    </div>
+  );
+}
+
+/** 表格卡片：表头吸附 + 数据区自己滚 + 分页固定在卡片底部，五个列表共用 */
+function TableCard({
+  children,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  children: React.ReactNode;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  return (
+    <div className="admin-table-card">
+      <div className="admin-table-scroll">{children}</div>
+      <TableFooter
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
+    </div>
+  );
+}
+
 export const AdminPage = () => {
   const me = getUser();
   const [tab, setTab] = useState('dashboard');
@@ -338,7 +408,7 @@ export const AdminPage = () => {
               />
             </div>
           </div>
-          <div className="page-scroll">
+          <div className="page-scroll ff-scroll-fill admin-list-scroll">
             <UsersView
               data={users}
               loading={loading}
@@ -352,7 +422,7 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconKey />} text="API Key" />} itemKey="apikeys">
-          <div className="page-scroll">
+          <div className="page-scroll ff-scroll-fill admin-list-scroll">
             <ApiKeysView
               data={apiKeys}
               loading={loading}
@@ -366,7 +436,7 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconBranch />} text="工作流" />} itemKey="workflows">
-          <div className="page-scroll">
+          <div className="page-scroll ff-scroll-fill admin-list-scroll">
             <WorkflowsView
               data={workflows}
               loading={loading}
@@ -399,7 +469,7 @@ export const AdminPage = () => {
             />
             </div>
           </div>
-          <div className="page-scroll">
+          <div className="page-scroll ff-scroll-fill admin-list-scroll">
             <RunsView
               data={runs}
               loading={loading}
@@ -412,7 +482,7 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconList />} text="余额流水" />} itemKey="logs">
-          <div className="page-scroll">
+          <div className="page-scroll ff-scroll-fill admin-list-scroll">
             <LogsView
               data={logs}
               loading={loading}
@@ -575,23 +645,23 @@ const UsersView = ({
     }
   };
 
-  // 列宽：内容列用百分比自适应分摊整表宽度，只有「操作」列固定宽度
+  // 列宽用固定 px：标签/按钮按内容占位，不再用百分比被挤成多行（表格为 table-layout: fixed）
   const columns = [
     {
       title: '用户名',
       dataIndex: 'username',
-      width: '16%',
+      width: 150,
       render: (t: string, r: UserRow) => (
         <span>
           {t} {r.role === 'admin' && <Tag size="small" color="orange">管理员</Tag>}
         </span>
       ),
     },
-    { title: '邮箱', dataIndex: 'email', width: '22%' },
+    { title: '邮箱', dataIndex: 'email', width: 240, ellipsis: true },
     {
       title: 'VIP',
       dataIndex: 'vipLevel',
-      width: '10%',
+      width: 90,
       render: (vip: string) => (
         <Tag
           size="small"
@@ -604,13 +674,13 @@ const UsersView = ({
     {
       title: '余额',
       dataIndex: 'balance',
-      width: '12%',
+      width: 110,
       render: (b: number) => `¥${Number(b || 0).toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: '10%',
+      width: 90,
       render: (s: string) => (
         <Tag size="small" color={s === 'active' ? 'green' : 'red'}>
           {USER_STATUS_TEXT[s] || s}
@@ -620,12 +690,12 @@ const UsersView = ({
     {
       title: '注册时间',
       dataIndex: 'createdAt',
-      width: '14%',
+      width: 170,
       render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 140,
+      width: 150,
       render: (_: any, r: UserRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail(`用户详情 - ${r.username || ''}`, userDetailFields(r))} />
@@ -638,21 +708,19 @@ const UsersView = ({
   ];
 
   return (
-    <div>
+    <TableCard
+      page={page}
+      pageSize={pageSize}
+      total={data.total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    >
       <Table
         dataSource={data.items}
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          pageSizeOpts: PAGE_SIZE_OPTS,
-          showSizeChanger: true,
-          onPageChange,
-          onPageSizeChange,
-        }}
+        pagination={false}
         empty={<Empty description="暂无用户" />}
       />
       <Modal
@@ -720,7 +788,7 @@ const UsersView = ({
         </div>
       </Modal>
       {detailNode}
-    </div>
+    </TableCard>
   );
 };
 
@@ -756,24 +824,25 @@ const ApiKeysView = ({
   };
 
   const columns = [
-    { title: '名称', dataIndex: 'name', width: '16%', render: (t: string) => t || '-' },
+    { title: '名称', dataIndex: 'name', width: 160, ellipsis: true, render: (t: string) => t || '-' },
     {
       title: 'Key 前缀',
       dataIndex: 'keyPrefix',
-      width: '18%',
+      width: 190,
+      ellipsis: true,
       // 等宽中性色，不用品牌蓝
       render: (t: string) => <span className="cell-mono">{t ? `${t}...` : '-'}</span>,
     },
     {
       title: '所属用户',
       dataIndex: 'username',
-      width: '14%',
+      width: 130,
       render: (t: string) => t || '-',
     },
     {
       title: '状态',
       dataIndex: 'revoked',
-      width: '10%',
+      width: 90,
       render: (r: boolean) =>
         r ? (
           <Tag size="small" color="red">已吊销</Tag>
@@ -784,18 +853,18 @@ const ApiKeysView = ({
     {
       title: '最后使用',
       dataIndex: 'lastUsedAt',
-      width: '18%',
+      width: 170,
       render: (t: string) => <TimeCell value={t} fallback="从未使用" />,
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
-      width: '18%',
+      width: 170,
       render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 160,
+      width: 150,
       render: (_: any, r: ApiKeyRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail(`API Key 详情 - ${r.name || ''}`, apiKeyDetailFields(r))} />
@@ -815,25 +884,23 @@ const ApiKeysView = ({
   ];
 
   return (
-    <div>
+    <TableCard
+      page={page}
+      pageSize={pageSize}
+      total={data.total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    >
       <Table
         dataSource={data.items}
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          pageSizeOpts: PAGE_SIZE_OPTS,
-          showSizeChanger: true,
-          onPageChange,
-          onPageSizeChange,
-        }}
+        pagination={false}
         empty={<Empty description="暂无 API Key" />}
       />
       {detailNode}
-    </div>
+    </TableCard>
   );
 };
 
@@ -857,36 +924,36 @@ const WorkflowsView = ({
   const { showDetail, detailNode } = useRowDetail();
 
   const columns = [
-    { title: '名称', dataIndex: 'name', width: '20%', render: (t: string) => t || '-' },
+    { title: '名称', dataIndex: 'name', width: 190, ellipsis: true, render: (t: string) => t || '-' },
     {
       title: '描述',
       dataIndex: 'description',
-      width: '26%',
+      width: 260,
       ellipsis: true,
       render: (t: string) => t || '暂无描述',
     },
-    { title: '所属用户', dataIndex: 'username', width: '14%', render: (t: string) => t || '-' },
+    { title: '所属用户', dataIndex: 'username', width: 130, render: (t: string) => t || '-' },
     {
       title: '版本',
       dataIndex: 'version',
-      width: '8%',
+      width: 80,
       render: (v: number) => `v${v ?? 1}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: '10%',
+      width: 100,
       render: (s: string) => <Tag size="small">{s || '-'}</Tag>,
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: '18%',
+      width: 170,
       render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 140,
+      width: 120,
       render: (_: any, r: WorkflowRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail(`工作流详情 - ${r.name || ''}`, workflowDetailFields(r))} />
@@ -896,25 +963,23 @@ const WorkflowsView = ({
   ];
 
   return (
-    <div>
+    <TableCard
+      page={page}
+      pageSize={pageSize}
+      total={data.total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    >
       <Table
         dataSource={data.items}
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          pageSizeOpts: PAGE_SIZE_OPTS,
-          showSizeChanger: true,
-          onPageChange,
-          onPageSizeChange,
-        }}
+        pagination={false}
         empty={<Empty description="暂无工作流" />}
       />
       {detailNode}
-    </div>
+    </TableCard>
   );
 };
 
@@ -937,54 +1002,55 @@ const RunsView = ({
 }) => {
   const { showDetail, detailNode } = useRowDetail();
 
+  // 10 列都用固定 px，时间/费用等数字列给足宽度保证单行（总宽 ~1030，1366 视口也不出现横向滚动条）
   const columns = [
     {
       title: '状态',
       dataIndex: 'status',
-      width: '10%',
+      width: 90,
       render: (s: string) => {
         const color =
           s === 'succeeded' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'grey';
         return <Tag size="small" color={color}>{RUN_STATUS_TEXT[s] || s}</Tag>;
       },
     },
-    { title: '用户', dataIndex: 'username', width: '12%', render: (v: string) => v || '-' },
-    { title: '来源', dataIndex: 'source', width: '11%', render: (v: string) => v || '-' },
+    { title: '用户', dataIndex: 'username', width: 90, render: (v: string) => v || '-' },
+    { title: '来源', dataIndex: 'source', width: 100, render: (v: string) => v || '-' },
     {
       title: 'Token',
       dataIndex: 'totalTokens',
-      width: '10%',
+      width: 90,
       render: (t: number) => (t || 0).toLocaleString(),
     },
-    { title: '步数', dataIndex: 'totalSteps', width: '7%', render: (t: number) => t ?? 0 },
+    { title: '步数', dataIndex: 'totalSteps', width: 70, render: (t: number) => t ?? 0 },
     {
       title: '费用',
       dataIndex: 'actualCost',
-      width: '9%',
+      width: 100,
       render: (c: number) => `¥${Number(c || 0).toFixed(4)}`,
     },
     {
       title: '耗时',
       dataIndex: 'elapsedTime',
-      width: '9%',
+      width: 90,
       render: (t: number) => `${Number(t || 0).toFixed(2)}s`,
     },
     {
       title: '错误',
       dataIndex: 'errorMessage',
-      width: '16%',
+      width: 140,
       ellipsis: true,
       render: (t: string) => t || '-',
     },
     {
       title: '时间',
       dataIndex: 'createdAt',
-      width: '16%',
+      width: 160,
       render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 120,
+      width: 100,
       render: (_: any, r: RunRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail('运行记录详情', runDetailFields(r))} />
@@ -994,25 +1060,23 @@ const RunsView = ({
   ];
 
   return (
-    <div>
+    <TableCard
+      page={page}
+      pageSize={pageSize}
+      total={data.total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    >
       <Table
         dataSource={data.items}
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          pageSizeOpts: PAGE_SIZE_OPTS,
-          showSizeChanger: true,
-          onPageChange,
-          onPageSizeChange,
-        }}
+        pagination={false}
         empty={<Empty description="暂无运行记录" />}
       />
       {detailNode}
-    </div>
+    </TableCard>
   );
 };
 
@@ -1039,14 +1103,14 @@ const LogsView = ({
     {
       title: '类型',
       dataIndex: 'type',
-      width: '10%',
+      width: 90,
       render: (t: string) => <Tag size="small">{BALANCE_TYPE_TEXT[t] || t}</Tag>,
     },
-    { title: '用户', dataIndex: 'username', width: '14%', render: (t: string) => t || '-' },
+    { title: '用户', dataIndex: 'username', width: 120, render: (t: string) => t || '-' },
     {
       title: '金额',
       dataIndex: 'amount',
-      width: '12%',
+      width: 110,
       render: (a: number) => (
         <span style={{ color: Number(a) >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)', fontWeight: 600 }}>
           {Number(a) >= 0 ? '+' : ''}
@@ -1057,19 +1121,19 @@ const LogsView = ({
     {
       title: '变动后余额',
       dataIndex: 'balanceAfter',
-      width: '13%',
+      width: 130,
       render: (b: number) => `¥${Number(b || 0).toFixed(4)}`,
     },
-    { title: '备注', dataIndex: 'remark', width: '22%', ellipsis: true, render: (t: string) => t || '-' },
+    { title: '备注', dataIndex: 'remark', width: 220, ellipsis: true, render: (t: string) => t || '-' },
     {
       title: '时间',
       dataIndex: 'createdAt',
-      width: '17%',
+      width: 170,
       render: (t: string) => <TimeCell value={t} />,
     },
     {
       title: '操作',
-      width: 120,
+      width: 100,
       render: (_: any, r: BalanceLogRow) => (
         <div className="admin-actions">
           <ViewButton onClick={() => showDetail('流水详情', balanceLogDetailFields(r))} />
@@ -1079,25 +1143,23 @@ const LogsView = ({
   ];
 
   return (
-    <div>
+    <TableCard
+      page={page}
+      pageSize={pageSize}
+      total={data.total}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    >
       <Table
         dataSource={data.items}
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          pageSizeOpts: PAGE_SIZE_OPTS,
-          showSizeChanger: true,
-          onPageChange,
-          onPageSizeChange,
-        }}
+        pagination={false}
         empty={<Empty description="暂无流水记录" />}
       />
       {detailNode}
-    </div>
+    </TableCard>
   );
 };
 
