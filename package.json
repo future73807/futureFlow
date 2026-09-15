@@ -38,7 +38,8 @@
     "test:draft-run-online": "node scripts/test-draft-run-online.cjs",
     "test:task-center": "node scripts/test-task-center.cjs",
     "test:versions": "node scripts/test-version-management.cjs",
-    "test:complex-workflow": "node scripts/test-complex-workflow.cjs"
+    "test:complex-workflow": "node scripts/test-complex-workflow.cjs",
+    "test:page-buttons": "node scripts/test-page-buttons.cjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

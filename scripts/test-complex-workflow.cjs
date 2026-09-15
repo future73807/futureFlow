@@ -165,6 +165,124 @@ async function runDraft(workflowId, token) {
   return { events, status: res.status, raw: buffer.slice(0, 300) };
 }
 
+
+/** 真实外网 API 链：开始 → API 请求(每日诗词) → 文本处理(截取正文) → 结束 */
+const buildPoetryGraph = () => ({
+  nodes: [
+    {
+      id: 'start_0',
+      type: 'start',
+      meta: { position: { x: 80, y: 200 } },
+      data: {
+        title: '开始',
+        outputs: { type: 'object', properties: { query: { type: 'string', default: 'poetry' } } },
+      },
+    },
+    {
+      id: 'http_0',
+      type: 'http',
+      meta: { position: { x: 400, y: 200 } },
+      data: {
+        title: 'API 请求（每日诗词）',
+        // 真实公网诗词接口：一言 hitokoto 的文学/诗词分类
+        api: { method: 'GET', url: { type: 'constant', content: 'https://v1.hitokoto.cn/?c=i&encode=json' } },
+        authorization: { type: 'none' },
+        headers: { type: 'object', properties: {} },
+        headersValues: {},
+        params: { type: 'object', properties: {} },
+        paramsValues: {},
+        body: { bodyType: 'none' },
+        timeout: { timeout: 15000, retryTimes: 1 },
+        outputs: {
+          type: 'object',
+          properties: {
+            // Dify 的 HTTP 节点把响应体作为整体输出，这里按字符串声明并由下游直接引用
+            body: { type: 'string', title: '响应体' },
+            statusCode: { type: 'integer', title: '状态码' },
+          },
+        },
+      },
+    },
+    {
+      id: 'text_0',
+      type: 'text',
+      meta: { position: { x: 760, y: 200 } },
+      data: {
+        title: '文本处理',
+        // 把接口返回的诗句与出处拼成一句话，验证响应体能被下游引用
+        inputsValues: {
+          text: {
+            type: 'template',
+            content: '今日诗词接口响应：{{http_0.body}}',
+          },
+        },
+        inputs: { type: 'object', properties: { text: { type: 'string', title: '文本' } } },
+        outputs: { type: 'object', properties: { text: { type: 'string', title: '文本' } } },
+      },
+    },
+    {
+      id: 'end_0',
+      type: 'end',
+      meta: { position: { x: 1080, y: 200 } },
+      data: {
+        title: '结束',
+        inputsValues: { result: { type: 'ref', content: ['text_0', 'text'] } },
+        inputs: { type: 'object', properties: { result: { type: 'string', title: '结果' } } },
+      },
+    },
+  ],
+  edges: [
+    { sourceNodeID: 'start_0', targetNodeID: 'http_0' },
+    { sourceNodeID: 'http_0', targetNodeID: 'text_0' },
+    { sourceNodeID: 'text_0', targetNodeID: 'end_0' },
+  ],
+});
+
+async function runPoetryCase(token) {
+  const created = await json('POST', '/workflows', token, {
+    name: `诗词 API 验收-${Date.now().toString().slice(-6)}`,
+    description: 'API 请求节点访问真实公网诗词接口',
+    flowgram: JSON.stringify(buildPoetryGraph()),
+  });
+  const workflowId = created.data?.id;
+  record('创建诗词 API 工作流(4 节点)', !!workflowId, `HTTP ${created.status}`);
+  if (!workflowId) return;
+  try {
+    const { events, raw, status } = await runDraft(workflowId, token);
+    const finished = events.find((e) => e.event === 'workflow_finished');
+    const nodeFinished = events.filter((e) => e.event === 'node_finished');
+    // Dify 上报的节点类型是 http-request，两种写法都认
+    const httpNode = nodeFinished.find((e) => ['http', 'http-request'].includes(e.data?.node_type));
+    const outputs = finished?.data?.outputs || {};
+    const resultText = String(outputs.result || outputs.text || '');
+    record(
+      'API 请求节点访问公网诗词接口成功',
+      httpNode?.data?.status === 'succeeded',
+      httpNode?.data?.status === 'succeeded'
+        ? `status=${finished?.data?.status}`
+        : `HTTP=${status} raw=${String(raw).replace(/\s+/g, ' ').slice(0, 160)}`,
+    );
+    record(
+      '接口返回真实诗词内容',
+      resultText.indexOf('hitokoto') >= 0,
+      `响应长度 ${resultText.length}`,
+    );
+    record(
+      '响应体被下游文本处理引用并回填结束节点',
+      resultText.indexOf('今日诗词接口响应') >= 0 && resultText.length > 40,
+      resultText.replace(/\s+/g, ' ').slice(0, 90),
+    );
+    record(
+      '整条链执行成功',
+      finished?.data?.status === 'succeeded' && nodeFinished.every((e) => e.data?.status === 'succeeded'),
+      nodeFinished.map((e) => `${e.data?.title}:${e.data?.status}`).join(' | '),
+    );
+  } finally {
+    const cleanup = await json('DELETE', `/workflows/${workflowId}`, token);
+    record('清理诗词验收工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
+  }
+}
+
 async function main() {
   const login = await json('POST', '/auth/login', null, { account: 'admin', password: PASSWORD });
   const token = login.data?.accessToken;
@@ -237,6 +355,8 @@ async function main() {
     const cleanup = await json('DELETE', `/workflows/${workflowId}`, token);
     record('清理验收工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
   }
+
+  await runPoetryCase(token);
 
   const failedCount = results.filter((r) => !r.ok).length;
   console.log(`\n===== 复杂工作流验收: ${results.length - failedCount}/${results.length} passed =====`);
