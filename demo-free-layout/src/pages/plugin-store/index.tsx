@@ -358,16 +358,18 @@ export const PluginStorePage = () => {
         <p className="page-sub">平台内置工具插件，查看参数与运行统计，一键创建含该工具的画布。</p>
       </header>
 
-      <Toolbar>
-        <Input
-          className="plugin-search"
-          prefix={<IconSearch />}
-          placeholder="搜索插件名称、说明或标签"
-          value={keyword}
-          onChange={setKeyword}
-          showClear
-        />
-        <CategoryRow>
+      {/* 工具条：本页没有主操作按钮，只有筛选控件，按规则统一靠右 */}
+      <div className="list-toolbar">
+        <div className="toolbar-filters">
+          <Input
+            className="plugin-search"
+            prefix={<IconSearch />}
+            placeholder="搜索插件名称、说明或标签"
+            value={keyword}
+            onChange={setKeyword}
+            showClear
+          />
+          <CategoryRow>
           {categories.map((item) => (
             <CategoryChip
               key={item}
@@ -378,8 +380,9 @@ export const PluginStorePage = () => {
               {item}
             </CategoryChip>
           ))}
-        </CategoryRow>
-      </Toolbar>
+          </CategoryRow>
+        </div>
+      </div>
 
       {visibleItems.length === 0 ? (
         <EmptyState>没有匹配的插件，换个关键词试试。</EmptyState>
@@ -721,15 +724,6 @@ const PageContainer = styled.div`
 
   @media (max-width: 720px) {
     padding: 16px 14px 32px;
-  }
-`;
-
-const Toolbar = styled.div`
-  display: grid;
-  gap: 12px;
-
-  .plugin-search {
-    max-width: 360px;
   }
 `;
 

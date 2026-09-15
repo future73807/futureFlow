@@ -449,3 +449,27 @@ textarea:focus-visible {
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell .semi-button-size-small {
   min-height: 24px;
 }
+
+/* 列表工具条：操作按钮在左，搜索与筛选在右（各页统一，别再各排一套） */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.list-toolbar .toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-toolbar .toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}

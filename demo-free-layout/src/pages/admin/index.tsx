@@ -314,18 +314,20 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconUser />} text="用户管理" />} itemKey="users">
-          <div className="admin-filters">
-            <Input
-              placeholder="搜索用户名或邮箱"
-              value={userSearch}
-              showClear
-              style={{ width: 280 }}
-              onChange={(value: string) => setUserSearch(value)}
-              onEnterPress={() => {
-                setPage(1);
-                loadTab('users', 1);
-              }}
-            />
+          <div className="list-toolbar">
+            <div className="toolbar-filters">
+              <Input
+                placeholder="搜索用户名或邮箱"
+                value={userSearch}
+                showClear
+                style={{ width: 280 }}
+                onChange={(value: string) => setUserSearch(value)}
+                onEnterPress={() => {
+                  setPage(1);
+                  loadTab('users', 1);
+                }}
+              />
+            </div>
           </div>
           <UsersView
             data={users}
@@ -359,7 +361,8 @@ export const AdminPage = () => {
         </TabPane>
 
         <TabPane tab={<TabIcon icon={<IconActivity />} text="运行记录" />} itemKey="runs">
-          <div className="admin-filters">
+          <div className="list-toolbar">
+            <div className="toolbar-filters">
             <Select
               value={runSource || 'all'}
               style={{ width: 200 }}
@@ -376,6 +379,7 @@ export const AdminPage = () => {
                 { label: '定时调度', value: 'schedule' },
               ]}
             />
+            </div>
           </div>
           <RunsView
             data={runs}

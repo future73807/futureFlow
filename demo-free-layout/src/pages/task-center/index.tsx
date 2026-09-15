@@ -327,17 +327,10 @@ export const TaskCenterPage = () => {
         </TabButton>
       </TabRow>
 
-      {/* 列表区块头：标题与刷新按钮同行靠左，说明另起一行 */}
+      {/* 列表区块头只放标题与说明，操作与筛选挪到独立工具条 */}
       <div className="section-head">
         <div className="section-head-row">
           <h2>{activeTab === 'batch' ? '任务列表' : '运行记录'}</h2>
-          <Button
-            icon={<IconRefresh aria-hidden="true" />}
-            onClick={() => void refresh()}
-            loading={loading}
-          >
-            刷新
-          </Button>
         </div>
         <p>
           {activeTab === 'batch'
@@ -346,8 +339,18 @@ export const TaskCenterPage = () => {
         </p>
       </div>
 
-      <FilterRow>
-        {activeTab === 'batch' ? (
+      <div className="list-toolbar">
+        <div className="toolbar-actions">
+          <Button
+            icon={<IconRefresh aria-hidden="true" />}
+            onClick={() => void refresh()}
+            loading={loading}
+          >
+            刷新
+          </Button>
+        </div>
+        <div className="toolbar-filters">
+          {activeTab === 'batch' ? (
           <>
             {/* 平台是单账号工作区，「创建者」维度只有本账号一种取值；控件形态与参考图保持一致 */}
             <Select
@@ -374,7 +377,8 @@ export const TaskCenterPage = () => {
             style={{ width: 160 }}
           />
         )}
-      </FilterRow>
+        </div>
+      </div>
 
       {error && (
         <ErrorBanner>
@@ -886,12 +890,6 @@ const TabButton = styled.button<{ $active: boolean }>`
     background: ${(props) => (props.$active ? 'var(--ff-primary)' : 'transparent')};
     content: '';
   }
-`;
-
-const FilterRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
 `;
 
 const ErrorBanner = styled.div`

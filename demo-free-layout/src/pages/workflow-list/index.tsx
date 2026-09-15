@@ -1216,54 +1216,59 @@ export const WorkflowListPage = () => {
         </TabList>
       </TabRow>
 
-      {/* 工具条：筛选、搜索、导入、创建画布从左往右同一行；发布状态筛选仅对「全部/工作流」可见 */}
-      <ListToolbar className="list-toolbar">
-        {(activeTab === 'all' || activeTab === 'workflow') && (
-          <Select
-            value={publishFilter}
-            onChange={(value) => setPublishFilter(String(value) as PublishFilter)}
-            style={{ width: 122 }}
-            aria-label="发布状态筛选"
-            optionList={[
-              { value: 'all', label: '全部' },
-              { value: 'published', label: '已发布' },
-              { value: 'draft', label: '草稿' },
-            ]}
+      {/* 工具条：操作按钮在左，搜索与筛选在右 */}
+      <div className="list-toolbar">
+        <div className="toolbar-actions">
+          <Button
+            theme="light"
+            icon={<IconUpload />}
+            loading={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
+            导入
+          </Button>
+          <Button
+            type="primary"
+            theme="solid"
+            icon={<IconPlus />}
+            onClick={() => setCreateVisible(true)}
+          >
+            创建画布
+          </Button>
+          {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(event) => void handleImportFile(event)}
           />
-        )}
-        <Input
-          className="resource-search"
-          prefix={<IconSearch />}
-          placeholder="搜索资源"
-          value={keyword}
-          onChange={(value) => setKeyword(value)}
-          showClear
-        />
-        <Button
-          theme="light"
-          icon={<IconUpload />}
-          loading={importing}
-          onClick={() => importInputRef.current?.click()}
-        >
-          导入
-        </Button>
-        <Button
-          type="primary"
-          theme="solid"
-          icon={<IconPlus />}
-          onClick={() => setCreateVisible(true)}
-        >
-          创建画布
-        </Button>
-        {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
-        <input
-          ref={importInputRef}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={(event) => void handleImportFile(event)}
-        />
-      </ListToolbar>
+        </div>
+        <div className="toolbar-filters">
+          <Input
+            className="resource-search"
+            prefix={<IconSearch />}
+            placeholder="搜索资源"
+            value={keyword}
+            onChange={(value) => setKeyword(value)}
+            showClear
+          />
+          {/* 发布状态筛选仅对「全部/工作流」有意义 */}
+          {(activeTab === 'all' || activeTab === 'workflow') && (
+            <Select
+              value={publishFilter}
+              onChange={(value) => setPublishFilter(String(value) as PublishFilter)}
+              style={{ width: 122 }}
+              aria-label="发布状态筛选"
+              optionList={[
+                { value: 'all', label: '全部' },
+                { value: 'published', label: '已发布' },
+                { value: 'draft', label: '草稿' },
+              ]}
+            />
+          )}
+        </div>
+      </div>
 
       <ResourceCard>
         {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
@@ -2138,25 +2143,6 @@ const TabButton = styled.button<{ $active: boolean }>`
 `;
 
 /** 本页专用工具条：筛选/搜索/操作同一行左对齐 */
-const ListToolbar = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-
-  .resource-search {
-    width: 240px;
-  }
-
-  @media (max-width: 720px) {
-    .resource-search {
-      flex: 1;
-      width: auto;
-    }
-  }
-`;
-
 const CreatePreview = styled.div`
   display: flex;
   align-items: center;
