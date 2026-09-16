@@ -57,7 +57,7 @@ export class DeleteShortcut implements ShortcutsHandler {
         .includes(WorkflowNodeType.Loop)
     ))) {
       Toast.error({
-        content: '数组批处理内的固定节点和连线不能删除',
+        content: '循环体内的固定节点和连线不能删除',
         showClose: false,
       });
       return;
@@ -109,7 +109,7 @@ export class DeleteShortcut implements ShortcutsHandler {
     }
     if (nodes.some((node) => node.parent?.flowNodeType === WorkflowNodeType.Loop)) {
       Toast.error({
-        content: '数组批处理内的固定节点和连线不能删除',
+        content: '循环体内的固定节点和连线不能删除',
         showClose: false,
       });
       return false;

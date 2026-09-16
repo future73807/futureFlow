@@ -7,7 +7,7 @@ const EXACT_TITLES: Record<string, string> = {
   HTTP: 'API 请求',
   Code: '代码执行',
   Variable: '变量赋值',
-  Loop: '数组批处理',
+  Loop: '循环',  // 历史名字，统一显示为「循环」
   Group: '分组',
   Continue: '继续循环',
   Break: '中断循环',
@@ -18,7 +18,7 @@ const PREFIX_TITLES: Array<[RegExp, string]> = [
   [/^HTTP_(\d+)$/i, 'API 请求'],
   [/^Code_(\d+)$/i, '代码执行'],
   [/^Variable_(\d+)$/i, '变量赋值'],
-  [/^Loop_(\d+)$/i, '数组批处理'],
+  [/^Loop_(\d+)$/i, '循环'],
   [/^Group_(\d+)$/i, '分组'],
   [/^Continue_(\d+)$/i, '继续循环'],
   [/^Break_(\d+)$/i, '中断循环'],

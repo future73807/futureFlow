@@ -333,6 +333,28 @@
   }
 }
 
+
+/* 循环体容器：FlowGram 默认用 8px 白色边框画子画布，在浅灰画布上几乎看不见，
+   这里改成可见描边 + 左上角「循环体」标签，让循环内的节点明确在框里。 */
+.node-type-loop .sub-canvas-border {
+  border-color: transparent !important;
+  /* 背景保持透明：框只是视觉边界，循环体内的节点要能透出来 */
+  background-color: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px var(--ff-border-strong);
+}
+
+.node-type-loop .sub-canvas-border::after {
+  position: absolute;
+  top: 2px;
+  left: 12px;
+  color: var(--ff-text-secondary);
+  content: '循环体';
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
 /* 运行记录侧栏顶部：已发布版本的执行入口 */
 .canvas-run-actions {
   display: flex;

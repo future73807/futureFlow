@@ -4,7 +4,7 @@
  */
 
 import { FlowNodeRegistry } from '../../typings';
-import iconStart from '../../assets/icon-start.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -17,20 +17,24 @@ export const BlockEndNodeRegistry: FlowNodeRegistry = {
     sidebarDisabled: true,
     nodePanelVisible: false,
     defaultPorts: [{ type: 'input' }],
+    // 只是循环体里的连接圆点：去掉卡片底色/描边/阴影，尺寸收成一个小点
     size: {
-      width: 100,
-      height: 100,
+      width: 24,
+      height: 24,
     },
     wrapperStyle: {
       minWidth: 'unset',
       width: '100%',
-      borderWidth: 2,
-      borderRadius: 12,
+      minHeight: 'unset',
+      background: 'transparent',
+      borderColor: 'transparent',
+      borderRadius: '50%',
+      boxShadow: 'none',
       cursor: 'move',
     },
   },
   info: {
-    icon: iconStart,
+    icon: pluginIconUrl('block-end'),
     description: '块结束节点。',
   },
   /**

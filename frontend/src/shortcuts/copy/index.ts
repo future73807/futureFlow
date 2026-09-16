@@ -119,7 +119,7 @@ export class CopyShortcut implements ShortcutsHandler {
     }
     if (this.getValidNodes(nodes).length === 0) {
       Toast.warning({
-        content: '数组批处理及其固定内部节点不能创建副本',
+        content: '循环节点及其固定内部节点不能创建副本',
       });
       return false;
     }

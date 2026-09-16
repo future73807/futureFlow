@@ -4,36 +4,37 @@
  */
 
 import { FormRenderProps, FormMeta } from '@flowgram.ai/free-layout-editor';
-import { Avatar } from '@douyinfe/semi-ui';
 
 import { FlowNodeJSON } from '../../typings';
-import iconEnd from '../../assets/icon-end.jpg';
 
-export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => (
-  <>
+/**
+ * 循环体内的连接点：参考图里循环体没有输入/输出节点，
+ * 只有左右两个用来连线的圆点，所以这里只画一个圆点，不渲染卡片和图标。
+ */
+export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => {
+  void form;
+  return (
     <div
       style={{
-        width: 60,
-        height: 60,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: '100%',
+        height: '100%',
+        display: 'grid',
+        placeItems: 'center',
       }}
     >
-      <Avatar
-        shape="circle"
+      <span
+        aria-hidden="true"
         style={{
-          width: 40,
-          height: 40,
+          width: 12,
+          height: 12,
           borderRadius: '50%',
-          cursor: 'move',
+          background: 'var(--ff-primary, #2563eb)',
+          boxShadow: '0 0 0 3px rgba(37, 99, 235, 0.12)',
         }}
-        alt="Icon"
-        src={iconEnd}
       />
     </div>
-  </>
-);
+  );
+};
 
 export const formMeta: FormMeta<FlowNodeJSON> = {
   render: renderForm,

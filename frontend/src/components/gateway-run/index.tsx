@@ -152,8 +152,8 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   'template-transform': '内容处理',
   assigner: '变量赋值',
   'variable-aggregator': '变量聚合',
-  iteration: '数组批处理',
-  loop: '数组批处理',
+  iteration: '循环',
+  loop: '循环',
   'parameter-extractor': '参数提取',
   'question-classifier': '问题分类',
   'knowledge-retrieval': '知识检索',
@@ -360,7 +360,7 @@ export const GatewayRunButton = ({
               if (iterationId && !nodeMap.has(iterationId)) {
                 nodeMap.set(iterationId, {
                   nodeId: iterationId,
-                  title: '数组批处理',
+                  title: '循环',
                   type: 'iteration',
                   status: 'running',
                 });

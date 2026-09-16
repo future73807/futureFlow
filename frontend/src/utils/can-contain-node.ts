@@ -18,7 +18,7 @@ export function canContainNode(
   parentNodeType: WorkflowNodeType | FlowNodeType
 ) {
   /**
-   * 数组批处理首期固定为 block-start → 一个代码节点 → block-end。
+   * 循环节点固定为 block-start → 一个代码节点 → block-end。
    * 内置首尾节点由容器自动创建，用户只能编辑中间的同步 JavaScript。
    */
   if (parentNodeType === WorkflowNodeType.Loop) {
@@ -38,7 +38,7 @@ export function canContainNode(
   ) {
     return false;
   }
-  /** 继续/中断尚未纳入数组批处理首期运行语义。 */
+  /** 继续/中断尚未纳入循环节点的运行语义。 */
   if ([WorkflowNodeType.Continue, WorkflowNodeType.Break].includes(
     childNodeType as WorkflowNodeType
   )) {
