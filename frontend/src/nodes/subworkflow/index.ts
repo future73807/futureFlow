@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconSubflow from '../../assets/icon-subflow.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const SubworkflowNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Subworkflow,
   info: {
-    icon: iconSubflow,
+    icon: pluginIconUrl('subworkflow'),
     description: '把另一个已发布工作流作为节点复用，发布时内联展开。',
   },
   meta: {

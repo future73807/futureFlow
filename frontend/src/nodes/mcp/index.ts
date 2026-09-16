@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconMcp from '../../assets/icon-mcp.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const McpNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Mcp,
   info: {
-    icon: iconMcp,
+    icon: pluginIconUrl('mcp'),
     description: '调用已注册 MCP 服务器上的工具；凭据保存在网关，不出画布。',
   },
   meta: {

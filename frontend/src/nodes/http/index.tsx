@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconHTTP from '../../assets/icon-http.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -14,7 +14,7 @@ let index = 0;
 export const HTTPNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.HTTP,
   info: {
-    icon: iconHTTP,
+    icon: pluginIconUrl('http'),
     description: '调用外部 API，支持认证、请求头、查询参数、请求体、超时和重试。',
   },
   meta: {

@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconVariable from '../../assets/icon-variable.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -14,7 +14,7 @@ let index = 0;
 export const VariableNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Variable,
   info: {
-    icon: iconVariable,
+    icon: pluginIconUrl('variable'),
     description: '变量赋值与声明',
   },
   meta: {

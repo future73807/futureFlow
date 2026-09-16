@@ -4,7 +4,7 @@
  */
 
 import { FlowNodeRegistry } from '../../typings';
-import iconBreak from '../../assets/icon-break.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
@@ -23,7 +23,7 @@ export const BreakNodeRegistry: FlowNodeRegistry = {
     onlyInContainer: WorkflowNodeType.Loop,
   },
   info: {
-    icon: iconBreak,
+    icon: pluginIconUrl('break'),
     description:
       '跳出当前循环。',
   },

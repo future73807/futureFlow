@@ -4,7 +4,7 @@
  */
 
 import { FlowNodeRegistry } from '../../typings';
-import iconEnd from '../../assets/icon-end.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -21,7 +21,7 @@ export const EndNodeRegistry: FlowNodeRegistry = {
     },
   },
   info: {
-    icon: iconEnd,
+    icon: pluginIconUrl('end'),
     description:
       '工作流的最终节点，用于返回工作流运行后的结果信息。',
   },

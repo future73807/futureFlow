@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconLLM from '../../assets/icon-llm.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const LLMNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.LLM,
   info: {
-    icon: iconLLM,
+    icon: pluginIconUrl('llm'),
     description:
       '调用大语言模型，使用变量和提示词生成回复。',
   },

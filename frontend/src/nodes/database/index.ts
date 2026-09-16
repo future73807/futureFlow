@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconDatabase from '../../assets/icon-database.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const DatabaseNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Database,
   info: {
-    icon: iconDatabase,
+    icon: pluginIconUrl('database'),
     description: '对 PostgreSQL 数据库执行只读 SELECT 查询，返回结构化行数据。',
   },
   meta: {

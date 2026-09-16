@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconPython from '../../assets/icon-python.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const PythonNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Python,
   info: {
-    icon: iconPython,
+    icon: pluginIconUrl('python'),
     description: '在本机 Python 中执行 main({params}) 函数并返回结果（本地试运行）。',
   },
   meta: {

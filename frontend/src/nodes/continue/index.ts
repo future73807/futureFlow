@@ -4,7 +4,7 @@
  */
 
 import { FlowNodeRegistry } from '../../typings';
-import iconContinue from '../../assets/icon-continue.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
@@ -23,7 +23,7 @@ export const ContinueNodeRegistry: FlowNodeRegistry = {
     onlyInContainer: WorkflowNodeType.Loop,
   },
   info: {
-    icon: iconContinue,
+    icon: pluginIconUrl('continue'),
     description:
       '跳过当前循环迭代，进入下一次循环。',
   },

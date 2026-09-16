@@ -4,7 +4,7 @@
  */
 
 import { FlowNodeRegistry } from '../../typings';
-import iconStart from '../../assets/icon-start.jpg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { formMeta } from './form-meta';
 import { WorkflowNodeType } from '../constants';
 
@@ -22,7 +22,7 @@ export const StartNodeRegistry: FlowNodeRegistry = {
     },
   },
   info: {
-    icon: iconStart,
+    icon: pluginIconUrl('start'),
     description:
       '工作流的起始节点，用于设置启动工作流所需的信息。',
   },

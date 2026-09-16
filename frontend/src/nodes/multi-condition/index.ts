@@ -11,7 +11,7 @@ import { nanoid } from 'nanoid';
 
 import { FlowNodeRegistry } from '../../typings';
 import { WorkflowNodeType } from '../constants';
-import iconCondition from '../../assets/icon-condition.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 
 import { formMeta } from './form-meta';
@@ -20,7 +20,7 @@ let index = 0;
 export const MultiConditionNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.MultiCondition,
   info: {
-    icon: iconCondition,
+    icon: pluginIconUrl('multi-condition'),
     description:
       '连接多个下游分支，满足条件时仅执行对应分支。',
   },

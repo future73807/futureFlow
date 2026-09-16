@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconKnowledge from '../../assets/icon-knowledge.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -13,7 +13,7 @@ let index = 0;
 export const KnowledgeNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Knowledge,
   info: {
-    icon: iconKnowledge,
+    icon: pluginIconUrl('knowledge'),
     description: '在已创建的知识库中检索与查询语句最相关的内容片段。',
   },
   meta: {

@@ -5,7 +5,7 @@
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
-import iconCode from '../../assets/icon-script.png';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { formMeta } from './form-meta';
 
@@ -34,7 +34,7 @@ function main({ params }) {
 export const CodeNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Code,
   info: {
-    icon: iconCode,
+    icon: pluginIconUrl('code'),
     description: '执行自定义代码脚本',
   },
   meta: {
