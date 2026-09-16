@@ -98,7 +98,10 @@ services:
       # trusted public APIs into 198.18/15, list only those exact domains.
       SYNTHETIC_DNS_ALLOWED_DOMAINS: ${DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS:-.invalid}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # 宿主机网关地址：Linux 用 host-gateway；Docker Desktop(Windows/WSL2) 下
+      # host-gateway 会落成 WSL2 的 IPv6 地址，容器连不上宿主机回环上的网关，
+      # 需要在 .env 里显式指定 DIFY_SSRF_HOST_GATEWAY=192.168.65.254。
+      - "host.docker.internal:${DIFY_SSRF_HOST_GATEWAY:-host-gateway}"
     healthcheck:
       test: ["CMD-SHELL", "squid -k check"]
       interval: 10s
