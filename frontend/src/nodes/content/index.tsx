@@ -37,8 +37,9 @@ const mediaOutputs = () => ({
   properties: {
     jobId: { type: 'string' as const, title: '媒体任务编号' },
     assetId: { type: 'string' as const, title: '媒体资产编号' },
-    url: { type: 'string' as const, title: '资源地址' },
-    poster: { type: 'string' as const, title: '视频封面' },
+    // 文件按「string + format:file」表达：资源地址就是文件流（画布上按链接传递）
+    url: { type: 'string' as const, format: 'file' as const, title: '文件（资源地址）' },
+    poster: { type: 'string' as const, format: 'file' as const, title: '视频封面文件' },
     caption: { type: 'string' as const, title: '说明文字' },
     mediaType: { type: 'string' as const, title: '媒体类型' },
     provider: { type: 'string' as const, title: '生成供应商' },

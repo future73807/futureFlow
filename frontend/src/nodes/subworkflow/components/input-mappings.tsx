@@ -23,6 +23,16 @@ interface MappingValue {
   content: string[];
 }
 
+/** 入参类型的中文标签：与画布类型系统保持一致 */
+const TYPE_LABELS: Record<string, string> = {
+  string: '字符串',
+  integer: '整数',
+  number: '数字',
+  boolean: '布尔值',
+  object: '对象',
+  array: '数组',
+};
+
 /**
  * 参数映射：跟随所选目标工作流的已发布入参契约动态变化；
  * 每个入参必须引用一个上游变量。
@@ -81,21 +91,33 @@ export function InputMappings() {
           目标工作流的开始节点没有入参，无需映射。
         </Typography.Text>
       )}
-      {meta.startVariables.map((item) => (
-        <Field<MappingValue> key={item.variable} name={`inputMappings.${item.variable}`}>
-          {({ field }) => (
-            <FormItem name={`入参 · ${item.label}`} required vertical type="ref">
-              <VariableSelector
-                style={{ width: '100%' }}
-                value={field.value?.content || []}
-                readonly={readonly}
-                config={{ placeholder: '引用上游变量' }}
-                onChange={(value) => field.onChange({ type: 'ref', content: value || [] })}
-              />
-            </FormItem>
-          )}
-        </Field>
-      ))}
+      {meta.startVariables.map((item) => {
+        // 类型约束：数组只能迭代、对象只能取属性，结构性类型不能互相混用，
+        // 因此数组/对象入参只列出同类型的上游变量；标量之间仍允许互相引用。
+        const expectedType = String(item.type || 'string').toLowerCase();
+        const structural = ['array', 'object'].includes(expectedType);
+        return (
+          <Field<MappingValue> key={item.variable} name={`inputMappings.${item.variable}`}>
+            {({ field }) => (
+              <FormItem
+                name={`入参 · ${item.label}（${TYPE_LABELS[expectedType] || expectedType}）`}
+                required
+                vertical
+                type="ref"
+              >
+                <VariableSelector
+                  style={{ width: '100%' }}
+                  value={field.value?.content || []}
+                  readonly={readonly}
+                  includeSchema={structural ? { type: expectedType, extra: { weak: true } } : undefined}
+                  config={{ placeholder: structural ? `选择${TYPE_LABELS[expectedType] || expectedType}类型变量` : '引用上游变量' }}
+                  onChange={(value) => field.onChange({ type: 'ref', content: value || [] })}
+                />
+              </FormItem>
+            )}
+          </Field>
+        );
+      })}
       <Typography.Text type="tertiary" style={{ fontSize: 12 }}>
         输出：{meta.endOutputs.length > 0 ? meta.endOutputs.join('、') : '（目标工作流未声明输出）'}
       </Typography.Text>
