@@ -59,6 +59,7 @@ export const CanvasPage = () => {
   const [runsVisible, setRunsVisible] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeRevision, setChangeRevision] = useState(0);
@@ -527,40 +528,103 @@ export const CanvasPage = () => {
           </div>
         ) : (
           <ul className="canvas-run-list">
-            {runs.map((run) => (
-              <li key={run.id} className="canvas-run-row">
-                <div className="canvas-run-head">
-                  <Tag
-                    size="small"
-                    color={
-                      run.status === 'succeeded'
-                        ? 'green'
-                        : run.status === 'failed'
-                          ? 'red'
-                          : run.status === 'running'
-                            ? 'blue'
-                            : 'grey'
+            {runs.map((run) => {
+              const expanded = expandedRunId === run.id;
+              const nodeResults: any[] = Array.isArray(run.nodeResults) ? run.nodeResults : [];
+              const hasOutputs = run.outputs && Object.keys(run.outputs).length > 0;
+              return (
+                <li
+                  key={run.id}
+                  className={'canvas-run-row' + (expanded ? ' expanded' : '')}
+                  onClick={() => setExpandedRunId(expanded ? null : run.id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setExpandedRunId(expanded ? null : run.id);
                     }
-                  >
-                    {run.status}
-                  </Tag>
-                  <span className="canvas-run-source">{run.source || 'manual'}</span>
-                  <span className="canvas-run-time">
-                    {new Date(run.createdAt).toLocaleString('zh-CN', {
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-                <div className="canvas-run-meta">
-                  <span>令牌 {run.totalTokens ?? 0}</span>
-                  <span>耗时 {Number(run.elapsedTime || 0).toFixed(2)}s</span>
-                  <span>费用 ¥{Number(run.actualCost ?? run.estimatedCost ?? 0).toFixed(4)}</span>
-                </div>
-              </li>
-            ))}
+                  }}
+                >
+                  <div className="canvas-run-head">
+                    <Tag
+                      size="small"
+                      color={
+                        run.status === 'succeeded'
+                          ? 'green'
+                          : run.status === 'failed'
+                            ? 'red'
+                            : run.status === 'running'
+                              ? 'blue'
+                              : 'grey'
+                      }
+                    >
+                      {run.status}
+                    </Tag>
+                    <span className="canvas-run-source">{run.source || 'manual'}</span>
+                    <span className="canvas-run-time">
+                      {new Date(run.createdAt).toLocaleString('zh-CN', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span className="canvas-run-toggle">{expanded ? '收起' : '查看结果'}</span>
+                  </div>
+                  <div className="canvas-run-meta">
+                    <span>令牌 {run.totalTokens ?? 0}</span>
+                    <span>耗时 {Number(run.elapsedTime || 0).toFixed(2)}s</span>
+                    <span>费用 ¥{Number(run.actualCost ?? run.estimatedCost ?? 0).toFixed(4)}</span>
+                  </div>
+                  {expanded && (
+                    <div className="canvas-run-detail">
+                      {run.errorMessage && (
+                        <div className="canvas-run-detail-section">
+                          <span className="canvas-run-detail-title">失败原因</span>
+                          <span className="canvas-run-detail-empty">{run.errorMessage}</span>
+                        </div>
+                      )}
+                      <div className="canvas-run-detail-section">
+                        <span className="canvas-run-detail-title">节点执行</span>
+                        {nodeResults.length > 0 ? (
+                          <ul className="canvas-run-node-list">
+                            {nodeResults.map((node, index) => (
+                              <li className="canvas-run-node" key={`${run.id}-${index}`}>
+                                <Tag
+                                  size="small"
+                                  color={node.status === 'succeeded' ? 'green' : node.status === 'failed' ? 'red' : 'grey'}
+                                >
+                                  {node.status === 'succeeded' ? '成功' : node.status === 'failed' ? '失败' : node.status || '-'}
+                                </Tag>
+                                <span className="canvas-run-node-name">{node.title || node.nodeType || '-'}</span>
+                                <span className="canvas-run-node-meta">
+                                  {node.elapsedTime != null ? `${Number(node.elapsedTime).toFixed(2)}s` : ''}
+                                  {node.tokens ? ` · ${node.tokens} tokens` : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="canvas-run-detail-empty">本次运行没有节点明细（历史数据）</span>
+                        )}
+                      </div>
+                      <div className="canvas-run-detail-section">
+                        <span className="canvas-run-detail-title">输出结果</span>
+                        {hasOutputs ? (
+                          <pre className="canvas-run-outputs">
+                            {JSON.stringify(run.outputs, null, 2)}
+                          </pre>
+                        ) : (
+                          <span className="canvas-run-detail-empty">本次运行没有输出快照（历史数据或执行未产出）</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </SideSheet>

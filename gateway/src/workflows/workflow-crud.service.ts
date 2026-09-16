@@ -271,6 +271,8 @@ export class WorkflowCrudService {
         actualCost: Number(run.actualCost || 0),
         elapsedTime: run.elapsedTime,
         errorMessage: run.errorMessage,
+        outputs: run.outputs ?? null,
+        nodeResults: run.nodeResults ?? null,
         createdAt: run.createdAt,
         finishedAt: run.finishedAt,
       })),

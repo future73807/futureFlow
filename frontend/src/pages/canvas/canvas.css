@@ -180,6 +180,91 @@
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius);
   background: var(--ff-surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.canvas-run-row:hover {
+  border-color: var(--ff-border-strong);
+  background: var(--ff-surface-muted);
+}
+
+.canvas-run-row.expanded {
+  background: var(--ff-surface-muted);
+}
+
+.canvas-run-toggle {
+  margin-left: auto;
+  color: var(--ff-subtle);
+  font-size: 12px;
+}
+
+.canvas-run-detail {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ff-border);
+}
+
+.canvas-run-detail-section {
+  display: grid;
+  gap: 6px;
+}
+
+.canvas-run-detail-title {
+  color: var(--ff-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.canvas-run-node-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.canvas-run-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.canvas-run-node-name {
+  flex: 1;
+  overflow: hidden;
+  color: var(--ff-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-run-node-meta {
+  color: var(--ff-subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.canvas-run-outputs {
+  max-height: 240px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface);
+  color: var(--ff-text);
+  font-family: Monaco, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.canvas-run-detail-empty {
+  color: var(--ff-subtle);
+  font-size: 12px;
 }
 
 .canvas-run-head {

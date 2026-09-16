@@ -76,6 +76,14 @@ export class WorkflowRun {
   @Column({ type: 'float', default: 0 })
   elapsedTime: number; // 执行耗时(秒)
 
+  /** 执行结束时的输出快照：运行记录回看历史结果用，不参与计费。 */
+  @Column({ type: 'jsonb', nullable: true })
+  outputs: Record<string, any> | null;
+
+  /** 各节点执行摘要（标题/类型/状态/耗时），与 outputs 一起构成历史结果。 */
+  @Column({ type: 'jsonb', nullable: true })
+  nodeResults: Array<Record<string, any>> | null;
+
   @Column({ type: 'text', nullable: true })
   errorMessage: string;
 

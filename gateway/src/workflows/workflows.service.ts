@@ -179,6 +179,12 @@ export class WorkflowsService {
     let receivedEventBytes = 0;
     let streamDrained = false;
     let executionError: Error | null = null;
+    /**
+     * 节点执行摘要：运行记录要能回看每一步的结果与耗时，只保留字段级摘要，
+     * 不缓存节点原始输出，避免大工作流把整条事件流留在内存里。
+     */
+    const nodeResults: Array<Record<string, any>> = [];
+    const MAX_NODE_RESULTS = 200;
 
     const recordEvent = (event: DifySSEEvent) => {
       const eventBytes = Buffer.byteLength(JSON.stringify(event), 'utf8');
@@ -193,6 +199,17 @@ export class WorkflowsService {
       if (event.event === 'workflow_started') workflowStarted = event;
       if (event.event === 'workflow_finished') workflowFinished = event;
       if (event.event === 'error') errorEvent = event;
+      if (event.event === 'node_finished' && nodeResults.length < MAX_NODE_RESULTS) {
+        const data = event.data || {};
+        nodeResults.push({
+          title: data.title || data.node_id || '',
+          nodeType: data.node_type || '',
+          status: data.status || '',
+          elapsedTime: data.elapsed_time ?? null,
+          tokens: data.execution_metadata?.total_tokens ?? null,
+          error: data.error ? String(data.error).slice(0, 500) : null,
+        });
+      }
     };
 
     try {
@@ -271,6 +288,8 @@ export class WorkflowsService {
           totalTokens: result.totalTokens,
           totalSteps: result.totalSteps,
           elapsedTime: result.elapsedTime,
+          outputs: result.outputs ?? null,
+          nodeResults: nodeResults.length > 0 ? nodeResults : null,
           errorMessage: failureMessage,
           finishedAt: new Date(),
         });
@@ -300,6 +319,8 @@ export class WorkflowsService {
           totalSteps: result.totalSteps,
           elapsedTime: result.elapsedTime,
           actualCost,
+          outputs: result.outputs ?? null,
+          nodeResults: nodeResults.length > 0 ? nodeResults : null,
           difyWorkflowId: result.workflowRunId,
           difyTaskId: result.taskId,
           finishedAt: new Date(),
