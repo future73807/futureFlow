@@ -1,6 +1,4 @@
-import iconImage from '../../assets/icon-image.svg';
-import iconText from '../../assets/icon-text.svg';
-import iconVideo from '../../assets/icon-video.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { FlowNodeRegistry } from '../../typings';
 import { createWorkflowNodeId } from '../../utils/node-id';
 import { WorkflowNodeType } from '../constants';
@@ -56,7 +54,7 @@ const mediaOutputs = () => ({
 export const TextNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Text,
   info: {
-    icon: iconText,
+    icon: pluginIconUrl('text'),
     description: '组合、传递或格式化文本，支持引用上游变量。',
   },
   meta: baseMeta,
@@ -89,7 +87,7 @@ export const TextNodeRegistry: FlowNodeRegistry = {
 export const ImageNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Image,
   info: {
-    icon: iconImage,
+    icon: pluginIconUrl('image'),
     description: '传递已有图片，或通过 OpenAI、Google、豆包、MiniMax 原生生成图片。',
   },
   meta: baseMeta,
@@ -122,7 +120,7 @@ export const ImageNodeRegistry: FlowNodeRegistry = {
 export const VideoNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Video,
   info: {
-    icon: iconVideo,
+    icon: pluginIconUrl('video'),
     description: '传递已有视频，或通过 OpenAI、Google、豆包、MiniMax 创建和查询视频任务。',
   },
   meta: baseMeta,
