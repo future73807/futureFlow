@@ -211,12 +211,27 @@ assert.equal(
   2,
 );
 
+// 布尔输入按 1/0 的数字变量下发（Dify 0.15.3 没有布尔类型，与循环输出布尔按 1/0 兼容一致）
 const booleanStart = JSON.parse(JSON.stringify(startContractFlow));
 booleanStart.nodes[0].data.outputs.properties.count.type = 'boolean';
-assert.throws(
-  () => converter.toDifyDSL(booleanStart),
-  /Dify 0\.15\.3 没有布尔输入类型/,
-);
+const booleanDsl = converter.toDifyDSL(booleanStart) as any;
+const booleanVariable = booleanDsl.workflow.graph.nodes
+  .find((node: any) => node.data?.type === 'start')
+  .data.variables.find((variable: any) => variable.variable === 'count');
+assert.equal(booleanVariable.type, 'number', '布尔输入应映射为 1/0 的数字输入');
+
+// 时间与文件类型（string + format）按文本下发
+const timeStart = JSON.parse(JSON.stringify(startContractFlow));
+timeStart.nodes[0].data.outputs.properties.count = { type: 'string', format: 'date-time' };
+const fileStart = JSON.parse(JSON.stringify(startContractFlow));
+fileStart.nodes[0].data.outputs.properties.count = { type: 'string', format: 'file' };
+for (const variant of [timeStart, fileStart]) {
+  const dsl = converter.toDifyDSL(variant) as any;
+  const variable = dsl.workflow.graph.nodes
+    .find((node: any) => node.data?.type === 'start')
+    .data.variables.find((item: any) => item.variable === 'count');
+  assert.equal(variable.type, 'paragraph', '时间/文件输入应映射为文本输入');
+}
 
 const legacyIdFlow = baseFlow() as any;
 const legacyProducerId = 'producer-with-old-nanoid';

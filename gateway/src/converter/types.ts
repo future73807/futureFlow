@@ -65,7 +65,7 @@ export interface FlowNodeJSON {
     [key: string]: any;
   };
   data: FlowNodeData;
-  /** 容器节点的子画布节点。首期数组批处理仅允许固定的三节点结构。 */
+  /** 容器节点的循环体子节点。循环仅允许固定的三节点结构。 */
   blocks?: FlowNodeJSON[];
   /** 容器节点内部连线，与顶层 edges 使用相同结构。 */
   edges?: FlowEdgeJSON[];

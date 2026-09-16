@@ -174,7 +174,25 @@ invalid((flow) => {
 invalid((flow) => {
   flow.nodes[2].blocks[1].data.outputs.properties.extra = { type: 'number' };
 }, /必须且只能声明一个输出/);
-invalid((flow) => { flow.nodes[1].data.outputs.properties.items.items.type = 'object'; }, /输入仅支持/);
+// 说明：嵌套数组在上游「代码节点输出 schema」校验就被拒（暂不支持嵌套数组输出），
+// 到不了循环节点的输入类型校验，因此这里不再断言该分支。
+
+// 对象数组是允许的：循环体通过 item.<属性> 取字段
+{
+  const objectDraft = buildFlow() as any;
+  objectDraft.nodes[1].data.outputs.properties.items.items = { type: 'object' };
+  const loopBody = objectDraft.nodes[2].blocks[1];
+  loopBody.data.inputs = loopBody.data.inputs || { type: 'object', properties: {} };
+  loopBody.data.inputs.properties = { ...(loopBody.data.inputs.properties || {}), item: { type: 'object' } };
+  loopBody.data.script.content =
+    'function main({ params }) { return { result: String(params.item && params.item.name) }; }';
+  loopBody.data.outputs.properties.result = { type: 'string' };
+  objectDraft.nodes[2].data.outputs.properties.result.items = { type: 'string' };
+  assert.doesNotThrow(
+    () => converter.toDifyDSL(objectDraft),
+    '对象数组应被接受（循环体可读取数组元素的属性）',
+  );
+}
 invalid((flow) => { flow.nodes[2].blocks[1].data.outputs.properties.result.type = 'object'; }, /逐项输出仅支持/);
 invalid((flow) => { flow.nodes[2].data.outputs.properties.result.items.type = 'string'; }, /输出声明与批处理结果不一致/);
 invalid((flow) => { flow.nodes[2].data.loopOutputs.result.content[1] = 'missing'; }, /唯一输出/);
@@ -188,6 +206,6 @@ invalid((flow) => {
   const second = structuredClone(flow.nodes[2]);
   second.id = 'batch_two';
   flow.nodes.push(second);
-}, /最多只能使用一个节点/);
+}, /最多只能使用一个(循环)?节点|每个工作流最多只能使用一个/);
 
 console.log('batch loop smoke tests passed');
