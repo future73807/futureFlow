@@ -7,15 +7,56 @@ import { IconLock, IconMail, IconUser } from '@douyinfe/semi-icons';
 import './login.css';
 import { isLoggedIn, login, register } from '../../utils/auth';
 
-/** 全角字符检测：中文输入法把 @ - _ . 等打成全角时，密码看着没错但认证必然失败 */
+/**
+ * 输入法误输入检测：密码里混入全角字符或中文时，界面看着没错但认证必然失败。
+ * 只提示“账号或密码错误”会把用户引到“我记错密码了”的错误方向，这里按类型给出具体原因。
+ */
 const FULL_WIDTH_PATTERN = /[\uFF01-\uFF5E\u3000]/;
-const hasFullWidth = (value: string) => FULL_WIDTH_PATTERN.test(value);
+const CJK_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/;
+const NON_ASCII_PATTERN = /[^\u0020-\u007E]/;
+
+type InputIssueKind = 'fullwidth' | 'cjk' | 'non-ascii';
+
+interface InputIssue {
+  kind: InputIssueKind;
+  /** 第一个可疑字符的位置（从 1 开始），帮助用户快速定位；不回显字符本身 */
+  position: number;
+}
+
+const classifyInput = (value: string): InputIssue | null => {
+  if (!value) return null;
+  const classifyChar = (char: string): InputIssueKind | null => {
+    if (FULL_WIDTH_PATTERN.test(char)) return 'fullwidth';
+    if (CJK_PATTERN.test(char)) return 'cjk';
+    if (NON_ASCII_PATTERN.test(char)) return 'non-ascii';
+    return null;
+  };
+  // 先整体判一次，绝大多数输入是纯 ASCII，避免逐字符扫描
+  if (!NON_ASCII_PATTERN.test(value)) return null;
+  for (let index = 0; index < value.length; index += 1) {
+    const kind = classifyChar(value[index]);
+    if (kind) return { kind, position: index + 1 };
+  }
+  return null;
+};
+
+const issueHint = (issue: InputIssue): string => {
+  const at = `（第 ${issue.position} 个字符）`;
+  switch (issue.kind) {
+    case 'fullwidth':
+      return `${at}是全角字符（中文输入法会把半角符号打成全角），请切换英文输入法后重输`;
+    case 'cjk':
+      return `${at}是中文字符（输入法处于中文状态时字母会被打成中文），请切换英文输入法后重输`;
+    default:
+      return `${at}是非半角字符，请切换英文输入法后重输`;
+  }
+};
 
 export const LoginRegisterPage = () => {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
-  // 记录全角输入并在表单内常驻提示：全角字符导致的失败绝不能用「账号或密码错误」糊过去
-  const [fullWidthField, setFullWidthField] = useState<'' | 'account' | 'password'>('');
+  // 记录输入法误输入并在表单内常驻提示，避免用「账号或密码错误」糊过去
+  const [inputIssue, setInputIssue] = useState<{ field: 'account' | 'password'; issue: InputIssue } | null>(null);
   // 密码首尾空格是另一类高频误输（复制粘贴带进来），同样提前提示而不是让用户猜
   const [passwordHasSpace, setPasswordHasSpace] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,22 +71,24 @@ export const LoginRegisterPage = () => {
     setLoading(true);
     const account = String(values.account || '').trim();
     const password = String(values.password || '');
-    const fullWidth = hasFullWidth(password) ? 'password' : hasFullWidth(account) ? 'account' : '';
-    setFullWidthField(fullWidth);
+    const passwordIssue = classifyInput(password);
+    const accountIssue = classifyInput(account);
+    const issue = passwordIssue
+      ? { field: 'password' as const, issue: passwordIssue }
+      : accountIssue
+        ? { field: 'account' as const, issue: accountIssue }
+        : null;
+    setInputIssue(issue);
     setPasswordHasSpace(password !== password.trim());
     try {
       await login(account, password);
       Toast.success('登录成功');
       navigate('/', { replace: true });
     } catch (error: any) {
-      // 中文输入法把 @ 打成全角 ＠ 时认证必然失败，此时「账号或密码错误」是误导：
-      // 用户会以为记错密码，真正要改的是输入法，所以这种情况只给全角提示。
-      if (fullWidth) {
-        Toast.error(
-          fullWidth === 'password'
-            ? '密码里有全角字符（如 ＠），请切换英文输入法后重输'
-            : '用户名里有全角字符，请切换英文输入法后重输',
-        );
+      // 输入法误输入导致的失败绝不能用「账号或密码错误」糊过去：用户会以为记错密码，
+      // 真正要改的是输入法，所以这种情况只给输入法提示。
+      if (issue) {
+        Toast.error(`${issue.field === 'password' ? '密码' : '用户名'}${issueHint(issue.issue)}`);
       } else if (password !== password.trim()) {
         Toast.error('密码首尾带空格，请删掉后再登录');
       } else {
@@ -94,9 +137,11 @@ export const LoginRegisterPage = () => {
               size="large"
               rules={[{ required: true, message: '请输入用户名' }]}
               onChange={(value: string) =>
-                setFullWidthField((previous) =>
-                  hasFullWidth(String(value)) ? 'account' : previous === 'account' ? '' : previous,
-                )
+                setInputIssue((previous) => {
+                  const nextIssue = classifyInput(String(value));
+                  if (nextIssue) return { field: 'account', issue: nextIssue };
+                  return previous?.field === 'account' ? null : previous;
+                })
               }
             />
             <Form.Input
@@ -109,19 +154,21 @@ export const LoginRegisterPage = () => {
               rules={[{ required: true, message: '请输入密码' }]}
               onChange={(value: string) => {
                 const text = String(value);
-                setFullWidthField((previous) =>
-                  hasFullWidth(text) ? 'password' : previous === 'password' ? '' : previous,
-                );
+                setInputIssue((previous) => {
+                  const nextIssue = classifyInput(text);
+                  if (nextIssue) return { field: 'password', issue: nextIssue };
+                  return previous?.field === 'password' ? null : previous;
+                });
                 setPasswordHasSpace(text !== text.trim());
               }}
             />
-            {fullWidthField && (
+            {inputIssue && (
               <p className="auth-input-warning" role="alert">
-                检测到全角字符：中文输入法会把 <code>@</code> 打成 <code>＠</code>，请切换英文输入法后重输
-                {fullWidthField === 'password' ? '密码' : '用户名'}。
+                {inputIssue.field === 'password' ? '密码' : '用户名'}
+                {issueHint(inputIssue.issue)}。
               </p>
             )}
-            {!fullWidthField && passwordHasSpace && (
+            {!inputIssue && passwordHasSpace && (
               <p className="auth-input-warning" role="alert">
                 密码首尾带空格（常见于复制粘贴），请删掉后再登录。
               </p>
