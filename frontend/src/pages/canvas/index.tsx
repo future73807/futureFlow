@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import logoUrl from '../../assets/logo.svg';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Dropdown, Input, Modal, SideSheet, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import {
@@ -10,7 +9,6 @@ import {
   IconDelete,
   IconDownload,
   IconHistory,
-  IconInfoCircle,
   IconMore,
   IconSave,
   IconSend,
@@ -30,6 +28,7 @@ import '../../styles/index.css';
 import { nodeRegistries } from '../../nodes';
 import { useEditorProps } from '../../hooks';
 import { GatewayRunButton } from '../../components/gateway-run';
+import { CanvasNodeSearch } from './node-search';
 import { VersionPanel } from '../../components/version-panel';
 import { buildWorkflowExport, downloadJsonFile } from '../../utils/workflow-io';
 import { formatVersionLabel } from '../../utils/version';
@@ -60,6 +59,7 @@ export const CanvasPage = () => {
   const [runsVisible, setRunsVisible] = useState(false);
   const [runs, setRuns] = useState<any[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeRevision, setChangeRevision] = useState(0);
   const editorRef = useRef<FreeLayoutPluginContext | null>(null);
@@ -115,6 +115,7 @@ export const CanvasPage = () => {
 
   const handleEditorReady = useCallback((context: FreeLayoutPluginContext) => {
     editorRef.current = context;
+    setEditorReady(true);
   }, []);
 
   const saveWorkflow = useCallback(async (showToast = false) => {
@@ -372,9 +373,6 @@ export const CanvasPage = () => {
               onClick={handleBack}
             />
           </Tooltip>
-          <span className="canvas-brand-mark" aria-hidden="true">
-            <img src={logoUrl} width={20} height={20} alt="" />
-          </span>
           <div className="canvas-title-block">
             <div className="canvas-name-group">
               <Input
@@ -385,11 +383,6 @@ export const CanvasPage = () => {
                   markDirty();
                 }}
               />
-              <Tooltip content={workflowDescription || '该工作流暂无描述'}>
-                <span className="canvas-info-icon" aria-label="工作流说明">
-                  <IconInfoCircle aria-hidden="true" />
-                </span>
-              </Tooltip>
             </div>
             <div className="canvas-status-row">
               <span className={'canvas-save-status ' + saveStatus}>{saveStatusText}</span>
@@ -411,6 +404,7 @@ export const CanvasPage = () => {
           </div>
 
           <div className="canvas-save-actions">
+              <CanvasNodeSearch context={editorReady ? editorRef.current : null} />
               <Tooltip content="版本管理">
               <Button
                 className="canvas-icon-action"

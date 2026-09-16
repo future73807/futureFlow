@@ -10,7 +10,7 @@ import {
 } from '@flowgram.ai/free-layout-editor';
 import { IJsonSchema, JsonSchemaUtils } from '@flowgram.ai/form-materials';
 
-import iconVariable from '../../assets/icon-variable.svg';
+import { pluginIconUrl } from '../../components/plugin-icons';
 import { VariablePanelLayer } from './variable-panel-layer';
 
 const disabledGlobalVariableSchema: IJsonSchema = {
@@ -34,7 +34,7 @@ export const createVariablePanelPlugin = definePluginCreator<{ initialData?: IJs
         key: 'global',
         meta: {
           title: '全局变量（未启用）',
-          icon: iconVariable,
+          icon: pluginIconUrl('variable', 24),
         },
         type: JsonSchemaUtils.schemaToAST(disabledGlobalVariableSchema),
       }),

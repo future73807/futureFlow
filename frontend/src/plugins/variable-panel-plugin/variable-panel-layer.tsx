@@ -3,24 +3,16 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { domUtils, injectable, Layer } from '@flowgram.ai/free-layout-editor';
+import { injectable, Layer } from '@flowgram.ai/free-layout-editor';
 
 import { VariablePanel } from './components/variable-panel';
 
+/**
+ * 变量面板挂载层：面板自身用 Portal 渲染到 body 并固定在画布右上角，
+ * 这样它不会被画布图层、顶栏或弹层盖住；这一层只负责挂载。
+ */
 @injectable()
 export class VariablePanelLayer extends Layer {
-  onReady(): void {
-    // Fix variable panel in the right of canvas
-    this.config.onDataChange(() => {
-      const { scrollX, scrollY } = this.config.config;
-      domUtils.setStyle(this.node, {
-        position: 'absolute',
-        right: 25 - scrollX,
-        top: scrollY + 25,
-      });
-    });
-  }
-
   render(): JSX.Element {
     return <VariablePanel />;
   }

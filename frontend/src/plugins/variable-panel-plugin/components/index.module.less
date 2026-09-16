@@ -3,14 +3,32 @@
  * SPDX-License-Identifier: MIT
  */
 
+.panel-anchor {
+  /* 挂在 body 上的固定锚点：层级高于顶栏与所有弹层；left/top 由拖动位置决定 */
+  position: fixed;
+}
+
 .panel-wrapper {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  /* 展开后从锚点向右下生长，拖动时以左上角为基准 */
+  align-items: flex-start;
+  touch-action: none;
+}
+
+/* 展开后的拖动把手：Tabs 标题栏整条可拖 */
+.panel-drag-handle {
+  cursor: move;
+  user-select: none;
 }
 
 .variable-panel-button {
   position: absolute;
   top: 0;
-  right: 0;
+  /* 收起时按钮以锚点为左上角向右下展开，不会跑到画布外 */
+  left: 0;
+  cursor: grab;
   border-radius: 50%;
   width: 50px;
   height: 50px;
@@ -20,18 +38,19 @@
     width: 30px;
     height: 30px;
     top: 10px;
+    left: auto;
     right: 10px;
   }
 }
 
 .panel-container {
   width: 500px;
+  max-width: calc(100vw - 50px);
   border-radius: var(--ff-radius-lg);
   background-color: var(--ff-surface);
   border: 1px solid var(--ff-border);
   overflow: hidden;
   box-shadow: var(--ff-shadow-lg);
-  z-index: 30;
 
   :global(.semi-tabs-bar) {
     padding-left: 20px;

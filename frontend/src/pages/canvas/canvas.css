@@ -47,18 +47,6 @@
   color: var(--ff-text) !important;
 }
 
-.canvas-brand-mark {
-  display: inline-flex;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: var(--ff-surface-muted);
-  line-height: 0;
-}
-
 .canvas-title-block {
   display: grid;
   min-width: 0;
@@ -80,9 +68,16 @@
 
 .canvas-name-input.semi-input-wrapper {
   min-height: 26px;
-  padding: 0 6px;
+  /* 左右不留内边距、边框改用内阴影：标题文字要与下方状态行、返回按钮严格左对齐 */
+  padding: 0;
+  border-width: 0 !important;
   border-color: transparent !important;
   background: transparent;
+}
+
+/* 标题内层 input 自带 12px 内边距，会整体右移标题，这里清零才能对齐状态行 */
+.canvas-name-input .semi-input {
+  padding: 0;
 }
 
 .canvas-name-input .semi-input {
@@ -94,8 +89,8 @@
 
 .canvas-name-input.semi-input-wrapper:hover,
 .canvas-name-input.semi-input-wrapper-focus {
-  border-color: var(--ff-border-strong) !important;
   background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--ff-border-strong);
 }
 
 .canvas-save-status {
@@ -111,19 +106,6 @@
 
 .canvas-save-status.error {
   color: var(--ff-danger);
-}
-
-/* 名称右侧的说明入口：无描述时也给出明确提示，不做成死按钮 */
-.canvas-info-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  color: #c9cdd4;
-  cursor: help;
-}
-
-.canvas-info-icon:hover {
-  color: var(--ff-text-secondary);
 }
 
 .canvas-status-row {
@@ -158,7 +140,14 @@
 
 .canvas-save-actions {
   flex: 0 0 auto;
+  /* 顶栏操作区始终贴在右侧，不再跟在标题后面留下大片空白 */
+  margin-left: auto;
   gap: 8px;
+}
+
+.canvas-header-search {
+  width: 180px;
+  flex: 0 1 180px;
 }
 
 .canvas-icon-action {
@@ -246,7 +235,6 @@
     padding: 6px 10px;
   }
 
-  .canvas-brand-mark,
   .canvas-save-status {
     display: none;
   }

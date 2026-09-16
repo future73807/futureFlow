@@ -26,7 +26,6 @@ import { Comment } from './comment';
 import { AutoLayout } from './auto-layout';
 import { ProblemButton } from '../problem-panel';
 import { DownloadTool } from './download';
-import { NodeSearch } from './node-search';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
@@ -61,7 +60,6 @@ export const DemoTools = () => {
         </div>
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <div className="canvas-tool-group canvas-tool-group-edit">
-          <NodeSearch />
           <AutoLayout />
           <Readonly />
           <Comment />
