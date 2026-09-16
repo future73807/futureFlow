@@ -576,15 +576,14 @@ export const ProfilePage = () => {
                   okType="danger"
                   onConfirm={() => void handleRevoke(record.id)}
                 >
-                  <Tooltip content="撤销 Key">
-                    <Button
+                  <Button
                       size="small"
                       type="danger"
                       theme="borderless"
                       icon={<IconDelete />}
                       aria-label={'撤销 ' + record.name}
+                      title="撤销 Key"
                     />
-                  </Tooltip>
                 </Popconfirm>
               ),
             },
@@ -671,15 +670,14 @@ export const ProfilePage = () => {
                     okType="danger"
                     onConfirm={() => void handleFileDelete(record.id)}
                   >
-                    <Tooltip content="删除文件">
-                      <Button
+                    <Button
                         size="small"
                         type="danger"
                         theme="borderless"
                         icon={<IconDelete />}
                         aria-label={'删除 ' + record.originalName}
+                        title="删除文件"
                       />
-                    </Tooltip>
                   </Popconfirm>
                 </div>
               ),
@@ -745,15 +743,14 @@ export const ProfilePage = () => {
                     okType="danger"
                     onConfirm={() => void handleDeleteDataset(record.id)}
                   >
-                    <Tooltip content="删除知识库">
-                      <Button
+                    <Button
                         size="small"
                         type="danger"
                         theme="borderless"
                         icon={<IconDelete />}
                         aria-label={'删除 ' + record.name}
+                        title="删除知识库"
                       />
-                    </Tooltip>
                   </Popconfirm>
                 </div>
               ),
