@@ -23,6 +23,7 @@ export enum WorkflowNodeType {
   Database = 'database',
   Python = 'python',
   Variable = 'variable',
+  VariableAggregator = 'variable-aggregator',
   Condition = 'condition',
   MultiCondition = 'multi-condition',
   Loop = 'loop',

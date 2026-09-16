@@ -118,6 +118,7 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
       subworkflow: '扩展能力',
       mcp: '扩展能力',
       variable: '流程控制',
+      'variable-aggregator': '流程控制',
       condition: '流程控制',
       'multi-condition': '流程控制',
       loop: '流程控制',

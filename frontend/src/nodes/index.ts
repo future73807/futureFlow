@@ -10,6 +10,7 @@
 
 import { FlowNodeRegistry } from '../typings';
 import { VariableNodeRegistry } from './variable';
+import { VariableAggregatorNodeRegistry } from './variable-aggregator';
 import { StartNodeRegistry } from './start';
 import { LoopNodeRegistry } from './loop';
 import { LLMNodeRegistry } from './llm';
@@ -54,6 +55,7 @@ PythonNodeRegistry,
   ContinueNodeRegistry,
   BreakNodeRegistry,
   VariableNodeRegistry,
+  VariableAggregatorNodeRegistry,
   GroupNodeRegistry,
   MultiConditionNodeRegistry,
 ];

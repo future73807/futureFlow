@@ -650,6 +650,46 @@ const CONDITION_PLUGIN: PluginCatalogEntry = {
   capability: '需要按数据值走向不同分支时使用。',
 };
 
+const VARIABLE_AGGREGATOR_PLUGIN: PluginCatalogEntry = {
+  id: 'variable-aggregator',
+  nodeType: 'variable-aggregator',
+  name: '变量聚合',
+  category: '流程控制',
+  summary: '把多个分支的输出聚合起来：每个分组返回第一个非空的值。',
+  description:
+    '聚合策略为「返回每个分组中第一个非空的值」：每个分组给出一串变量引用，运行时按顺序取第一个非空值作为该分组的输出；分组内变量类型需要一致，全部为空时返回该类型的安全空值。常用于多分支汇合后统一取值。',
+  tags: ['聚合', '合并', '变量', '汇合'],
+  icon: 'icon-variable-aggregator',
+  tools: [
+    {
+      name: 'aggregate_variables',
+      description: '按分组把多个变量聚合为每组一个输出值。',
+      params: [
+        {
+          name: 'groups',
+          type: 'array',
+          required: true,
+          description: '分组列表，每项包含输出名 key 与变量引用数组 values',
+        },
+        {
+          name: 'strategy',
+          type: 'string',
+          required: false,
+          description: '聚合策略，当前仅支持 first-non-empty（每个分组返回第一个非空的值）',
+        },
+      ],
+      outputs: [
+        {
+          name: 'result',
+          type: 'dynamic',
+          description: '每个分组对应一个输出，值为该分组第一个非空的值',
+        },
+      ],
+    },
+  ],
+  capability: '多分支汇合后需要统一取值时使用。',
+};
+
 const MULTI_CONDITION_PLUGIN: PluginCatalogEntry = {
   id: 'multi-condition',
   nodeType: 'multi-condition',
@@ -688,11 +728,11 @@ const MULTI_CONDITION_PLUGIN: PluginCatalogEntry = {
 const LOOP_PLUGIN: PluginCatalogEntry = {
   id: 'loop',
   nodeType: 'loop',
-  name: '数组批处理',
+  name: '循环',
   category: '流程控制',
-  summary: '串行处理字符串或数字数组，最多 20 项。',
+  summary: '循环处理字符串或数字数组，最多 20 项。',
   description:
-    '选择一个字符串或数字数组，按顺序逐项执行子画布中的同步 JavaScript 处理节点，并用循环输出收集每项结果。首期限制：数组最多 20 项，子画布固定为一个同步 JavaScript 节点，不支持嵌套、API、大语言模型、媒体、变量、继续或中断。',
+    '选择一个字符串或数字数组，按顺序逐项执行循环体中的同步 JavaScript 处理节点，并用循环输出收集每项结果。限制：数组最多 20 项，循环体固定为一个同步 JavaScript 节点，不支持嵌套、API、大语言模型、媒体、变量、继续或中断。',
   tags: ['循环', '批处理', '数组'],
   icon: 'icon-loop',
   tools: [
@@ -775,4 +815,5 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   MULTI_CONDITION_PLUGIN,
   LOOP_PLUGIN,
   VARIABLE_PLUGIN,
+  VARIABLE_AGGREGATOR_PLUGIN,
 ];

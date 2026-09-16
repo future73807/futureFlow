@@ -31,6 +31,8 @@ import { prepareHttpNodesForRuntime } from '../../../nodes/http/runtime';
 import { prepareVariableNodesForRuntime } from '../../../nodes/variable/runtime';
 import { prepareCodeNodesForRuntime } from '../../../nodes/code/runtime';
 import { prepareConditionNodesForRuntime } from '../../../nodes/condition/runtime';
+import { prepareLoopNodesForRuntime } from '../../../nodes/loop/runtime';
+import { prepareAggregatorNodesForRuntime } from '../../../nodes/variable-aggregator/runtime';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
 
@@ -131,21 +133,25 @@ export class WorkflowRuntimeService {
     try {
 schema = prepareConditionNodesForRuntime(
         prepareCodeNodesForRuntime(
-          preparePythonNodesForRuntime(
-            prepareDatabaseNodesForRuntime(
-              prepareLLMNodesForRuntime(
-                prepareHttpNodesForRuntime(
-                  prepareContentNodesForRuntime(
-                    prepareVariableNodesForRuntime({
-                      ...this.document.toJSON(),
-                      globalVariable: this.getGlobalVariableSchema(),
-                    }),
+          prepareAggregatorNodesForRuntime(
+            prepareLoopNodesForRuntime(
+            preparePythonNodesForRuntime(
+              prepareDatabaseNodesForRuntime(
+                prepareLLMNodesForRuntime(
+                  prepareHttpNodesForRuntime(
+                    prepareContentNodesForRuntime(
+                      prepareVariableNodesForRuntime({
+                        ...this.document.toJSON(),
+                        globalVariable: this.getGlobalVariableSchema(),
+                      }),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
+      ),
       );
     } catch (error) {
       this.resultEmitter.fire({
