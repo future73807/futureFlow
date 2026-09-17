@@ -49,6 +49,7 @@ const outputSchemaFor = (nodes: any[], selector: string[]): Record<string, any> 
 /**
  * 让循环体的 item 类型跟随数组元素类型：
  * 数组元素是对象时，循环体里就能通过 item.<属性> 取字段。
+ * 循环体内所有代码节点都会拿到 item 声明（链式传递）。
  */
 const applyLoopItemType = (loop: any, nodes: any[]): void => {
   const loopFor = loop?.data?.loopFor;
@@ -57,38 +58,42 @@ const applyLoopItemType = (loop: any, nodes: any[]): void => {
   const schema = source?.data?.outputs?.properties?.[String(loopFor.content[1])];
   const itemSchema = itemSchemaOf(schema);
   if (!itemSchema) return;
-  const codeNode = Array.isArray(loop?.blocks)
-    ? loop.blocks.find((block: any) => block?.type === 'code')
-    : undefined;
-  if (!codeNode?.data?.inputs?.properties?.item) return;
-  codeNode.data.inputs = {
-    ...codeNode.data.inputs,
-    properties: {
-      ...codeNode.data.inputs.properties,
-      item: { ...codeNode.data.inputs.properties.item, ...itemSchema },
-    },
-  };
+  const codeNodes = Array.isArray(loop?.blocks)
+    ? loop.blocks.filter((block: any) => block?.type === 'code')
+    : [];
+  for (const codeNode of codeNodes) {
+    if (!codeNode?.data?.inputs?.properties?.item) continue;
+    codeNode.data.inputs = {
+      ...codeNode.data.inputs,
+      properties: {
+        ...codeNode.data.inputs.properties,
+        item: { ...codeNode.data.inputs.properties.item, ...itemSchema },
+      },
+    };
+  }
 };
 
 /**
- * 把循环节点的「中间变量」写进循环体代码节点的入参：
+ * 把循环节点的「中间变量」写进循环体内所有代码节点的入参：
  * 循环体里就可以用 params.<变量名> 读取循环外的值。
  */
 const applyLoopMiddleValues = (loop: any, nodes: any[]): void => {
   const middleValues = loop?.data?.loopMiddleValues as Record<string, any> | undefined;
-  const codeNode = Array.isArray(loop?.blocks)
-    ? loop.blocks.find((block: any) => block?.type === 'code')
-    : undefined;
-  if (!codeNode || !middleValues) return;
-  for (const [name, mapping] of Object.entries(middleValues)) {
-    if (!name || !mapping || mapping.type !== 'ref' || !Array.isArray(mapping.content)) continue;
-    codeNode.data = codeNode.data || {};
-    codeNode.data.inputsValues = { ...(codeNode.data.inputsValues || {}), [name]: mapping };
-    codeNode.data.inputs = codeNode.data.inputs || { type: 'object', properties: {} };
-    codeNode.data.inputs.properties = {
-      ...(codeNode.data.inputs.properties || {}),
-      [name]: outputSchemaFor(nodes, mapping.content.map(String)),
-    };
+  const codeNodes = Array.isArray(loop?.blocks)
+    ? loop.blocks.filter((block: any) => block?.type === 'code')
+    : [];
+  if (codeNodes.length === 0 || !middleValues) return;
+  for (const codeNode of codeNodes) {
+    for (const [name, mapping] of Object.entries(middleValues)) {
+      if (!name || !mapping || mapping.type !== 'ref' || !Array.isArray(mapping.content)) continue;
+      codeNode.data = codeNode.data || {};
+      codeNode.data.inputsValues = { ...(codeNode.data.inputsValues || {}), [name]: mapping };
+      codeNode.data.inputs = codeNode.data.inputs || { type: 'object', properties: {} };
+      codeNode.data.inputs.properties = {
+        ...(codeNode.data.inputs.properties || {}),
+        [name]: outputSchemaFor(nodes, mapping.content.map(String)),
+      };
+    }
   }
 };
 

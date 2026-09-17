@@ -33,6 +33,8 @@ import { useNodeSize } from '@flowgram.ai/free-container-plugin';
 import {
   getLoopCardAnchor,
   LoopFrameRect,
+  LOOP_BODY_EMPTY_SIZE,
+  LOOP_BODY_GAP,
   LOOP_BODY_MARGIN,
   LOOP_CARD_HEIGHT,
   LOOP_CARD_WIDTH,
@@ -56,25 +58,21 @@ const isRectEqual = (a: LoopFrameRect, b: LoopFrameRect) =>
   Math.abs(a.right - b.right) < 0.5 &&
   Math.abs(a.bottom - b.bottom) < 0.5;
 
-/** 设置节点局部坐标；位置没变时不触发变更，避免监听回路 */
-const pinNode = (node: WorkflowNodeEntity | undefined, x: number, y: number) => {
-  if (!node) return;
-  const current = node.transform.position;
-  if (Math.abs(current.x - x) < 0.5 && Math.abs(current.y - y) < 0.5) return;
-  node.transform.position = { x, y };
-};
-
 /**
- * 把圆点（0×0 尺寸，position 即左上角=中心）钉到世界坐标 (x, y)：
- * 先按目标钉一次，再读实际 bounds 修正一遍，两遍即可精确收敛。
+ * 把圆点（0×0 尺寸）钉到世界坐标 (x, y)。
+ *
+ * 只做「按当前误差增量修正」并多次迭代收敛，绝不做「先按目标硬写、再读
+ * bounds 回改」——后者会与 bounds 的常量偏移互相打架：每次重排都产生
+ * 两次位置写入，触发 60fps 的画布变更循环，把自动保存防抖彻底饿死。
+ * 现在到达不动点（误差 < 0.5px）后不再产生任何写入。
  */
 const pinDot = (node: WorkflowNodeEntity | undefined, x: number, y: number) => {
   if (!node) return;
-  pinNode(node, x, y);
-  const bounds = node.transform.bounds;
-  const dx = x - bounds.left;
-  const dy = y - bounds.top;
-  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+  for (let pass = 0; pass < 3; pass += 1) {
+    const bounds = node.transform.bounds;
+    const dx = x - bounds.left;
+    const dy = y - bounds.top;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
     const { x: px, y: py } = node.transform.position;
     node.transform.position = { x: px + dx, y: py + dy };
   }
@@ -209,24 +207,33 @@ export const LoopCanvasLayer = () => {
         }
 
         const content = node.blocks.filter((block) => !isLoopDot(block));
-        const frame = getLoopFrameRect(node);
+        let frame = getLoopFrameRect(node);
 
         if (content.length === 0) {
-          // 没有内容节点：框保持原样（空白框仍可整体拖动/选中）
-          if (frame) {
-            const frameMidY = (frame.top + frame.bottom) / 2;
-            const dots = node.blocks.filter(isLoopDot);
-            pinDot(
-              dots.find((dot) => dot.flowNodeType === WorkflowNodeType.BlockStart),
-              frame.left,
-              frameMidY
-            );
-            pinDot(
-              dots.find((dot) => dot.flowNodeType === WorkflowNodeType.BlockEnd),
-              frame.right,
-              frameMidY
-            );
+          // 循环体为空（默认状态）：给一个默认尺寸的空画布，
+          // 挂在卡片正下方居中，供用户往里拖节点并自行连线
+          if (!frame) {
+            const anchor = getLoopCardAnchor(node)!;
+            frame = {
+              left: anchor.x + (LOOP_CARD_WIDTH - LOOP_BODY_EMPTY_SIZE.width) / 2,
+              top: anchor.y + LOOP_CARD_HEIGHT + LOOP_BODY_GAP,
+              right: anchor.x + (LOOP_CARD_WIDTH + LOOP_BODY_EMPTY_SIZE.width) / 2,
+              bottom: anchor.y + LOOP_CARD_HEIGHT + LOOP_BODY_GAP + LOOP_BODY_EMPTY_SIZE.height,
+            };
+            setLoopFrameRect(node, frame);
           }
+          const frameMidY = (frame.top + frame.bottom) / 2;
+          const dots = node.blocks.filter(isLoopDot);
+          pinDot(
+            dots.find((dot) => dot.flowNodeType === WorkflowNodeType.BlockStart),
+            frame.left,
+            frameMidY
+          );
+          pinDot(
+            dots.find((dot) => dot.flowNodeType === WorkflowNodeType.BlockEnd),
+            frame.right,
+            frameMidY
+          );
           applyFrame(frame);
           applyCard(frame);
           return;

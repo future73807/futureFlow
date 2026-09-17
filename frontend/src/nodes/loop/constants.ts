@@ -37,6 +37,8 @@ export const LOOP_CARD_HEIGHT = 146;
 export const LOOP_BODY_GAP = 74;
 /** 循环体框相对体内节点包围盒的外扩边距（左右由圆点钉位实现） */
 export const LOOP_BODY_MARGIN = { top: 32, bottom: 54, left: 96, right: 96 };
+/** 空循环体（默认状态）的默认画布尺寸：挂在卡片正下方，供用户拖入节点并连线 */
+export const LOOP_BODY_EMPTY_SIZE = { width: 480, height: 260 };
 /**
  * 容器 padding：上 = 卡片 + 连线 + 框顶外扩；下 = 框底外扩；
  * 左右为 0（框的左右边界由圆点钉位撑出，见文件头注释）。

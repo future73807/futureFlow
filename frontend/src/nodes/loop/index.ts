@@ -138,7 +138,6 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
   onAdd() {
     const loopId = createWorkflowNodeId('loop');
     const blockStartId = createWorkflowNodeId('block_start');
-    const codeId = createWorkflowNodeId('batch_code');
     const blockEndId = createWorkflowNodeId('block_end');
     return {
       id: loopId,
@@ -150,19 +149,15 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
         loopCount: 3,
         loopMaxRounds: 20,
         loopMiddleValues: {},
-        loopOutputs: {
-          result: { type: 'ref', content: [codeId, 'result'] },
-        },
+        // 循环体默认为空：输出由用户在循环体内添加节点后选择
+        loopOutputs: {},
         outputs: {
           type: 'object',
-          properties: {
-            result: {
-              type: 'array',
-              items: { type: 'number' },
-            },
-          },
+          properties: {},
         },
       },
+      // 循环体默认为空画布，只保留框线左右两侧的连接圆点：
+      // 用户自行往循环体里添加节点并连线（左圆点 → … → 右圆点）
       blocks: [
         {
           id: blockStartId,
@@ -174,42 +169,6 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
           data: {},
         },
         {
-          id: codeId,
-          type: WorkflowNodeType.Code,
-          meta: {
-            position: {
-              x: LOOP_BODY_ITEM_X,
-              y: LOOP_BODY_ITEM_Y,
-            },
-          },
-          data: {
-            title: '逐项处理',
-            inputsValues: {
-              item: { type: 'ref', content: [`${loopId}_locals`, 'item'] },
-              index: { type: 'ref', content: [`${loopId}_locals`, 'index'] },
-            },
-            inputs: {
-              type: 'object',
-              properties: {
-                item: { type: 'number', title: '当前项' },
-                index: { type: 'number', title: '序号' },
-              },
-            },
-            script: {
-              language: 'javascript',
-              content: `function main({ params }) {
-  return { result: params.item * 2 };
-}`,
-            },
-            outputs: {
-              type: 'object',
-              properties: {
-                result: { type: 'number', title: '处理结果' },
-              },
-            },
-          },
-        },
-        {
           id: blockEndId,
           type: WorkflowNodeType.BlockEnd,
           meta: {
@@ -218,10 +177,7 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
           data: {},
         },
       ],
-      edges: [
-        { sourceNodeID: blockStartId, targetNodeID: codeId },
-        { sourceNodeID: codeId, targetNodeID: blockEndId },
-      ],
+      edges: [],
     };
   },
   formMeta,
