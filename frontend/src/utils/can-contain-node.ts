@@ -18,13 +18,6 @@ export function canContainNode(
   parentNodeType: WorkflowNodeType | FlowNodeType
 ) {
   /**
-   * 循环节点固定为 block-start → 一个代码节点 → block-end。
-   * 内置首尾节点由容器自动创建，用户只能编辑中间的同步 JavaScript。
-   */
-  if (parentNodeType === WorkflowNodeType.Loop) {
-    return false;
-  }
-  /**
    * 开始/结束节点无法更改容器
    * The start and end nodes cannot change container
    */
@@ -39,9 +32,9 @@ export function canContainNode(
     return false;
   }
   /** 继续/中断尚未纳入循环节点的运行语义。 */
-  if ([WorkflowNodeType.Continue, WorkflowNodeType.Break].includes(
-    childNodeType as WorkflowNodeType
-  )) {
+  if (
+    [WorkflowNodeType.Continue, WorkflowNodeType.Break].includes(childNodeType as WorkflowNodeType)
+  ) {
     return false;
   }
   /**
