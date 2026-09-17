@@ -5,13 +5,13 @@
  * 试运行与发布时会注入循环体代码节点的入参，循环体里用 params.<变量名> 读取。
  */
 
-import { Button, Input } from '@douyinfe/semi-ui';
-import { IconDelete, IconPlus } from '@douyinfe/semi-icons';
 import { Field, PrivateScopeProvider } from '@flowgram.ai/free-layout-editor';
 import { IFlowRefValue, VariableSelector } from '@flowgram.ai/form-materials';
+import { Button, Input } from '@douyinfe/semi-ui';
+import { IconDelete, IconPlus } from '@douyinfe/semi-icons';
 
-import { FormItem } from '../../../form-components';
 import { useNodeRenderContext } from '../../../hooks';
+import { FormItem } from '../../../form-components';
 
 type MiddleValues = Record<string, IFlowRefValue | undefined>;
 

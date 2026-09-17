@@ -19,12 +19,14 @@ export function FormContent(props: { children?: React.ReactNode }) {
   const { node, expanded } = useNodeRenderContext();
   const isSidebar = useIsSidebar();
   const registry = node.getNodeRegistry<FlowNodeRegistry>();
+  // 循环节点折叠时也要显示卡片（收缩只隐藏循环体），不走通用摘要
+  const isLoop = node.flowNodeType === 'loop';
   return (
-    <FormWrapper>
+    <FormWrapper className="ff-form-wrapper">
       <>
         {isSidebar && <FormTitleDescription>{registry.info?.description}</FormTitleDescription>}
-        {!isSidebar && !expanded && <NodeSummary />}
-        {(expanded || isSidebar) && props.children}
+        {!isSidebar && !expanded && !isLoop && <NodeSummary />}
+        {(expanded || isSidebar || isLoop) && props.children}
       </>
     </FormWrapper>
   );

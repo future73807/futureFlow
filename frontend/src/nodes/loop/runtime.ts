@@ -100,7 +100,7 @@ const itemSchemaOf = (schema: any): Record<string, any> | null => {
 };
 
 export const prepareLoopNodesForRuntime = <T extends { nodes?: any[]; edges?: any[] }>(
-  schema: T,
+  schema: T
 ): T => {
   if (!Array.isArray(schema.nodes)) return schema;
   const nodes = [...(schema.nodes as any[])];

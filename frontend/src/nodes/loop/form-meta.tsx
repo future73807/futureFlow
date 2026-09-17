@@ -10,8 +10,6 @@ import {
   FormMeta,
   ValidateTrigger,
 } from '@flowgram.ai/free-layout-editor';
-import { SubCanvasRender } from '@flowgram.ai/free-container-plugin';
-import { InputNumber, Select } from '@douyinfe/semi-ui';
 import {
   BatchOutputs,
   BatchVariableSelector,
@@ -19,17 +17,13 @@ import {
   IFlowRefValue,
   provideBatchInputEffect,
 } from '@flowgram.ai/form-materials';
+import { InputNumber, Select } from '@douyinfe/semi-ui';
 
 import { LoopMiddleValues } from './components/middle-values';
-
+import { LoopCanvasLayer } from './components/loop-body-layer';
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';
-import {
-  Feedback,
-  FormContent,
-  FormHeader,
-  FormItem,
-} from '../../form-components';
+import { Feedback, FormContent, FormHeader, FormItem } from '../../form-components';
 
 interface LoopNodeJSON extends FlowNodeJSON {
   data: {
@@ -52,21 +46,9 @@ const LOOP_TYPE_OPTIONS = [
 
 const MAX_ROUNDS = 20;
 
-import { LOOP_BODY_HEIGHT, LOOP_BODY_TOP, LOOP_CARD_FIELDS_HEIGHT } from './index';
-
-const BatchLimits = () => (
-  <div style={{
-    marginBottom: 12,
-    padding: '10px 12px',
-    color: 'var(--semi-color-text-1)',
-    background: 'var(--semi-color-fill-0)',
-    border: '1px solid var(--semi-color-border)',
-    borderRadius: 8,
-    fontSize: 12,
-    lineHeight: 1.7,
-  }}>
-    循环体限制：按顺序逐项执行，单次运行最多 20 轮。循环体固定为一个同步 JavaScript 节点，不支持嵌套、API、大语言模型、媒体、变量、继续或中断。
-  </div>
+/** 侧栏分节标题：循环设置 / 中间变量 / 输出 */
+const FormSection = ({ title }: { title: string }) => (
+  <div className="ff-loop-form-section">{title}</div>
 );
 
 export const LoopFormRender = ({ form }: FormRenderProps<LoopNodeJSON>) => {
@@ -87,7 +69,11 @@ export const LoopFormRender = ({ form }: FormRenderProps<LoopNodeJSON>) => {
             />
             <Feedback errors={fieldState?.errors} />
           </FormItem>
-          {field.value === 'count' ? loopCount : field.value === 'infinite' ? loopMaxRounds : loopFor}
+          {field.value === 'count'
+            ? loopCount
+            : field.value === 'infinite'
+            ? loopMaxRounds
+            : loopFor}
         </>
       )}
     </Field>
@@ -168,9 +154,11 @@ export const LoopFormRender = ({ form }: FormRenderProps<LoopNodeJSON>) => {
       <>
         <FormHeader />
         <FormContent>
-          <BatchLimits />
+          <FormSection title="循环设置" />
           {loopType}
+          <FormSection title="中间变量" />
           <LoopMiddleValues />
+          <FormSection title="输出" />
           {loopOutputs}
         </FormContent>
       </>
@@ -178,24 +166,9 @@ export const LoopFormRender = ({ form }: FormRenderProps<LoopNodeJSON>) => {
   }
   return (
     <>
-      <FormHeader />
       <FormContent>
-        {/* 画布上的循环卡片保持紧凑：只留循环类型与循环数组/次数，细节在侧栏里改。
-            字段区高度固定 = LOOP_CARD_FIELDS_HEIGHT，于是「标题 + 字段区」正好等于
-            LOOP_BODY_PADDING.top，循环体框从内边距处开始，与循环体内节点严格对齐。 */}
-        <div style={{ height: LOOP_CARD_FIELDS_HEIGHT }}>
-          {loopType}
-        </div>
-        {/* 循环体是卡片下方的一个独立框：外层连线接在卡片端口上，框内的节点连接框内的圆点 */}
-        <SubCanvasRender
-          style={{
-            position: 'absolute',
-            top: LOOP_BODY_TOP,
-            left: 80,
-            right: 80,
-            height: LOOP_BODY_HEIGHT,
-          }}
-        />
+        {/* 画布图层：卡片（世界锚定）+ 循环体框 + 竖线 + 端口标记 */}
+        <LoopCanvasLayer />
       </FormContent>
     </>
   );
@@ -207,12 +180,17 @@ export const formMeta: FormMeta = {
   validateTrigger: ValidateTrigger.onChange,
   validate: {
     ...defaultFormMeta.validate,
-    loopType: ({ value }: { value?: string }) => (
+    loopType: ({ value }: { value?: string }) =>
       ['array', 'count', 'infinite'].includes(String(value || 'array'))
         ? undefined
-        : '循环类型不合法'
-    ),
-    loopFor: ({ value, formValues }: { value?: IFlowRefValue; formValues: LoopNodeJSON['data'] }) => {
+        : '循环类型不合法',
+    loopFor: ({
+      value,
+      formValues,
+    }: {
+      value?: IFlowRefValue;
+      formValues: LoopNodeJSON['data'];
+    }) => {
       if (String(formValues?.loopType || 'array') !== 'array') return undefined;
       return value?.type === 'ref' && Array.isArray(value.content) && value.content.length >= 2
         ? undefined
@@ -225,7 +203,13 @@ export const formMeta: FormMeta = {
         ? undefined
         : `循环次数必须是 1 到 ${MAX_ROUNDS} 之间的整数`;
     },
-    loopMaxRounds: ({ value, formValues }: { value?: number; formValues: LoopNodeJSON['data'] }) => {
+    loopMaxRounds: ({
+      value,
+      formValues,
+    }: {
+      value?: number;
+      formValues: LoopNodeJSON['data'];
+    }) => {
       if (String(formValues?.loopType || 'array') !== 'infinite') return undefined;
       const rounds = Number(value);
       return Number.isInteger(rounds) && rounds >= 1 && rounds <= MAX_ROUNDS
@@ -237,7 +221,10 @@ export const formMeta: FormMeta = {
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
           return '中间变量名需以字母或下划线开头，仅包含字母、数字和下划线';
         }
-        if (mapping && (mapping.type !== 'ref' || !Array.isArray(mapping.content) || mapping.content.length < 2)) {
+        if (
+          mapping &&
+          (mapping.type !== 'ref' || !Array.isArray(mapping.content) || mapping.content.length < 2)
+        ) {
           return `中间变量 ${name} 需要引用一个循环外的变量`;
         }
       }

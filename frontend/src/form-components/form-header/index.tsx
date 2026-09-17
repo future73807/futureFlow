@@ -42,7 +42,7 @@ export function FormHeader() {
   }, [expanded]);
 
   return (
-    <Header>
+    <Header className="ff-form-header">
       {getIcon(node)}
       <TitleInput readonly={readonly} updateTitleEdit={updateTitleEdit} titleEdit={titleEdit} />
       {node.renderData.expandable && !isSidebar && (

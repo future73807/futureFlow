@@ -3,72 +3,37 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { WorkflowNodeEntity } from '@flowgram.ai/free-layout-editor';
+import { FlowNodeRenderData, WorkflowNodeEntity } from '@flowgram.ai/free-layout-editor';
 
-const HeightCollapsed = 54;
-const HeightExpanded = 225;
-
+/**
+ * 循环节点的展开/收缩（参考图：循环是一个单独的节点，可以展开和收缩）。
+ *
+ * 收缩时把循环体（框内节点 + 连线）隐藏，展开时恢复。
+ * 不用容器的 transform.collapsed：collapsed 会把子节点从渲染树摘除，
+ * 容器 bounds 随之退化成空矩形，节点 DOM 会跳到世界原点附近。
+ * 这里用 visibility 直接隐藏子节点渲染层：子节点仍在渲染树里，
+ * bounds 保持收缩前的包围盒，卡片位置纹丝不动。
+ */
 export function toggleLoopExpanded(
   node: WorkflowNodeEntity,
-  expanded: boolean = node.transform.collapsed
+  expanded: boolean = !node.renderData.expanded
 ) {
-  if (node.transform.collapsed === !expanded) {
-    if (!node.getNodeMeta().isContainer && node.blocks.length !== 0) {
-      return;
+  // 隐藏/显示循环体子节点（含框线上的连接圆点）
+  node.blocks.forEach((block) => {
+    const renderData = block.getData(FlowNodeRenderData);
+    if (renderData.node) {
+      renderData.node.style.visibility = expanded ? '' : 'hidden';
     }
-    const bounds = node.bounds.clone();
-    node.transform.size = {
-      width: bounds.width,
-      height: node.transform.collapsed === expanded ? HeightCollapsed : HeightExpanded,
-    };
-    node.transform.transform.fireChange();
-    return;
-  }
-  const bounds = node.bounds.clone();
-  const prePosition = {
-    x: node.transform.position.x,
-    y: node.transform.position.y,
-  };
-  node.transform.collapsed = !expanded;
-  if (!expanded) {
-    node.transform.transform.clearChildren();
-    node.transform.transform.update({
-      position: {
-        x: prePosition.x - node.transform.padding.left,
-        y: prePosition.y - node.transform.padding.top,
-      },
-      origin: {
-        x: 0,
-        y: 0,
-      },
-    });
-    // When folded, the width and height no longer change according to the child nodes, and need to be set manually
-    // 折叠起来，宽高不再根据子节点变化，需要手动设置
-    node.transform.size = {
-      width: bounds.width,
-      height: HeightCollapsed,
-    };
-  } else {
-    node.transform.transform.update({
-      position: {
-        x: prePosition.x + node.transform.padding.left,
-        y: prePosition.y + node.transform.padding.top,
-      },
-      origin: {
-        x: 0,
-        y: 0,
-      },
-    });
-  }
+  });
 
-  // 隐藏子节点线条
-  // Hide the child node lines
+  // 隐藏/显示循环体子节点连线
   node.blocks.forEach((block) => {
     block.lines.allLines.forEach((line) => {
       line.updateUIState({
-        style: !expanded
-          ? { ...line.uiState.style, display: 'none' }
-          : { ...line.uiState.style, display: 'block' },
+        style: {
+          ...line.uiState.style,
+          display: !expanded ? 'none' : 'block',
+        },
       });
     });
   });

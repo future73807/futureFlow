@@ -334,26 +334,239 @@
 }
 
 
-/* 循环体容器：FlowGram 默认用 8px 白色边框画子画布，在浅灰画布上几乎看不见，
-   这里改成可见描边 + 左上角「循环体」标签，让循环内的节点明确在框里。 */
-.node-type-loop .sub-canvas-border {
-  border-color: transparent !important;
-  /* 背景保持透明：框只是视觉边界，循环体内的节点要能透出来 */
-  background-color: rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 0 0 1px var(--ff-border-strong);
-}
+/* ===== 循环节点（1:1 对齐参考图：数组是用来循环的，不是单独节点） ===== */
 
-.node-type-loop .sub-canvas-border::after {
-  position: absolute;
-  top: 2px;
-  left: 12px;
-  color: var(--ff-text-secondary);
-  content: '循环体';
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+/* 节点 DOM 与循环体虚线框重合；白色「卡片」在 DOM 顶部水平居中。
+   外层 flowgram 节点 DOM 不响应指针，卡片与循环体框本体响应：
+   点/拖卡片或框内空白 = 选中/拖动整个循环；
+   体内节点是独立 DOM（渲染在框之上），点/拖体内节点只动节点自己。 */
+.gedit-flow-activity-node:has(.node-type-loop),
+.node-type-loop {
   pointer-events: none;
 }
+
+.gedit-flow-activity-node:has(.node-type-loop) .ff-loop-card,
+.gedit-flow-activity-node:has(.node-type-loop) .ff-loop-body {
+  pointer-events: auto;
+}
+
+/* 循环体空白区提示可拖动整个循环 */
+.gedit-flow-activity-node:has(.node-type-loop) .ff-loop-body {
+  cursor: grab;
+}
+
+.gedit-flow-activity-node:has(.node-type-loop) .ff-loop-body:active {
+  cursor: grabbing;
+}
+
+.node-type-loop .ff-form-header,
+.node-type-loop .ff-form-wrapper {
+  background: transparent;
+  border-radius: 0;
+}
+
+.node-type-loop .ff-form-wrapper {
+  padding: 0;
+  gap: 0;
+}
+
+/* 可视图层：与容器 bounds 等大（useNodeSize 驱动 + 同步外层 DOM 尺寸），
+   卡片/框/竖线都在图层内做 CSS 定位 */
+.node-type-loop .ff-loop-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+/* 白色卡片：位置由 LoopCanvasLayer 按世界锚点命令式写入 left/top
+   （拖动体内节点时卡片不动），标题栏 + 输入/中间变量/输出三行。
+   卡片与循环体框是独立部件（允许重叠），卡片层级在最上保证可交互 */
+.node-type-loop .ff-loop-card {
+  position: absolute;
+  z-index: 2;
+  width: 290px;
+  height: 146px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.node-type-loop:hover .ff-loop-card {
+  border-color: #c9cdd4;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.07);
+}
+
+.node-type-loop.selected .ff-loop-card {
+  border-color: var(--ff-primary, #2563eb);
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.1),
+    0 6px 16px rgba(15, 23, 42, 0.06);
+}
+
+.node-type-loop .ff-loop-card .ff-form-header {
+  padding: 10px 10px 4px;
+}
+
+/* 卡片正文三行：输入 / 中间变量 / 输出 */
+.node-type-loop .ff-loop-card-rows {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  margin: 0 12px 8px;
+}
+
+.node-type-loop .ff-loop-row {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.05);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ff-text, #1f2937);
+}
+
+.node-type-loop .ff-loop-row:first-child {
+  border-top: none;
+}
+
+.node-type-loop .ff-loop-row-label {
+  flex: 0 0 auto;
+  color: #6b7280;
+}
+
+.node-type-loop .ff-loop-row-value {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-type-loop .ff-loop-row-value.empty {
+  color: #9ca3af;
+}
+
+/* 端口标记：0 尺寸元素钉在卡片左右边缘中线，flowgram 把端口圆点
+   portal 进标记元素，端口因此始终跟随卡片 */
+.node-type-loop .ff-loop-port-marker {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.node-type-loop .ff-loop-port-marker-right {
+  left: 100%;
+}
+
+/* 循环体框边缘的连接圆点（block-start / block-end 的端口）：
+   视频（Coze）样式——实心靛蓝小圆点（约 9px）带极细白环，
+   hover 适度放大，不显示加号（循环体边缘不能加节点） */
+.gedit-flow-activity-node:has(> .node-type-block-start) .workflow-port-render .symbol,
+.gedit-flow-activity-node:has(> .node-type-block-end) .workflow-port-render .symbol {
+  display: none !important;
+}
+
+.gedit-flow-activity-node:has(> .node-type-block-start) .workflow-port-render .bg,
+.gedit-flow-activity-node:has(> .node-type-block-end) .workflow-port-render .bg {
+  transform: scale(0.45);
+}
+
+.gedit-flow-activity-node:has(> .node-type-block-start) .workflow-port-render .bg-circle,
+.gedit-flow-activity-node:has(> .node-type-block-end) .workflow-port-render .bg-circle {
+  transform: scale(0.55);
+}
+
+.gedit-flow-activity-node:has(> .node-type-block-start) .workflow-port-render.hovered .bg,
+.gedit-flow-activity-node:has(> .node-type-block-end) .workflow-port-render.hovered .bg {
+  transform: scale(0.7);
+}
+
+.gedit-flow-activity-node:has(> .node-type-block-start) .workflow-port-render.hovered .bg-circle,
+.gedit-flow-activity-node:has(> .node-type-block-end) .workflow-port-render.hovered .bg-circle {
+  transform: scale(0.8);
+}
+
+/* 卡片左右两侧的端口标签：视频（Coze）里没有文字标签，占位隐藏 */
+.node-type-loop .ff-loop-port-label {
+  display: none;
+}
+
+/* 循环体：独立虚线画布框。left/top/width/height 由 LoopCanvasLayer 按框
+   数据（世界坐标）显式写入 —— 框是「只增不减的固定矩形」，节点在框内
+   移动不带动框。框本体接收指针事件：空白处按下/拖动 = 拖动循环体整体 */
+.node-type-loop .ff-loop-body {
+  position: absolute;
+  border: 1.5px dashed #94a8cc;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.13);
+  box-shadow: none;
+}
+
+/* 「循环体」标签：压在框左上角边线上的药丸标签 */
+.node-type-loop .ff-loop-body-tag {
+  position: absolute;
+  top: -13px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border: 1px solid #d6dff5;
+  border-radius: 999px;
+  background: #eef2fb;
+  color: #3d4566;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.node-type-loop .ff-loop-body-tag-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #00b96b;
+}
+
+.node-type-loop .ff-loop-body-tag-info {
+  display: inline-flex;
+  align-items: center;
+  color: #98a1b3;
+}
+
+/* 卡片底部中心圆点 → 循环体框顶部中心圆点的 S 形曲线：
+   靛蓝色（与视频一致），两端 8px 实心圆点 */
+.node-type-loop .ff-loop-connector {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.node-type-loop .ff-loop-connector path {
+  fill: none;
+  stroke: #4b48e6;
+  stroke-width: 2;
+}
+
+.node-type-loop .ff-loop-connector-dot {
+  fill: #4b48e6;
+}
+
 
 /* 运行记录侧栏顶部：已发布版本的执行入口 */
 .canvas-run-actions {
