@@ -808,15 +808,33 @@ export class DifyConverterService {
   }
 
   /**
-   * FlowGram 容器保存 block-start → code → block-end；Dify 0.15.3 则要求
-   * iteration 父节点、iteration-start 虚拟节点和一个扁平化的内部 code。
+   * FlowGram 容器保存 block-start → 内部节点链 → block-end；Dify 0.15.3 则
+   * 要求 iteration 父节点、iteration-start 虚拟节点和扁平化的内部节点链
+   * （block-end 只用于本地运行时，不导出）。
    */
   private convertBatchLoopNodes(node: FlowNodeJSON, flowgram: FlowGramJSON): DifyNode[] {
     const position = node.meta?.position || { x: 0, y: 0 };
-    const [blockStart, codeNode] = node.blocks!;
-    const codeOutputs = (codeNode.data.outputs?.properties || {}) as Record<string, any>;
-    const codeOutputName = Object.keys(codeOutputs)[0];
-    const codeOutputType = String(codeOutputs[codeOutputName]?.type || 'string').toLowerCase();
+    const blocks = node.blocks!;
+    const blockStart = blocks[0];
+    const innerNodes = blocks.slice(1, -1);
+    // 迭代输出：优先取用户在循环节点上选择的输出（循环体内某节点的字段），
+    // 否则退回链尾节点的第一个输出。
+    const declaredOutput = Object.values(
+      (node.data.loopOutputs || {}) as Record<string, FlowInputValue | undefined>,
+    ).find(
+      (value) =>
+        value?.type === 'ref' && Array.isArray(value.content) && value.content.length === 2,
+    );
+    const innerIds = new Set(innerNodes.map((block) => block.id));
+    const declaredOutputNodeId = declaredOutput ? String(declaredOutput.content[0]) : '';
+    const outputNode = innerIds.has(declaredOutputNodeId)
+      ? innerNodes.find((block) => block.id === declaredOutputNodeId)!
+      : innerNodes[innerNodes.length - 1];
+    const outputProperties = (outputNode.data.outputs?.properties || {}) as Record<string, any>;
+    const codeOutputName = outputNode.id === declaredOutputNodeId
+      ? String(declaredOutput!.content[1])
+      : Object.keys(outputProperties)[0];
+    const codeOutputType = String(outputProperties[codeOutputName]?.type || 'string').toLowerCase();
     const outputType = codeOutputType === 'string' ? 'array[string]' : 'array[number]';
     const iteratorSelector = this.normalizeDifySelector(
       this.getBatchLoopSelector(node),
@@ -840,10 +858,10 @@ export class DifyConverterService {
         desc: '串行处理字符串或数字数组，最多 20 项',
         selected: false,
         iterator_selector: iteratorSelector,
-        output_selector: [codeNode.id, codeOutputName],
+        output_selector: [outputNode.id, codeOutputName],
         output_type: outputType,
         start_node_id: blockStart.id,
-        startNodeType: 'code',
+        startNodeType: innerNodes[0].type,
         is_parallel: false,
         parallel_nums: 1,
         error_handle_mode: 'terminated',
@@ -877,6 +895,56 @@ export class DifyConverterService {
       },
     };
 
+    const iterationNodes: DifyNode[] = innerNodes.map((innerNode) =>
+      innerNode.type === 'code'
+        ? this.convertLoopCodeNode(innerNode, node, flowgram, position)
+        : this.convertLoopInnerNode(innerNode, node, flowgram, position),
+    );
+
+    return [parent, iterationStart, ...iterationNodes];
+  }
+
+  /** 循环体内非代码节点：复用常规转换器，补上 iteration 子图所需的父子/定位字段。 */
+  private convertLoopInnerNode(
+    innerNode: FlowNodeJSON,
+    loopNode: FlowNodeJSON,
+    flowgram: FlowGramJSON,
+    loopPosition: { x: number; y: number },
+  ): DifyNode {
+    const startNode = flowgram.nodes.find((candidate) => candidate.type === 'start');
+    if (!startNode) {
+      throw new BadRequestException('工作流缺少开始节点');
+    }
+    const converted = this.convertNode(innerNode, startNode, flowgram);
+    const nodePosition = innerNode.meta?.position || { x: 0, y: 0 };
+    const position = { x: Math.max(160, nodePosition.x), y: Math.max(84, nodePosition.y) };
+    return {
+      ...converted,
+      position,
+      positionAbsolute: { x: loopPosition.x + position.x, y: loopPosition.y + position.y },
+      parentId: loopNode.id,
+      extent: 'parent',
+      selected: false,
+      zIndex: 1002,
+      data: {
+        ...converted.data,
+        selected: false,
+        isInIteration: true,
+        iteration_id: loopNode.id,
+      },
+    };
+  }
+
+  /** 循环体内的同步 JavaScript 代码节点：包一层 20 项守卫并校验输出契约。 */
+  private convertLoopCodeNode(
+    codeNode: FlowNodeJSON,
+    loopNode: FlowNodeJSON,
+    flowgram: FlowGramJSON,
+    loopPosition: { x: number; y: number },
+  ): DifyNode {
+    const codeOutputs = (codeNode.data.outputs?.properties || {}) as Record<string, any>;
+    const codeOutputName = Object.keys(codeOutputs)[0];
+    const codeOutputType = String(codeOutputs[codeOutputName]?.type || 'string').toLowerCase();
     const variables: Array<{ variable: string; value_selector: string[] }> = [];
     const paramsEntries = Object.entries(codeNode.data.inputsValues || {}).map(([key, value]) => {
       const expression = this.compileFlowValueExpression(
@@ -888,12 +956,18 @@ export class DifyConverterService {
       return `${JSON.stringify(key)}: ${expression}`;
     });
     for (const variable of variables) {
-      if (variable.value_selector[0] === `${node.id}_locals`) {
-        variable.value_selector = [node.id, variable.value_selector[1]];
+      if (variable.value_selector[0] === `${loopNode.id}_locals`) {
+        variable.value_selector = [loopNode.id, variable.value_selector[1]];
+      } else if (
+        variable.value_selector[0] === loopNode.id
+        && ['item', 'index'].includes(variable.value_selector[1])
+      ) {
+        // 已被 id 映射改写为循环节点选择器（item/index 由 iteration 节点暴露）
+        variable.value_selector = [loopNode.id, variable.value_selector[1]];
       }
     }
     const guardVariable = '__ff_iteration_index';
-    variables.push({ variable: guardVariable, value_selector: [node.id, 'index'] });
+    variables.push({ variable: guardVariable, value_selector: [loopNode.id, 'index'] });
 
     const sourceCode = String(codeNode.data.script?.content || '');
     const analysis = assertSynchronousJavaScript(sourceCode, `代码节点 ${codeNode.id}`);
@@ -922,7 +996,7 @@ export class DifyConverterService {
       ? `Number(Boolean(${valueName}))`
       : valueName;
     const asyncError = JSON.stringify(
-      `循环节点 ${node.id} 的代码仅支持同步执行，不能返回 Promise/thenable`,
+      `循环节点 ${loopNode.id} 的代码仅支持同步执行，不能返回 Promise/thenable`,
     );
     const code = `${sourceCode}
 ${outputContract.declarations}
@@ -955,16 +1029,16 @@ main = function(args) {
     const innerCode: DifyNode = {
       id: codeNode.id,
       type: 'custom',
-      position: { x: Math.max(160, codePosition.x), y: 84 },
+      position: { x: Math.max(160, codePosition.x), y: Math.max(84, codePosition.y) },
       positionAbsolute: {
-        x: position.x + Math.max(160, codePosition.x),
-        y: position.y + 84,
+        x: loopPosition.x + Math.max(160, codePosition.x),
+        y: loopPosition.y + Math.max(84, codePosition.y),
       },
       sourcePosition: 'right',
       targetPosition: 'left',
       width: 300,
       height: 90,
-      parentId: node.id,
+      parentId: loopNode.id,
       extent: 'parent',
       selected: false,
       zIndex: 1002,
@@ -974,7 +1048,7 @@ main = function(args) {
         desc: '',
         selected: false,
         isInIteration: true,
-        iteration_id: node.id,
+        iteration_id: loopNode.id,
         code_language: 'javascript',
         code,
         variables,
@@ -984,26 +1058,35 @@ main = function(args) {
       },
     };
 
-    return [parent, iterationStart, innerCode];
+    return innerCode;
   }
 
+  /** 循环体内部连线：块开始 → 内部节点链（单链）；块结束不导出到 Dify。 */
   private convertBatchLoopEdges(node: FlowNodeJSON): DifyEdge[] {
-    const [blockStart, codeNode] = node.blocks!;
-    return [{
-      id: `${encodeURIComponent(blockStart.id)}-source-${encodeURIComponent(codeNode.id)}-target`,
-      source: blockStart.id,
-      sourceHandle: 'source',
-      target: codeNode.id,
-      targetHandle: 'target',
-      type: 'custom',
-      zIndex: 1002,
-      data: {
-        isInIteration: true,
-        iteration_id: node.id,
-        sourceType: 'iteration-start',
-        targetType: 'code',
-      },
-    }];
+    const blocks = node.blocks!;
+    const endBlock = blocks[blocks.length - 1];
+    const typeOf = (id: string) => {
+      if (id === blocks[0].id) return 'iteration-start';
+      const block = blocks.find((candidate) => candidate.id === id);
+      return block?.type || 'code';
+    };
+    return (node.edges || [])
+      .filter((edge) => edge.targetNodeID !== endBlock.id)
+      .map((edge) => ({
+        id: `${encodeURIComponent(edge.sourceNodeID)}-source-${encodeURIComponent(edge.targetNodeID)}-target`,
+        source: edge.sourceNodeID,
+        sourceHandle: 'source',
+        target: edge.targetNodeID,
+        targetHandle: 'target',
+        type: 'custom' as const,
+        zIndex: 1002,
+        data: {
+          isInIteration: true,
+          iteration_id: node.id,
+          sourceType: typeOf(edge.sourceNodeID),
+          targetType: typeOf(edge.targetNodeID),
+        },
+      }));
   }
 
   /** 转换单个节点 */
@@ -2193,46 +2276,50 @@ main = function(args) {
     const schema = (source?.data?.outputs as any)?.properties?.[String(loopFor.content[1])];
     const items = schema?.type === 'array' ? schema.items : null;
     if (!items || typeof items !== 'object') return;
-    const codeNode = (loop.blocks || []).find((block) => block.type === 'code');
-    const current = (codeNode?.data?.inputs as any)?.properties?.item;
-    if (!codeNode?.data?.inputs?.properties || !current) return;
-    codeNode.data.inputs.properties = {
-      ...codeNode.data.inputs.properties,
-      item: { ...current, ...this.cloneValue(items) },
-    };
-  }
-
-  /** 把循环节点的中间变量写进循环体代码节点的入参，循环体里用 params.<名字> 读取。 */
-  private applyLoopMiddleValues(loop: FlowNodeJSON, nodes: FlowNodeJSON[]): void {
-    const middleValues = loop.data?.loopMiddleValues as Record<string, FlowInputValue> | undefined;
-    const codeNode = (loop.blocks || []).find((block) => block.type === 'code');
-    if (!codeNode || !middleValues) return;
-    for (const [name, mapping] of Object.entries(middleValues)) {
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
-      if (!mapping || mapping.type !== 'ref' || !Array.isArray(mapping.content) || mapping.content.length < 2) {
-        continue;
-      }
-      const source = nodes.find((candidate) => candidate.id === mapping.content[0]);
-      const schema = (source?.data?.outputs as any)?.properties?.[String(mapping.content[1])];
-      codeNode.data = codeNode.data || {};
-      codeNode.data.inputsValues = { ...(codeNode.data.inputsValues || {}), [name]: mapping };
-      codeNode.data.inputs = codeNode.data.inputs || { type: 'object', properties: {} };
+    const codeNodes = (loop.blocks || []).filter((block) => block.type === 'code');
+    for (const codeNode of codeNodes) {
+      const current = (codeNode?.data?.inputs as any)?.properties?.item;
+      if (!codeNode?.data?.inputs?.properties || !current) continue;
       codeNode.data.inputs.properties = {
-        ...(codeNode.data.inputs.properties || {}),
-        [name]: schema && typeof schema === 'object' ? { ...schema } : { type: 'string' },
+        ...codeNode.data.inputs.properties,
+        item: { ...current, ...this.cloneValue(items) },
       };
     }
   }
 
-  /** 循环节点仅接受一个固定的同步 JavaScript 循环体。 */
+  /** 把循环节点的中间变量写进循环体内所有代码节点的入参，循环体里用 params.<名字> 读取。 */
+  private applyLoopMiddleValues(loop: FlowNodeJSON, nodes: FlowNodeJSON[]): void {
+    const middleValues = loop.data?.loopMiddleValues as Record<string, FlowInputValue> | undefined;
+    const codeNodes = (loop.blocks || []).filter((block) => block.type === 'code');
+    if (codeNodes.length === 0 || !middleValues) return;
+    for (const codeNode of codeNodes) {
+      for (const [name, mapping] of Object.entries(middleValues)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+        if (!mapping || mapping.type !== 'ref' || !Array.isArray(mapping.content) || mapping.content.length < 2) {
+          continue;
+        }
+        const source = nodes.find((candidate) => candidate.id === mapping.content[0]);
+        const schema = (source?.data?.outputs as any)?.properties?.[String(mapping.content[1])];
+        codeNode.data = codeNode.data || {};
+        codeNode.data.inputsValues = { ...(codeNode.data.inputsValues || {}), [name]: mapping };
+        codeNode.data.inputs = codeNode.data.inputs || { type: 'object', properties: {} };
+        codeNode.data.inputs.properties = {
+          ...(codeNode.data.inputs.properties || {}),
+          [name]: schema && typeof schema === 'object' ? { ...schema } : { type: 'string' },
+        };
+      }
+    }
+  }
+
+  /** 循环体是「块开始 → 若干内部节点（单链）→ 块结束」的子画布。 */
   private validateBatchLoopNode(node: FlowNodeJSON, nodes: FlowNodeJSON[]) {
-    if (!Array.isArray(node.blocks) || node.blocks.length !== 3) {
+    if (!Array.isArray(node.blocks) || node.blocks.length < 3) {
       throw new BadRequestException(
-        `循环节点 ${node.id} 的子画布必须固定为“块开始 → 同步 JavaScript → 块结束”`,
+        `循环节点 ${node.id} 的循环体至少需要一个节点（块开始 → … → 块结束）`,
       );
     }
-    if (!Array.isArray(node.edges) || node.edges.length !== 2) {
-      throw new BadRequestException(`循环节点 ${node.id} 的内部连线必须且只能有两条`);
+    if (!Array.isArray(node.edges)) {
+      throw new BadRequestException(`循环节点 ${node.id} 的内部连线缺失`);
     }
 
     for (const block of node.blocks) {
@@ -2249,14 +2336,12 @@ main = function(args) {
       }
     }
 
-    const [blockStart, codeNode, blockEnd] = node.blocks;
-    if (
-      blockStart.type !== 'block-start'
-      || codeNode.type !== 'code'
-      || blockEnd.type !== 'block-end'
-    ) {
+    const blockStart = node.blocks[0];
+    const blockEnd = node.blocks[node.blocks.length - 1];
+    const innerNodes = node.blocks.slice(1, -1);
+    if (blockStart.type !== 'block-start' || blockEnd.type !== 'block-end') {
       throw new BadRequestException(
-        `循环节点 ${node.id} 仅允许一个同步 JavaScript 代码节点`,
+        `循环节点 ${node.id} 的循环体必须以块开始/块结束包住内部节点`,
       );
     }
     for (const block of node.blocks) {
@@ -2264,44 +2349,76 @@ main = function(args) {
         throw new BadRequestException(`循环节点 ${node.id} 不支持嵌套子画布`);
       }
     }
-
-    const expectedEdges = new Set([
-      `${blockStart.id}\u0000${codeNode.id}`,
-      `${codeNode.id}\u0000${blockEnd.id}`,
-    ]);
-    const actualEdges = new Set<string>();
-    for (const edge of node.edges) {
-      const key = `${edge.sourceNodeID}\u0000${edge.targetNodeID}`;
-      if (
-        !expectedEdges.has(key)
-        || edge.sourcePortID
-        || edge.targetPortID
-        || actualEdges.has(key)
-      ) {
+    for (const block of innerNodes) {
+      if (block.type === 'loop') {
+        throw new BadRequestException(`循环节点 ${node.id} 暂不支持嵌套循环`);
+      }
+      if (block.type === 'condition' || block.type === 'multi-condition') {
         throw new BadRequestException(
-          `循环节点 ${node.id} 的内部连线必须固定为“块开始 → 代码 → 块结束”`,
+          `循环节点 ${node.id} 的循环体内暂不支持分支节点，请使用单链结构`,
         );
       }
-      actualEdges.add(key);
-    }
-    if (actualEdges.size !== expectedEdges.size) {
-      throw new BadRequestException(
-        `循环节点 ${node.id} 的内部连线必须固定为“块开始 → 代码 → 块结束”`,
-      );
+      if (['start', 'end', 'block-start', 'block-end'].includes(block.type)) {
+        throw new BadRequestException(
+          `循环节点 ${node.id} 的循环体包含不允许的节点类型 ${block.type}`,
+        );
+      }
     }
 
-    this.validateCodeNode(codeNode);
-
-    const codeOutputs = (codeNode.data.outputs?.properties || {}) as Record<string, any>;
-    const codeOutputNames = Object.keys(codeOutputs);
-    if (codeOutputNames.length !== 1) {
-      throw new BadRequestException(`循环节点 ${node.id} 的代码必须且只能声明一个输出`);
-    }
-    const scalarType = String(codeOutputs[codeOutputNames[0]]?.type || '').toLowerCase();
-    if (!['string', 'number', 'integer', 'boolean'].includes(scalarType)) {
+    // 内部连线必须是「块开始 → 内部节点…（单链）→ 块结束」：
+    // 每个节点最多一条出线，从块开始一路串到块结束且覆盖全部节点。
+    if (node.edges.length !== innerNodes.length + 1) {
       throw new BadRequestException(
-        `循环节点 ${node.id} 的逐项输出仅支持字符串或数字（布尔值按数字 1/0 兼容）`,
+        `循环节点 ${node.id} 的内部连线必须是「块开始 → … → 块结束」的单链`,
       );
+    }
+    const chainError = `循环节点 ${node.id} 的内部连线必须是「块开始 → … → 块结束」的单链`;
+    const nextOf = new Map<string, string>();
+    const blockIds = new Set(node.blocks.map((block) => block.id));
+    for (const edge of node.edges) {
+      if (
+        edge.sourcePortID
+        || edge.targetPortID
+        || !blockIds.has(edge.sourceNodeID)
+        || !blockIds.has(edge.targetNodeID)
+        || nextOf.has(edge.sourceNodeID)
+      ) {
+        throw new BadRequestException(chainError);
+      }
+      nextOf.set(edge.sourceNodeID, edge.targetNodeID);
+    }
+    const visited = new Set<string>([blockStart.id]);
+    let cursor = blockStart.id;
+    while (cursor !== blockEnd.id) {
+      const next = nextOf.get(cursor);
+      if (!next || visited.has(next)) {
+        throw new BadRequestException(chainError);
+      }
+      visited.add(next);
+      cursor = next;
+    }
+    if (visited.size !== node.blocks.length || nextOf.has(blockEnd.id)) {
+      throw new BadRequestException(chainError);
+    }
+
+    // 循环体内的代码节点：同步 JavaScript、且必须且只能声明一个输出
+    //（循环体按单链传递，代码节点输出数是链式适配的约束）。
+    for (const block of innerNodes) {
+      if (block.type !== 'code') continue;
+      this.validateCodeNode(block);
+      const codeOutputs = (block.data.outputs?.properties || {}) as Record<string, any>;
+      const codeOutputNames = Object.keys(codeOutputs);
+      if (codeOutputNames.length !== 1) {
+        throw new BadRequestException(
+          `循环节点 ${node.id} 的代码节点 ${block.id} 必须且只能声明一个输出`,
+        );
+      }
+      const scalarType = String(codeOutputs[codeOutputNames[0]]?.type || '').toLowerCase();
+      if (!['string', 'number', 'integer', 'boolean'].includes(scalarType)) {
+        throw new BadRequestException(
+          `循环节点 ${node.id} 的代码节点 ${block.id} 输出仅支持字符串或数字（布尔值按数字 1/0 兼容）`,
+        );
+      }
     }
 
     const selector = this.getBatchLoopSelector(node);
@@ -2326,17 +2443,31 @@ main = function(args) {
       throw new BadRequestException(`循环节点 ${node.id} 必须且只能设置一个输出`);
     }
     const [loopOutputName, loopOutput] = loopOutputs[0];
+    const innerIds = new Set(innerNodes.map((block) => block.id));
+    const outputNode = innerNodes.find(
+      (block) => block.id === String(loopOutput?.content?.[0]),
+    );
     if (
       !loopOutputName
       || !loopOutput
       || loopOutput.type !== 'ref'
       || !Array.isArray(loopOutput.content)
       || loopOutput.content.length !== 2
-      || String(loopOutput.content[0]) !== codeNode.id
-      || String(loopOutput.content[1]) !== codeOutputNames[0]
+      || !innerIds.has(String(loopOutput.content[0]))
+      || !outputNode
+      || !this.getNodeOutputNames(outputNode).includes(String(loopOutput.content[1]))
     ) {
       throw new BadRequestException(
-        `循环节点 ${node.id} 的输出必须引用子画布代码节点的唯一输出`,
+        `循环节点 ${node.id} 的输出必须引用循环体内某个节点的输出`,
+      );
+    }
+    const outputSchema = (outputNode.data.outputs?.properties || {})[
+      String(loopOutput.content[1])
+    ] as Record<string, any> | undefined;
+    const scalarType = String(outputSchema?.type || '').toLowerCase();
+    if (!['string', 'number', 'integer', 'boolean'].includes(scalarType)) {
+      throw new BadRequestException(
+        `循环节点 ${node.id} 的输出仅支持字符串或数字（布尔值按数字 1/0 兼容）`,
       );
     }
 
@@ -2418,26 +2549,41 @@ main = function(args) {
   }
 
   private validateBatchLoopInnerReferences(loop: FlowNodeJSON) {
-    const codeNode = loop.blocks![1];
+    const blocks = loop.blocks || [];
+    const innerNodes = blocks.slice(1, -1);
+    const innerIds = new Set(innerNodes.map((block) => block.id));
     // 循环节点的「中间变量」允许循环体读取循环外的值，这里放行这些在循环节点上
-    // 显式声明的入参；其余外部引用仍然禁止，保持循环体可预测。
+    // 显式声明的入参；代码节点的其余外部引用仍然禁止，保持循环体可预测。
     const middleNames = new Set(
       Object.keys((loop.data?.loopMiddleValues || {}) as Record<string, unknown>),
     );
-    for (const [name, value] of Object.entries(codeNode.data.inputsValues || {})) {
-      for (const selector of this.getFlowValueSelectors(value)) {
-        if (selector[0] === `${loop.id}_locals`) {
-          if (selector.length !== 2 || !['item', 'index'].includes(selector[1])) {
-            throw new BadRequestException(
-              `循环节点 ${loop.id} 的代码只能引用当前项 item 或序号 index`,
-            );
+    for (const block of innerNodes) {
+      const isCode = block.type === 'code';
+      for (const [name, value] of Object.entries(block.data.inputsValues || {})) {
+        for (const selector of this.getFlowValueSelectors(value)) {
+          if (selector[0] === `${loop.id}_locals`) {
+            // 循环项/序号仅代码节点可通过 params 读取：非代码节点的模板引用
+            // 在 Dify 里无法解析，提前拦截
+            if (!isCode || selector.length !== 2 || !['item', 'index'].includes(selector[1])) {
+              throw new BadRequestException(
+                `循环节点 ${loop.id} 的循环项 item / 序号 index 只能在循环体内的代码节点里通过 params 读取`,
+              );
+            }
+            continue;
           }
-          continue;
+          if (innerIds.has(selector[0])) {
+            // 循环体内单链数据传递：允许引用内部其它节点的输出
+            continue;
+          }
+          if (!isCode) {
+            // 非代码节点允许引用循环体外变量（由各类型自身的校验器把关）
+            continue;
+          }
+          if (middleNames.has(name)) continue;
+          throw new BadRequestException(
+            `循环节点 ${loop.id} 的代码节点 ${block.id} 只能引用当前项 item、序号 index、循环体内其它节点或节点的中间变量`,
+          );
         }
-        if (middleNames.has(name)) continue;
-        throw new BadRequestException(
-          `循环节点 ${loop.id} 的逐项代码只能引用当前项 item 或序号 index（或使用节点的中间变量）`,
-        );
       }
     }
   }
@@ -2619,13 +2765,12 @@ main = function(args) {
     if (!schema && source.type === 'loop') {
       const loopOutput = Object.entries(source.data.loopOutputs || {})
         .find(([name]) => name === selector[1])?.[1] as any;
-      const codeNode = source.blocks?.find((block) => block.type === 'code');
-      if (
-        loopOutput?.type === 'ref'
-        && Array.isArray(loopOutput.content)
-        && codeNode
-      ) {
-        const scalar = (codeNode.data.outputs?.properties as Record<string, any> | undefined)?.[
+      const innerNodes = ((source.blocks || []) as FlowNodeJSON[]).slice(1, -1);
+      if (loopOutput?.type === 'ref' && Array.isArray(loopOutput.content)) {
+        const outputNode = innerNodes.find(
+          (block) => block.id === String(loopOutput.content[0]),
+        );
+        const scalar = (outputNode?.data.outputs?.properties as Record<string, any> | undefined)?.[
           String(loopOutput.content[1])
         ];
         if (scalar) {
