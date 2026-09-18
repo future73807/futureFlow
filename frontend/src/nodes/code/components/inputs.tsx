@@ -8,6 +8,7 @@ import { DisplayInputsValues, IFlowValue, InputsValues } from '@flowgram.ai/form
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
+import { promoteTemplateValues } from '../../../utils/flow-value';
 
 export function Inputs() {
   const isSidebar = useIsSidebar();
@@ -28,7 +29,8 @@ export function Inputs() {
         {({ field }) => (
           <InputsValues
             value={field.value}
-            onChange={(value) => field.onChange(value)}
+            // 手写 {{上游变量}} 时自动升级为模板类型，避免被当成字面量传给代码
+            onChange={(value) => field.onChange(promoteTemplateValues(value))}
             readonly={readonly}
           />
         )}

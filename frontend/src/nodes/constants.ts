@@ -30,6 +30,5 @@ export enum WorkflowNodeType {
   BlockStart = 'block-start',
   BlockEnd = 'block-end',
   Comment = 'comment',
-  Continue = 'continue',
-  Break = 'break',
+  Exit = 'exit',
 }

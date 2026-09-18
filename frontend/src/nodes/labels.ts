@@ -25,8 +25,7 @@ export const NodeLabels: Record<string, string> = {
   group: '分组',
   'block-start': '块开始',
   'block-end': '块结束',
-  continue: '继续',
-  break: '中断',
+  exit: '退出节点',
 };
 
 /**
@@ -55,6 +54,5 @@ export const NodeDescriptions: Record<string, string> = {
   group: '分组节点，将多个节点组织为一组。',
   'block-start': '块起始节点。',
   'block-end': '块结束节点。',
-  continue: '跳过当前循环迭代；当前版本仅展示，暂不可运行或发布。',
-  break: '跳出当前循环；当前版本仅展示，暂不可运行或发布。',
+  exit: '执行到这里立即结束运行：可以结束整个工作流（并返回配置的输出），也可以放在循环体里提前跳出当前循环。',
 };

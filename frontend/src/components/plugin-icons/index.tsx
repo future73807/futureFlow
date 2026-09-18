@@ -112,10 +112,11 @@ export const PLUGIN_ICON_SHAPES: Record<string, PluginIconShape[]> = {
   ],
   // 注释：对话气泡
   comment: [{ kind: 'path', d: 'M4.8 6.6h14.4v9.2h-7.4l-4.2 3.4v-3.4H4.8z' }],
-  // 继续：快进
-  continue: [{ kind: 'path', d: 'M7 6.8l5 5.2-5 5.2M15.4 6.8v10.4' }],
-  // 中断：暂停
-  break: [{ kind: 'path', d: 'M9.4 6.8v10.4M14.6 6.8v10.4' }],
+  // 退出节点：方框 + 向右跳出的箭头（提前结束本次运行 / 跳出循环）
+  exit: [
+    { kind: 'path', d: 'M13.6 4.6H6.4a1.8 1.8 0 00-1.8 1.8v11.2a1.8 1.8 0 001.8 1.8h7.2' },
+    { kind: 'path', d: 'M13.8 12h6.4M17.4 9.2l2.8 2.8-2.8 2.8' },
+  ],
 };
 
 /** 未知图标兜底：方块 + 十字，保持与其他图标同样的线性观感 */

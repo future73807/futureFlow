@@ -31,12 +31,6 @@ export function canContainNode(
   ) {
     return false;
   }
-  /** 继续/中断尚未纳入循环节点的运行语义。 */
-  if (
-    [WorkflowNodeType.Continue, WorkflowNodeType.Break].includes(childNodeType as WorkflowNodeType)
-  ) {
-    return false;
-  }
   /**
    * 循环节点无法嵌套循环节点
    * Loop node cannot nest loop node

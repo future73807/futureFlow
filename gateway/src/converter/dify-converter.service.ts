@@ -143,7 +143,9 @@ export class DifyConverterService {
     ];
 
     // 如果没有 End 节点,自动补充一个指向最后一个可执行节点的输出
-    if (!endNode) {
+    // （画布上有「退出节点」时它本身就是终点，不再补自动结束节点）
+    const hasExitNode = flowgram.nodes.some((node) => node.type === 'exit');
+    if (!endNode && !hasExitNode) {
       const executableNodes = flowgram.nodes.filter((n) =>
         ['llm', 'http', 'code', 'text', 'image', 'video', 'variable', 'variable-aggregator', 'loop', 'knowledge', 'subworkflow', 'mcp'].includes(n.type),
       );
@@ -272,8 +274,11 @@ export class DifyConverterService {
       }
       if (node.type === 'variable') this.validateVariableNode(node, json.nodes);
       if (node.type === 'break' || node.type === 'continue') {
-        throw new BadRequestException(`当前版本发布暂不支持 ${node.type} 节点`);
+        throw new BadRequestException(
+          `节点 ${node.id} 使用了已下线的「中断/继续」节点，请改用「退出节点」`,
+        );
       }
+      if (node.type === 'exit') this.validateExitNode(node);
       if (node.type === 'condition' || node.type === 'multi-condition') {
         this.validateConditionNode(node, json.nodes);
       }
@@ -1118,6 +1123,12 @@ main = function(args) {
           height: 90,
           data: this.convertEndNode(node, flowgram),
         };
+      case 'exit':
+        return {
+          ...base,
+          height: 90,
+          data: this.convertExitNode(node, flowgram),
+        };
       case 'http':
         return { ...base, height: 120, data: this.convertHttpNode(node, flowgram.nodes) };
       case 'code':
@@ -1539,6 +1550,69 @@ main = function(args) {
   }
 
   /** 转换 End 节点 */
+  /**
+   * 退出节点（退出整个工作流）→ Dify 的 end 节点：
+   * 运行执行到它就在这一点结束，并把这里声明的值作为运行结果返回。
+   * FlowGram 侧只声明「输出名 → 上游变量」，所以每个输出都必须是引用。
+   */
+  private convertExitNode(node: FlowNodeJSON, flowgram: FlowGramJSON): any {
+    const scope = String(node.data.scope || 'workflow');
+    if (scope === 'loop') {
+      throw new BadRequestException(
+        `退出节点 ${node.id} 的退出范围是「跳出当前循环」，Dify 的循环不支持中途跳出；`
+        + '请在画布上改用本地试运行，或先用「条件分支」把要跳过的项排除掉',
+      );
+    }
+
+    const outputs = Object.entries(node.data.inputsValues || {}).map(([variable, value]) => {
+      if (
+        !value
+        || (value as any).type !== 'ref'
+        || !Array.isArray((value as any).content)
+        || (value as any).content.length < 2
+      ) {
+        throw new BadRequestException(
+          `退出节点 ${node.id} 的输出 ${variable} 必须引用一个上游节点变量`,
+        );
+      }
+      const valueSelector = this.normalizeDifySelector(
+        ((value as any).content as unknown[]).map(String),
+        flowgram.nodes,
+      );
+      const referencedNode = flowgram.nodes.find(
+        (candidate) => candidate.id === valueSelector[0],
+      );
+      if (!referencedNode || referencedNode.type === 'end' || referencedNode.type === 'exit') {
+        throw new BadRequestException(
+          `退出节点 ${node.id} 的输出 ${variable} 引用了不存在或无效的节点`,
+        );
+      }
+      return { variable, value_selector: valueSelector };
+    });
+
+    return {
+      type: 'end',
+      title: node.data.title || '退出节点',
+      desc: '提前结束运行',
+      selected: false,
+      outputs,
+    };
+  }
+
+  /** 退出节点的发布前校验：范围合法，且「跳出循环」不能出现在主画布上 */
+  private validateExitNode(node: FlowNodeJSON) {
+    const scope = String(node.data.scope || 'workflow');
+    if (!['workflow', 'loop'].includes(scope)) {
+      throw new BadRequestException(`退出节点 ${node.id} 的退出范围不合法`);
+    }
+    if (scope === 'loop') {
+      throw new BadRequestException(
+        `退出节点 ${node.id} 的退出范围是「跳出当前循环」，必须放在循环体内；`
+        + '放在主画布上时请改成「退出整个工作流」',
+      );
+    }
+  }
+
   private convertEndNode(node: FlowNodeJSON, flowgram: FlowGramJSON): any {
     const incoming = flowgram.edges.filter(
       (edge) => edge.targetNodeID === node.id,
@@ -2361,6 +2435,11 @@ main = function(args) {
       if (['start', 'end', 'block-start', 'block-end'].includes(block.type)) {
         throw new BadRequestException(
           `循环节点 ${node.id} 的循环体包含不允许的节点类型 ${block.type}`,
+        );
+      }
+      if (block.type === 'exit' || block.type === 'break' || block.type === 'continue') {
+        throw new BadRequestException(
+          `循环节点 ${node.id} 的「退出节点（跳出当前循环）」暂不支持发布到云端（Dify 的循环无法中途跳出），请使用本地试运行`,
         );
       }
     }

@@ -23,7 +23,6 @@ interface NodeProps {
   availability?: string;
 }
 
-const TEMPORARILY_UNAVAILABLE_TYPES = new Set(['continue', 'break']);
 const PROFESSIONAL_NODE_TYPES = new Set(['http', 'code', 'loop', 'knowledge', 'subworkflow', 'mcp']);
 
 const NodeIcon = ({ icon }: { icon?: string }) => {
@@ -122,8 +121,7 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
       condition: '流程控制',
       'multi-condition': '流程控制',
       loop: '流程控制',
-      continue: '流程控制',
-      break: '流程控制',
+      exit: '流程控制',
       comment: '画布辅助',
       group: '画布辅助',
     };
@@ -163,7 +161,6 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
             <h3>{category}</h3>
             {records.map((registry) => {
           const label = NodeLabels[registry.type as string] || (registry.type as string);
-          const temporarilyUnavailable = TEMPORARILY_UNAVAILABLE_TYPES.has(registry.type as string);
           const requiresProfessional = vipLevel === 'free'
             && PROFESSIONAL_NODE_TYPES.has(registry.type as string);
           return (
@@ -172,14 +169,8 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
               label={label}
               description={NodeDescriptions[registry.type as string] || registry.info?.description || ''}
               icon={registry.info?.icon}
-              availability={temporarilyUnavailable
-                ? '暂不可运行'
-                : requiresProfessional
-                  ? '专业版'
-                  : undefined}
-              disabled={temporarilyUnavailable
-                || requiresProfessional
-                || !(registry.canAdd?.(context) ?? true)}
+              availability={requiresProfessional ? '专业版' : undefined}
+              disabled={requiresProfessional || !(registry.canAdd?.(context) ?? true)}
               onClick={(event) => handleClick(event, registry)}
             />
           );

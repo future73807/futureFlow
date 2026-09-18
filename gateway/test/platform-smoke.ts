@@ -2445,8 +2445,8 @@ async function testDifyCanvasDecorationsAndUnsupportedNodes() {
   assert.equal(dsl.workflow.graph.edges.length, 2);
 
   const unsupported = [
-    { type: 'break', message: /发布暂不支持 break 节点/ },
-    { type: 'continue', message: /发布暂不支持 continue 节点/ },
+    { type: 'break', message: /已下线的「中断\/继续」节点/ },
+    { type: 'continue', message: /已下线的「中断\/继续」节点/ },
   ];
   for (const entry of unsupported) {
     assert.throws(
@@ -3008,9 +3008,11 @@ async function testBatchLoopCompilesToDifyIteration() {
     mutate(draft);
     assert.throws(() => converter.toDifyDSL(draft), expected);
   };
-  invalid((draft) => { draft.nodes[2].blocks = draft.nodes[2].blocks.slice(0, 2); }, /子画布必须固定/);
-  invalid((draft) => { draft.nodes[2].edges = draft.nodes[2].edges.slice(0, 1); }, /内部连线必须且只能有两条/);
-  invalid((draft) => { draft.nodes[2].blocks[1].type = 'http'; }, /仅允许一个同步 JavaScript/);
+  // 下面几条的提示语在「循环体支持任意节点链」重构后改为更具体的描述，这里同时接受新旧两种措辞
+  invalid((draft) => { draft.nodes[2].blocks = draft.nodes[2].blocks.slice(0, 2); }, /循环体至少需要一个节点|子画布必须固定/);
+  invalid((draft) => { draft.nodes[2].edges = draft.nodes[2].edges.slice(0, 1); }, /内部连线必须/);
+  // 循环体已支持任意节点链：把内部代码节点换成 http 后，item/index 的引用规则会先拦下它
+  invalid((draft) => { draft.nodes[2].blocks[1].type = 'http'; }, /只能在循环体内的代码节点里通过 params 读取|循环体包含不允许的节点类型|仅允许一个同步 JavaScript/);
   invalid((draft) => {
     draft.nodes[2].blocks[1].data.script.content = 'async function main({ params }) { return { doubled: params.item }; }';
   }, /必须同步执行|暂不支持 async/);
@@ -3021,16 +3023,16 @@ async function testBatchLoopCompilesToDifyIteration() {
   // 覆盖不到循环输入类型校验；对象数组是允许的，正向用例见 batch-loop-smoke。
   invalid((draft) => {
     draft.nodes[2].blocks[1].data.outputs.properties.doubled.type = 'object';
-  }, /逐项输出仅支持字符串或数字/);
+  }, /输出仅支持字符串或数字|逐项输出仅支持字符串或数字/);
   invalid((draft) => {
     draft.nodes[2].data.outputs.properties.doubled.items.type = 'string';
   }, /输出声明与批处理结果不一致/);
   invalid((draft) => {
     draft.nodes[2].data.loopOutputs.doubled.content = ['batch_inner_code', 'missing'];
-  }, /必须引用子画布代码节点的唯一输出/);
+  }, /输出必须引用循环体内某个节点的输出|必须引用子画布代码节点的唯一输出/);
   invalid((draft) => {
     draft.nodes[2].blocks[1].data.inputsValues.item.content = ['batch_end', 'result'];
-  }, /只能引用当前项 item 或序号 index/);
+  }, /只能引用当前项 item|只能在循环体内的代码节点里通过 params 读取/);
   invalid((draft) => {
     draft.edges.push({ sourceNodeID: 'batch_start', targetNodeID: 'batch_loop' });
   }, /必须来自所有执行路径都会经过的上游节点/);
@@ -3528,6 +3530,131 @@ async function testDifyRejectsAmbiguousMergedEnd() {
   );
 }
 
+async function testExitNodeConversion() {
+  const converter = new DifyConverterService();
+
+  // 1) 退出整个工作流：转换成 Dify 的 end 节点，输出指向退出时引用的上游变量
+  const exitFlow = {
+    nodes: [
+      { id: 'start', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string' } } } } },
+      {
+        id: 'code_1',
+        type: 'code',
+        data: {
+          title: '准备',
+          inputsValues: { query: { type: 'ref', content: ['start', 'query'] } },
+          inputs: { type: 'object', properties: { query: { type: 'string' } } },
+          script: { language: 'javascript', content: 'function main({ params }) { return { text: params.query }; }' },
+          outputs: { type: 'object', properties: { text: { type: 'string' } } },
+        },
+      },
+      {
+        id: 'exit_1',
+        type: 'exit',
+        data: { title: '提前退出', scope: 'workflow', inputsValues: { summary: { type: 'ref', content: ['code_1', 'text'] } } },
+      },
+    ],
+    edges: [
+      { sourceNodeID: 'start', targetNodeID: 'code_1' },
+      { sourceNodeID: 'code_1', targetNodeID: 'exit_1' },
+    ],
+  };
+  const exitDsl = converter.toDifyDSL(exitFlow as any);
+  const exitNode = exitDsl.workflow.graph.nodes.find((candidate) => candidate.id === 'exit_1');
+  assert.equal(exitNode?.data.type, 'end');
+  assert.equal(exitNode?.data.title, '提前退出');
+  assert.deepEqual(exitNode?.data.outputs, [
+    { variable: 'summary', value_selector: ['code_1', 'text'] },
+  ]);
+  // 画布上已有退出节点时不再自动补 end_auto
+  assert.equal(
+    exitDsl.workflow.graph.nodes.some((candidate) => candidate.id === 'end_auto'),
+    false,
+  );
+
+  // 2) 退出范围是「跳出当前循环」却放在主画布上：报位置错误
+  assert.throws(
+    () => converter.toDifyDSL({
+      nodes: [
+        { id: 'start', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string' } } } } },
+        { id: 'exit_1', type: 'exit', data: { title: '退出节点', scope: 'loop' } },
+      ],
+      edges: [{ sourceNodeID: 'start', targetNodeID: 'exit_1' }],
+    } as any),
+    /必须放在循环体内/,
+  );
+
+  // 3) 循环体内的「退出节点」：本地能跑，云端不支持
+  const loopBreakFlow = {
+    nodes: [
+      { id: 'start', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { items: { type: 'array', items: { type: 'number' } } } } } },
+      {
+        id: 'loop_1',
+        type: 'loop',
+        data: {
+          title: '循环',
+          loopFor: { type: 'ref', content: ['start', 'items'] },
+          loopOutputs: { doubled: { type: 'ref', content: ['inner_code', 'doubled'] } },
+          outputs: { type: 'object', properties: { doubled: { type: 'array', items: { type: 'number' } } } },
+        },
+        blocks: [
+          { id: 'block_start', type: 'block-start', data: {} },
+          {
+            id: 'inner_code',
+            type: 'code',
+            data: {
+              title: '逐项处理',
+              inputsValues: {
+                item: { type: 'ref', content: ['loop_1', 'item'] },
+                index: { type: 'ref', content: ['loop_1', 'index'] },
+              },
+              inputs: { type: 'object', properties: { item: { type: 'number' }, index: { type: 'number' } } },
+              script: { language: 'javascript', content: 'function main({ params }) { return { doubled: params.item * 2 }; }' },
+              outputs: { type: 'object', properties: { doubled: { type: 'number' } } },
+            },
+          },
+          { id: 'exit_inner', type: 'exit', data: { title: '退出循环', scope: 'loop' } },
+          { id: 'block_end', type: 'block-end', data: {} },
+        ],
+        edges: [
+          { sourceNodeID: 'block_start', targetNodeID: 'inner_code' },
+          { sourceNodeID: 'inner_code', targetNodeID: 'exit_inner' },
+          { sourceNodeID: 'exit_inner', targetNodeID: 'block_end' },
+        ],
+      },
+      {
+        id: 'end',
+        type: 'end',
+        data: {
+          title: '结束',
+          inputsValues: { result: { type: 'ref', content: ['loop_1', 'doubled'] } },
+          inputs: { type: 'object', properties: { result: { type: 'array', items: { type: 'number' } } } },
+        },
+      },
+    ],
+    edges: [
+      { sourceNodeID: 'start', targetNodeID: 'loop_1' },
+      { sourceNodeID: 'loop_1', targetNodeID: 'end' },
+    ],
+  };
+  assert.throws(
+    () => converter.toDifyDSL(loopBreakFlow as any),
+    /暂不支持发布到云端/,
+  );
+
+  // 4) 已下线的中断/继续节点：给出明确指引
+  assert.throws(
+    () => converter.toDifyDSL({
+      nodes: [
+        { id: 'start', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string' } } } } },
+        { id: 'brk', type: 'break', data: { title: '中断' } },
+      ],
+      edges: [{ sourceNodeID: 'start', targetNodeID: 'brk' }],
+    } as any),
+    /已下线的「中断\/继续」节点/,
+  );
+}
+
 async function testDifyPendingImportMustBeConfirmedBeforePublish() {
   const originalFetch = global.fetch;
   const input = {
@@ -3666,6 +3793,7 @@ async function main() {
   await testFlowGramConditionOperatorAliases();
   await testDify015ConditionValueRuntimeContract();
   await testDifyRejectsAmbiguousMergedEnd();
+  await testExitNodeConversion();
   console.log('platform smoke tests passed');
 }
 

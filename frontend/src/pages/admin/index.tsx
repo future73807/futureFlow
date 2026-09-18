@@ -617,9 +617,15 @@ const UsersView = ({
 
   const handleSaveBalance = async () => {
     if (!adjustModal.user) return;
+    const delta = Number(adjustValues.delta || 0);
+    if (!Number.isFinite(delta) || delta === 0) {
+      Toast.warning('请输入非零的余额变动金额');
+      return;
+    }
     try {
-      await adjustBalance(adjustModal.user.id, Number(adjustValues.delta || 0), '管理员手动调整');
+      await adjustBalance(adjustModal.user.id, delta, '管理员手动调整');
       Toast.success('余额已保存');
+      setAdjustValues((prev) => ({ ...prev, delta: 0 }));
       refresh();
     } catch (e: any) {
       Toast.error(e.message || '保存余额失败');
@@ -632,7 +638,11 @@ const UsersView = ({
     setAdjustSaving(true);
     try {
       // 余额、等级、状态各有独立接口，按顺序提交；任一失败即中止，避免只改一半还提示成功
-      await adjustBalance(user.id, Number(adjustValues.delta || 0), '管理员手动调整');
+      // 余额为 0 视为「本次不改余额」，跳过调用（接口只接受非零变动），只提交等级/状态
+      const delta = Number(adjustValues.delta || 0);
+      if (Number.isFinite(delta) && delta !== 0) {
+        await adjustBalance(user.id, delta, '管理员手动调整');
+      }
       await updateVipLevel(user.id, adjustValues.vipLevel);
       await updateUserStatus(user.id, adjustValues.status);
       Toast.success('用户信息已更新');
@@ -755,7 +765,7 @@ const UsersView = ({
               />
               <Button onClick={() => void handleSaveBalance()}>保存余额</Button>
             </div>
-            <span className="admin-muted">正数充值，负数扣除</span>
+            <span className="admin-muted">正数充值，负数扣除；保持 0 则只保存等级与状态</span>
           </div>
           <div className="admin-adjust-field">
             <label>等级</label>

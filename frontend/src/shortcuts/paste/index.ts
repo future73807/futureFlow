@@ -90,7 +90,10 @@ export class PasteShortcut implements ShortcutsHandler {
   }
 
   /** apply clipboard data - 应用剪切板数据 */
-  public apply(data: WorkflowClipboardData): WorkflowNodeEntity[] {
+  public apply(
+    data: WorkflowClipboardData,
+    options?: { parent?: WorkflowNodeEntity; offset?: IPoint },
+  ): WorkflowNodeEntity[] {
     // extract raw json from clipboard data - 从剪贴板数据中提取原始JSON
     const { json: rawJSON } = data;
     const json = generateUniqueWorkflow({
@@ -98,13 +101,15 @@ export class PasteShortcut implements ShortcutsHandler {
       isUniqueId: (id: string) => !this.entityManager.getEntityById(id),
     });
 
-    const offset = this.calcPasteOffset(data.bounds);
-    let parent = this.getSelectedContainer();
+    // 显式给定偏移（例如菜单「创建副本」要落在原节点附近）时优先，
+    // 否则按鼠标位置计算；容器同样优先使用显式指定值
+    const offset = options?.offset ?? this.calcPasteOffset(data.bounds);
+    let parent = options?.parent ?? this.getSelectedContainer();
     // loop 不支持嵌套
     if (parent && json.nodes.some((n) => !canContainNode(n.type, parent!.flowNodeType))) {
       parent = undefined;
     }
-    this.applyOffset({ json, offset, parent });
+    this.applyOffset({ json, offset, parent, adjustForContainer: !options?.offset });
     const { nodes } = this.document.batchAddFromJSON(json, {
       parent,
     });
@@ -187,8 +192,10 @@ export class PasteShortcut implements ShortcutsHandler {
     json: WorkflowJSON;
     offset: IPoint;
     parent?: WorkflowNodeEntity;
+    /** 容器子节点是否要把世界坐标换算成容器内坐标（鼠标粘贴需要，显式偏移不需要） */
+    adjustForContainer: boolean;
   }): void {
-    const { json, offset, parent } = params;
+    const { json, offset, parent, adjustForContainer } = params;
     json.nodes.forEach((nodeJSON) => {
       if (!nodeJSON.meta?.position) {
         return;
@@ -198,7 +205,7 @@ export class PasteShortcut implements ShortcutsHandler {
         x: nodeJSON.meta.position.x + offset.x,
         y: nodeJSON.meta.position.y + offset.y,
       };
-      if (parent) {
+      if (parent && adjustForContainer) {
         position = this.dragService.adjustSubNodePosition(
           nodeJSON.type as string,
           parent,

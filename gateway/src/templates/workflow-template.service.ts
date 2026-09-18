@@ -51,6 +51,43 @@ export class WorkflowTemplateService implements OnModuleInit {
   }
 
   private systemTemplates(): Array<Partial<WorkflowTemplate>> {
+    /**
+     * 模板里的大语言模型节点必须带上 temperature 与 inputs schema：
+     * 画布上的 LLM 节点把 modelName / temperature / prompt 标成必填，缺少 temperature
+     * 时从模板创建的工作流第一次试运行会直接被表单校验拦下。
+     */
+    const llmNodeData = (systemPrompt: string, prompt: string) => ({
+      title: 'AI 处理',
+      inputsValues: {
+        modelName: { type: 'constant', content: 'glm-5.3-flash' },
+        temperature: { type: 'constant', content: 0.7 },
+        systemPrompt: { type: 'constant', content: systemPrompt },
+        prompt: { type: 'template', content: prompt },
+      },
+      inputs: {
+        type: 'object',
+        required: ['modelName', 'temperature', 'prompt'],
+        properties: {
+          modelName: { type: 'string', title: '模型名称' },
+          temperature: { type: 'number', title: '生成温度' },
+          systemPrompt: {
+            type: 'string',
+            title: '系统提示词',
+            extra: { formComponent: 'prompt-editor' },
+          },
+          prompt: {
+            type: 'string',
+            title: '用户提示词',
+            extra: { formComponent: 'prompt-editor' },
+          },
+        },
+      },
+      outputs: {
+        type: 'object',
+        properties: { result: { type: 'string', title: '结果' } },
+      },
+    });
+
     const create = (
       slug: string,
       name: string,
@@ -73,8 +110,8 @@ export class WorkflowTemplateService implements OnModuleInit {
       status: 'active',
       flowgramJson: {
         nodes: [
-          { id: 'start_0', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', default: '' } } } } },
-          { id: 'llm_0', type: 'llm', data: { title: 'AI 处理', inputsValues: { modelName: { type: 'constant', content: 'glm-5.3-flash' }, systemPrompt: { type: 'constant', content: systemPrompt }, prompt: { type: 'template', content: prompt } } } },
+          { id: 'start_0', type: 'start', data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', title: '用户输入', default: '' } } } } },
+          { id: 'llm_0', type: 'llm', data: llmNodeData(systemPrompt, prompt) },
           { id: 'end_0', type: 'end', data: { title: '结束' } },
         ],
         edges: [

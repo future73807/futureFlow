@@ -119,7 +119,7 @@ export class CopyShortcut implements ShortcutsHandler {
     }
     if (this.getValidNodes(nodes).length === 0) {
       Toast.warning({
-        content: '循环节点及其固定内部节点不能创建副本',
+        content: '开始/结束节点、循环节点与循环体的块开始/块结束不能创建副本',
       });
       return false;
     }
@@ -128,14 +128,19 @@ export class CopyShortcut implements ShortcutsHandler {
 
   /**
    * get valid nodes - 获取有效的节点
+   *
+   * 循环体里的普通节点允许创建副本（副本会落在同一个循环体里，由 PasteShortcut 处理），
+   * 只有开始/结束、循环体锚点这类结构性节点不能复制。
    */
   private getValidNodes(nodes: WorkflowNodeEntity[]): WorkflowNodeEntity[] {
     return nodes.filter((n) => {
-      if (n.parent?.flowNodeType === WorkflowNodeType.Loop) {
-        return false;
-      }
       if (
-        [WorkflowNodeType.Start, WorkflowNodeType.End].includes(n.flowNodeType as WorkflowNodeType)
+        [
+          WorkflowNodeType.Start,
+          WorkflowNodeType.End,
+          WorkflowNodeType.BlockStart,
+          WorkflowNodeType.BlockEnd,
+        ].includes(n.flowNodeType as WorkflowNodeType)
       ) {
         return false;
       }

@@ -32,6 +32,7 @@ import { prepareVariableNodesForRuntime } from '../../../nodes/variable/runtime'
 import { prepareCodeNodesForRuntime } from '../../../nodes/code/runtime';
 import { prepareConditionNodesForRuntime } from '../../../nodes/condition/runtime';
 import { prepareLoopNodesForRuntime } from '../../../nodes/loop/runtime';
+import { prepareExitNodesForRuntime } from '../../../nodes/exit/runtime';
 import { prepareAggregatorNodesForRuntime } from '../../../nodes/variable-aggregator/runtime';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
@@ -140,10 +141,12 @@ schema = prepareConditionNodesForRuntime(
                 prepareLLMNodesForRuntime(
                   prepareHttpNodesForRuntime(
                     prepareContentNodesForRuntime(
-                      prepareVariableNodesForRuntime({
-                        ...this.document.toJSON(),
-                        globalVariable: this.getGlobalVariableSchema(),
-                      }),
+                      prepareExitNodesForRuntime(
+                        prepareVariableNodesForRuntime({
+                          ...this.document.toJSON(),
+                          globalVariable: this.getGlobalVariableSchema(),
+                        }),
+                      ),
                     ),
                   ),
                 ),

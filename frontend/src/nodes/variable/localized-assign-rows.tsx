@@ -15,6 +15,8 @@ import {
 import { Button, IconButton } from '@douyinfe/semi-ui';
 import { IconMinus, IconPlus } from '@douyinfe/semi-icons';
 
+import { promoteTemplateValue } from '../../utils/flow-value';
+
 interface LocalizedAssignRowsProps {
   name: string;
   readonly?: boolean;
@@ -67,7 +69,8 @@ function LocalizedAssignRow({
         <InjectDynamicValueInput
           readonly={readonly}
           value={value.right as DynamicValue}
-          onChange={(right) => onChange({ ...value, right })}
+          // 手写 {{上游变量}} 时自动升级为模板类型，避免被当成字面量写入变量
+          onChange={(right) => onChange({ ...value, right: promoteTemplateValue(right) })}
         />
       </div>
       {!readonly && (
