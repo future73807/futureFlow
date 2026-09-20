@@ -265,10 +265,12 @@ export class WorkflowTriggerService {
    * 的唯一收口，放在内部才能保证两边都覆盖、将来新增链路也不会漏。`failureCount`
    * 虽然早已入库并随接口返回，但没有任何主动推送，只看数据不会有人发现某个定时任务
    * 已经连续失败很多次。
+   *
+   * 不返回值：两个调用方都在 `finally` 里只做「记录」这一件事，返回值没有消费方。
    */
-  async recordResult(triggerId: string, succeeded: boolean) {
+  async recordResult(triggerId: string, succeeded: boolean): Promise<void> {
     const trigger = await this.triggerRepo.findOne({ where: { id: triggerId } });
-    if (!trigger) return null;
+    if (!trigger) return;
     trigger.lastTriggeredAt = new Date();
     trigger.lastRunStatus = succeeded ? 'succeeded' : 'failed';
     trigger.failureCount = succeeded ? 0 : trigger.failureCount + 1;
@@ -282,12 +284,6 @@ export class WorkflowTriggerService {
       const alert = describeConsecutiveFailure(trigger.failureCount, trigger.name, policy);
       if (alert) this.logger.error(`${alert}（类型=${trigger.type}）`);
     }
-
-    return {
-      id: trigger.id,
-      name: trigger.name,
-      failureCount: trigger.failureCount,
-    };
   }
 
   private async getOwned(userId: string, triggerId: string) {

@@ -60,8 +60,8 @@ async function main() {
       trigger: { id: 't1', name: '日报任务', type: 'schedule', failureCount: 1 },
       alertThreshold: '3',
     });
-    const recorded = await h.service.recordResult('t1', false);
-    assert.equal(recorded?.failureCount, 2, '失败应累加计数');
+    await h.service.recordResult('t1', false);
+    assert.equal(h.saved[0].failureCount, 2, '失败应累加计数并落库');
     assert.equal(h.logs.length, 0, '未达阈值不应告警');
   }
 
@@ -71,8 +71,8 @@ async function main() {
       trigger: { id: 't1', name: '日报任务', type: 'schedule', failureCount: 2 },
       alertThreshold: '3',
     });
-    const recorded = await h.service.recordResult('t1', false);
-    assert.equal(recorded?.failureCount, 3);
+    await h.service.recordResult('t1', false);
+    assert.equal(h.saved[0].failureCount, 3, '计数应落库');
     assert.equal(h.logs.length, 1, '达到阈值应恰好告警一次');
     assert.equal(h.logs[0].level, 'error', '连续失败属于需要人工介入，应为 error 级');
     assert.match(h.logs[0].message, /连续失败 3 次/);
@@ -85,8 +85,8 @@ async function main() {
       trigger: { id: 't1', name: '日报任务', type: 'schedule', failureCount: 41 },
       alertThreshold: '3',
     });
-    const recorded = await h.service.recordResult('t1', false);
-    assert.equal(recorded?.failureCount, 42);
+    await h.service.recordResult('t1', false);
+    assert.equal(h.saved[0].failureCount, 42, '计数应落库');
     assert.match(h.logs[0].message, /连续失败 42 次/);
   }
 
@@ -96,8 +96,8 @@ async function main() {
       trigger: { id: 't1', name: '日报任务', type: 'schedule', failureCount: 9 },
       alertThreshold: '3',
     });
-    const recorded = await h.service.recordResult('t1', true);
-    assert.equal(recorded?.failureCount, 0, '成功应把连续失败清零');
+    await h.service.recordResult('t1', true);
+    assert.equal(h.saved[0].failureCount, 0, '成功应把连续失败清零并落库');
     assert.equal(h.logs.length, 0, '成功不应告警');
     assert.equal(h.saved[0].lastRunStatus, 'succeeded');
   }
@@ -116,8 +116,8 @@ async function main() {
   // ── 触发器已不存在：安静返回，不抛错 ────────────────────────────
   {
     const h = buildService({ trigger: null, alertThreshold: '3' });
-    const recorded = await h.service.recordResult('gone', false);
-    assert.equal(recorded, null, '触发器已被删除时不应抛错，避免污染调用方 finally');
+    await h.service.recordResult('gone', false);
+    assert.equal(h.saved.length, 0, '触发器已被删除时不应抛错、也不应写入');
     assert.equal(h.logs.length, 0);
   }
 

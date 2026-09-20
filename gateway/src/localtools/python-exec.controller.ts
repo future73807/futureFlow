@@ -28,11 +28,21 @@ const RESULT_MARKER = '__FF_RESULT__';
  */
 const VENDORED_MODULES_DIR = join(__dirname, '..', '..', 'vendor', 'python');
 
-/** 组装传给子进程的 PYTHONPATH：额外目录（用户指定）＞ 随仓库携带的目录 ＞ 原有值。 */
+/**
+ * 组装 PYTHONPATH（纯函数，只看入参，便于测试）。
+ *
+ * 顺序即导入优先级：用户额外目录 ＞ 随仓库携带的目录 ＞ 原有 PYTHONPATH。
+ * 目录不存在时跳过；全部为空返回 undefined（而不是空串——空串会作为有效值写进
+ * 子进程环境，反而可能影响 Python 的默认搜索路径）。
+ *
+ * 之所以拆成纯函数 + {@link buildPythonPathFromEnv} 两层：默认参数无法区分
+ * 「未提供」与「显式传 undefined」，导致「没有原有 PYTHONPATH」这种情形无法表达、
+ * 也无法稳定测试。这里用 null 明确表示「无」。
+ */
 export function buildPythonPath(
-  extra = process.env.PYTHON_EXTRA_MODULES_PATH,
-  vendored = VENDORED_MODULES_DIR,
-  existing = process.env.PYTHONPATH,
+  extra: string | null,
+  vendored: string | null,
+  existing: string | null,
 ): string | undefined {
   const parts = [
     ...(extra ? extra.split(delimiter) : []),
@@ -40,6 +50,15 @@ export function buildPythonPath(
     ...(existing ? existing.split(delimiter) : []),
   ].filter(Boolean);
   return parts.length ? parts.join(delimiter) : undefined;
+}
+
+/** 生产入口：读取环境变量与携带目录后交给 {@link buildPythonPath}。 */
+export function buildPythonPathFromEnv(): string | undefined {
+  return buildPythonPath(
+    process.env.PYTHON_EXTRA_MODULES_PATH ?? null,
+    VENDORED_MODULES_DIR,
+    process.env.PYTHONPATH ?? null,
+  );
 }
 
 /**
@@ -148,7 +167,7 @@ export class PythonExecController {
       await writeFile(paramsFile, JSON.stringify(payload.params ?? {}), 'utf8');
 
       const stdout = await new Promise<string>((resolve, reject) => {
-        const pythonPath = buildPythonPath();
+        const pythonPath = buildPythonPathFromEnv();
         const child = spawn(python, [runnerFile, paramsFile, userFile], {
           cwd: dir,
           timeout: EXEC_TIMEOUT_MS,
