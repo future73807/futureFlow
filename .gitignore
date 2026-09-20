@@ -36,6 +36,8 @@ npm-debug.log*
 
 # Runtime-generated media assets
 .futureflow-media/
+# Runtime-generated uploaded files（网关 MEDIA_ASSET_ROOT 同级的上传落盘目录）
+gateway/.futureflow-files/
 
 # Docker volumes
 dify/volumes/
