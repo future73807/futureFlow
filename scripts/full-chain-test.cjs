@@ -60,6 +60,14 @@ const CONFIG = {
   difyAdminEmail: process.env.DIFY_ADMIN_EMAIL || 'admin@futureflow.local',
   difyAdminPassword: process.env.DIFY_ADMIN_PASSWORD,
   skipLlm: process.env.FUTUREFLOW_SKIP_LLM?.trim().toLowerCase() === 'true',
+  /**
+   * API 请求节点探测的外部地址。
+   *
+   * 默认值 dns.google 在部分网络（如中国大陆）不可达，会让整条链路因**环境**而非
+   * 代码失败。可用 FULL_CHAIN_API_URL 指向任何返回 JSON 的公开接口；脚本会在开始前
+   * 预检该地址，不可达时给出明确提示而不是伪装成断言失败。
+   */
+  apiProbeUrl: (process.env.FULL_CHAIN_API_URL || 'https://dns.google/resolve').trim(),
 };
 
 /**
@@ -301,7 +309,7 @@ function buildWorkflow() {
           title: 'API 请求',
           api: {
             method: 'GET',
-            url: { type: 'constant', content: 'https://dns.google/resolve' },
+            url: { type: 'constant', content: CONFIG.apiProbeUrl },
           },
           authorization: {
             type: 'bearer',
@@ -701,6 +709,19 @@ async function verifyArchive(outputs, nodeEvents, finished) {
 }
 
 async function run() {
+  const probe = await preflightApiProbe();
+  if (!probe.reachable) {
+    console.error(
+      `\n[环境提示] API 探测地址不可达：${CONFIG.apiProbeUrl}\n`
+      + `  原因：${probe.error || `HTTP ${probe.status}`}\n`
+      + '  该链路包含一个真实访问公网的「API 请求」节点，地址不可达会表现为「工作流执行失败」，\n'
+      + '  但这属于网络环境限制，不是代码回归。\n'
+      + '  可指定一个本网络可达、返回 JSON 的公开接口后重试，例如：\n'
+      + '    FULL_CHAIN_API_URL=https://api.example.com/ping node scripts/full-chain-test.cjs\n',
+    );
+    process.exit(2);
+  }
+
   if (!CONFIG.adminAccount || !CONFIG.adminPassword) {
     throw new Error('缺少网关管理员账号配置，无法执行富节点全链路测试');
   }
@@ -838,7 +859,7 @@ async function run() {
 
   const outputs = finished.data?.outputs || {};
   assert.deepEqual(outputs.result, [2, 4, 6], '数组批处理结果不正确');
-  // 单个 api 节点（GET https://dns.google/resolve）的真实结果，经变量节点透出到 end。
+  // 单个 api 节点（GET CONFIG.apiProbeUrl）的真实结果，经变量节点透出到 end。
   // 注：原脚本这里断言的是 api_get / api_post 两个已不存在的 HTTP 节点及其回显契约
   // （getProbe / postMessage / postNestedOk 等），那些节点与 API_ECHO_CONTRACT 从未
   // 定义过。HTTP 的 POST + 嵌套 JSON 回显语义由 scripts/test-http-runtime.cjs 覆盖，
@@ -1079,6 +1100,27 @@ async function cleanup() {
     }));
   }
   return failures;
+}
+
+/**
+ * 预检 API 探测地址的可达性。
+ *
+ * 该链路包含一个真实访问公网的「API 请求」节点。若外部地址不可达（例如默认的
+ * dns.google 在中国大陆无法访问），失败原因是**环境**而非代码，但断言输出会表现为
+ * 「工作流执行失败」，极易被误判为回归。这里提前探测并给出明确指引，
+ * 让环境问题一眼可辨。
+ */
+async function preflightApiProbe() {
+  try {
+    const response = await fetchWithTimeout(CONFIG.apiProbeUrl, { method: 'GET' }, 10_000);
+    return { reachable: response.status < 500, status: response.status };
+  } catch (error) {
+    return { reachable: false, status: null, error: describeErrorLike(error) };
+  }
+}
+
+function describeErrorLike(error) {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
 async function main() {

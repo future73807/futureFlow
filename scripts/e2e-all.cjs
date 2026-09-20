@@ -210,6 +210,13 @@ function runSuite(suite) {
   const stderr = String(result.stderr || '');
   return {
     ok: result.status === 0,
+    /**
+     * 约定：**退出码 2 表示「环境受限、无法验证」**（例如套件依赖的外部地址在本网络
+     * 不可达）。这类结果既不是通过也不是代码回归，单独区分出来——否则一个被网络限制
+     * 卡住的套件会长期显示为 FAIL，久而久之整套验收的可信度就没人信了。
+     * 仅当脚本明确以此退出码表示环境问题时才成立，原因是必须打印出来的。
+     */
+    skipped: result.status === 2,
     status: result.status,
     durationMs,
     stdout,
@@ -260,22 +267,32 @@ async function main() {
     process.stdout.write(`▶ ${suite.id.padEnd(22)} `);
     const outcome = runSuite(suite);
     results.push({ suite, outcome });
-    console.log(`${outcome.ok ? 'PASS' : `FAIL(status=${outcome.status})`}  ${(outcome.durationMs / 1000).toFixed(1)}s`);
+    console.log(`${outcome.ok ? 'PASS' : outcome.skipped ? 'SKIP(环境受限)' : `FAIL(status=${outcome.status})`}  ${(outcome.durationMs / 1000).toFixed(1)}s`);
     if (!outcome.ok) {
       for (const line of outcome.tail.split('\n')) console.log(`    | ${line}`);
     }
   }
 
-  const failed = results.filter((item) => !item.outcome.ok);
+  const failed = results.filter((item) => !item.outcome.ok && !item.outcome.skipped);
+  const skipped = results.filter((item) => item.outcome.skipped);
   console.log('\n================ 汇总 ================');
   for (const group of ['local', 'api', 'gui']) {
     const inGroup = results.filter((item) => item.suite.group === group);
     if (!inGroup.length) continue;
     const passed = inGroup.filter((item) => item.outcome.ok).length;
-    console.log(`${group.padEnd(6)} ${passed}/${inGroup.length} 通过`);
+    const skippedInGroup = inGroup.filter((item) => item.outcome.skipped).length;
+    console.log(`${group.padEnd(6)} ${passed}/${inGroup.length} 通过${skippedInGroup ? `（${skippedInGroup} 个环境受限跳过）` : ''}`);
   }
   const totalPassed = results.length - failed.length;
   console.log(`合计   ${totalPassed}/${results.length} 通过`);
+
+  if (skipped.length) {
+    console.log('\n环境受限跳过（不计为失败，但请确认原因）：');
+    for (const item of skipped) {
+      console.log(`  - ${item.suite.id}（${item.suite.script}）`);
+      for (const line of item.outcome.tail.split('\n')) console.log(`      ${line}`);
+    }
+  }
 
   if (failed.length) {
     console.log('\n失败套件：');
