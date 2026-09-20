@@ -204,6 +204,60 @@ const record = (name, ok, detail = '') => {
   record('T6 试运行整体成功(无失败标记)', !/执行失败/.test(output));
   await browser.close();
 
+  // ── T7/T8：只读模板的安全属性 ─────────────────────────────────
+  // SQL 节点被移除后，「只读」这条保障改由 Python 节点的预置模板承担。它是一条
+  // **安全属性**：若日后有人编辑模板时删掉 BEGIN READ ONLY，界面上不会有任何异常，
+  // 但「查数据库」就悄悄变成了「可以改库」。所以这里直接抽取**真实模板文本**执行，
+  // 而不是另写一段等价代码——否则模板被改坏时测试照样通过。
+  const templatePath = resolve(__dirname, '..', 'frontend/src/nodes/python/form-meta.tsx');
+  const templateSource = readFileSync(templatePath, 'utf8');
+  const templateMatch = templateSource.match(
+    /export const POSTGRES_READONLY_TEMPLATE = `([\s\S]*?)`;/,
+  );
+  // 抽不到就报错退出，而不是跳过：模板格式变了要让测试失败，不能静默漏测。
+  if (!templateMatch) {
+    record('T7 抽取只读模板文本', false, '未能在 form-meta.tsx 中匹配到 POSTGRES_READONLY_TEMPLATE');
+  } else {
+    const template = templateMatch[1];
+    record('T7 只读模板包含 BEGIN READ ONLY 保障', /BEGIN READ ONLY/.test(template), template.split('\n').length + ' 行');
+
+    const runTemplate = async (sql) => {
+      const r = await fetch(`${GATEWAY}/python/exec`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          code: template,
+          params: {
+            dbHost: dbConnection.host,
+            dbPort: dbConnection.port,
+            dbUser: dbConnection.user,
+            dbPassword: dbConnection.password,
+            dbName: dbConnection.database,
+            sql,
+          },
+        }),
+      });
+      const text = await r.text();
+      return { ok: r.ok, status: r.status, text };
+    };
+
+    const readResult = await runTemplate('SELECT count(*)::int AS n FROM users');
+    record(
+      'T8a 只读模板可正常执行 SELECT',
+      readResult.ok && /rowCount/.test(readResult.text),
+      readResult.text.slice(0, 150),
+    );
+
+    const writeResult = await runTemplate('DELETE FROM users');
+    // 预期被 PostgreSQL 以 25006（只读事务）拒绝 —— 这正是「只读」生效的证据
+    const blockedByReadOnly = /25006|read-only transaction/.test(writeResult.text);
+    record(
+      'T8b 只读模板拒绝写入（数据库层拦截）',
+      !writeResult.ok && blockedByReadOnly,
+      writeResult.text.slice(0, 170),
+    );
+  }
+
   // T5：开箱连库（API 级，理由见文件头注释）
   const dbRes = await fetch(`${GATEWAY}/python/exec`, {
     method: 'POST',
@@ -217,7 +271,6 @@ const record = (name, ok, detail = '') => {
     dbText.slice(0, 170),
   );
 
-  const passed = results.filter(Boolean).length;
-  console.log(`\n===== 本地扩展节点验收: ${passed}/${results.length} passed =====`);
+  const passed = results.filter(Boolean).length;  console.log(`\n===== 本地扩展节点验收: ${passed}/${results.length} passed =====`);
   process.exit(passed === results.length ? 0 : 1);
 })().catch((e) => { console.error('FATAL', e.message); process.exit(1); });
