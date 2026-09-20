@@ -1,15 +1,28 @@
 'use strict';
+/**
+ * 本地扩展节点验收（Python）。
+ *
+ * 原脚本同时验收「SQL 查询 + Python 执行」。SQL 查询节点已移除——它只能本地试运行
+ * 却需要用户手工配置连接串、且发布后不可用；同样的需求改由 Python 节点承担
+ * （驱动随仓库携带，见 gateway/vendor/README.md），只读兜底由「查询 PostgreSQL」
+ * 预置模板提供（BEGIN READ ONLY）。
+ *
+ * 因此本脚本现在验收的是替代路径是否真的成立：
+ *   T1 建含 Python 节点的工作流
+ *   T2 节点面板展示「Python 执行」且不再展示「SQL 查询」
+ *   T3 画布渲染
+ *   T4 Python 节点真实执行（读 params.query，验证输入透传）
+ *   T5 开箱连库：直接调网关 /python/exec，不传 driverPath 即可 import pg8000
+ *   T6 试运行整体无失败
+ *
+ * T5 刻意不走前端试运行：前端试运行的 params 只包含开始节点声明的字段，要把
+ * 数据库连接信息传进去就得把它写进工作流定义（等于让凭据落库），不适合放进
+ * 验收；而「驱动是否随平台提供」本质是网关侧能力，直接验更准确也更稳定。
+ */
 const { chromium } = require('playwright-core');
 const { existsSync, readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
-/**
- * 从仓库根 .env 读取本地数据库连接信息。
- *
- * 本脚本此前把 POSTGRES_PASSWORD 明文写死。而 .env 里的密码是 `pnpm env:init`
- * 在每台机器上随机生成的，写死既把真实凭据带进了 git 历史，也让脚本换台机器
- * 必然连不上库。与 compose 保持同一组变量名（POSTGRES_*）。
- */
 function loadEnvFile() {
   const envPath = resolve(__dirname, '..', '.env');
   if (!existsSync(envPath)) return;
@@ -43,14 +56,36 @@ function resolveBase(envName, envKey, fallbackPort) {
 
 const GATEWAY = resolveBase('GATEWAY_URL', 'PUBLIC_GATEWAY_URL', 3001);
 const FRONTEND = resolveBase('FRONTEND_URL', 'FRONTEND_PORT', 3000);
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+  || process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD
+  || 'futureFlow@';
 
 const dbConnection = {
-  host: process.env.POSTGRES_HOST || 'localhost',
+  host: process.env.POSTGRES_HOST || '127.0.0.1',
   port: Number(process.env.POSTGRES_PORT || 5432),
-  username: process.env.POSTGRES_USER || 'futureflow',
+  user: process.env.POSTGRES_USER,
   password: process.env.POSTGRES_PASSWORD || '',
-  database: process.env.POSTGRES_DB || 'futureflow',
+  database: process.env.POSTGRES_DB,
 };
+
+/** 画布内执行：验证 params 透传（开始节点声明的字段会被展开成 {{引用}} 模板）。 */
+const CODE_ECHO = [
+  'def main(params):',
+  '    text = str(params.get("query", ""))',
+  '    return {"echo": text, "length": len(text)}',
+].join('\n');
+
+/** 开箱连库：刻意不写 sys.path.insert，验证网关的 PYTHONPATH 注入生效。 */
+const CODE_PY_DB = [
+  'def main(params):',
+  '    import pg8000.native',
+  '    conn = pg8000.native.Connection(',
+  '        user=str(params["user"]), password=str(params["password"]),',
+  '        host=str(params["host"]), port=int(params["port"]), database=str(params["database"]))',
+  '    rows = conn.run("SELECT username, role FROM users ORDER BY username LIMIT 2")',
+  '    conn.close()',
+  '    return {"rows": [[str(c) for c in r] for r in rows], "pg8000": pg8000.__version__}',
+].join('\n');
 
 function findBrowser() {
   const c = [
@@ -60,8 +95,12 @@ function findBrowser() {
   ];
   return c.find((x) => x && existsSync(x));
 }
+
 const results = [];
-const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ' :: ' + String(detail).slice(0, 160) : ''}`); };
+const record = (name, ok, detail = '') => {
+  results.push(ok);
+  console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ' :: ' + String(detail).slice(0, 170) : ''}`);
+};
 
 (async () => {
   if (!dbConnection.password) {
@@ -69,80 +108,85 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
     process.exit(1);
   }
 
-  // ---- 通过 API 构建工作流 ----
   const login = await (await fetch(`${GATEWAY}/auth/login`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account: 'admin', password: ADMIN_PASSWORD }),
   })).json();
-  const tok = login.accessToken;
+  const tok = login.accessToken || login.data?.accessToken;
+
   const flowgram = {
     nodes: [
-      { id: 'start_0', type: 'start', meta: { position: { x: 80, y: 200 } }, data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', title: '用户输入', default: 'hello' } } } } },
-      { id: 'db_test1', type: 'database', meta: { position: { x: 380, y: 200 } }, data: {
-        title: 'SQL 查询', connection: dbConnection,
-        sqlValue: { type: 'template', content: 'SELECT username, role FROM users LIMIT 2' },
-        outputs: { type: 'object', properties: { rows: { type: 'array', items: { type: 'object' }, title: '查询结果' }, rowCount: { type: 'integer', title: '行数' }, truncated: { type: 'boolean', title: '是否截断' } } },
-      } },
-      { id: 'py_test1', type: 'python', meta: { position: { x: 700, y: 200 } }, data: {
-        title: 'Python 执行',
-        codeValue: { type: 'template', content: 'def main(params):\n    return {"note": "python-ok", "answer": 42}' },
-        outputs: { type: 'object', properties: { result: { type: 'object', title: '返回结果' } } },
-      } },
-      { id: 'end_0', type: 'end', meta: { position: { x: 1020, y: 200 } }, data: {
-        title: '结束',
-        inputsValues: {
-          rows: { type: 'ref', content: ['db_test1', 'rows'] },
-          report: { type: 'ref', content: ['py_test1', 'result'] },
+      {
+        id: 'start_0',
+        type: 'start',
+        meta: { position: { x: 80, y: 200 } },
+        data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', title: '用户输入', default: 'hello' } } } },
+      },
+      {
+        id: 'py_test1',
+        type: 'python',
+        meta: { position: { x: 380, y: 200 } },
+        data: {
+          title: 'Python 执行·透传',
+          codeValue: { type: 'template', content: CODE_ECHO },
+          outputs: { type: 'object', properties: { result: { type: 'object', title: '返回结果' } } },
         },
-        inputs: { type: 'object', properties: { rows: { type: 'array', items: { type: 'object' }, title: '查询结果' }, report: { type: 'object', title: '执行报告' } } },
-      } },
+      },
+      {
+        id: 'end_0',
+        type: 'end',
+        meta: { position: { x: 700, y: 200 } },
+        data: {
+          title: '结束',
+          inputsValues: { report: { type: 'ref', content: ['py_test1', 'result'] } },
+          inputs: { type: 'object', properties: { report: { type: 'object', title: '执行报告' } } },
+        },
+      },
     ],
     edges: [
-      { sourceNodeID: 'start_0', targetNodeID: 'db_test1' },
-      { sourceNodeID: 'db_test1', targetNodeID: 'py_test1' },
+      { sourceNodeID: 'start_0', targetNodeID: 'py_test1' },
       { sourceNodeID: 'py_test1', targetNodeID: 'end_0' },
     ],
   };
+
   const wf = await (await fetch(`${GATEWAY}/workflows`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-    body: JSON.stringify({ name: '本地扩展节点验收', description: 'SQL+Python 节点端到端', flowgram: JSON.stringify(flowgram) }),
+    body: JSON.stringify({ name: '本地扩展节点验收', description: 'Python 节点端到端（含连库）', flowgram: JSON.stringify(flowgram) }),
   })).json();
-  record('T1 API 创建含 SQL/Python 节点的工作流', !!wf.id, wf.id || JSON.stringify(wf).slice(0, 120));
+  record('T1 API 创建含 Python 节点的工作流', !!wf.id, wf.id || JSON.stringify(wf).slice(0, 120));
 
-  // ---- 浏览器打开画布并试运行 ----
   const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
   const page = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
   await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);
   await page.locator('#account').fill('admin');
-  await page.locator('#password').fill('futureFlow@');
+  await page.locator('#password').fill(ADMIN_PASSWORD);
   await page.locator('button[type="submit"]').first().click();
   await page.waitForTimeout(2200);
 
-  // 节点面板列出新节点(先进入任一画布)
+  // 节点面板
   await page.getByRole('button', { name: '创建画布' }).first().click();
   await page.waitForTimeout(600);
   await page.locator('input[placeholder="如：翻译助手"]').first().fill('节点面板检查');
   await page.getByRole('button', { name: '创建并进入编辑' }).click();
   await page.waitForURL('**/canvas/**', { timeout: 20000 });
   await page.waitForTimeout(4000);
-  const addBtn = page.locator('[data-testid="demo.free-layout.add-node"]');
-  await addBtn.first().click();
+  await page.locator('[data-testid="demo.free-layout.add-node"]').first().click();
   await page.waitForTimeout(800);
   let panelText = '';
   const panel = page.locator('.canvas-node-panel:visible');
   if ((await panel.count()) >= 1) panelText = await panel.innerText();
-  record('T2 添加节点面板展示「SQL 查询」', panelText.includes('SQL 查询'), panelText.slice(0, 80));
-  record('T2 添加节点面板展示「Python 执行」', panelText.includes('Python 执行'));
+  record('T2 节点面板展示「Python 执行」', panelText.includes('Python 执行'), panelText.slice(0, 80));
+  record('T2b 面板不再展示「SQL 查询」', !panelText.includes('SQL 查询'));
   await page.keyboard.press('Escape').catch(() => {});
 
-  // 打开验收工作流
+  // 验收工作流
   await page.goto(`${FRONTEND}/canvas/${wf.id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5000);
   const nodeCount = await page.evaluate(() => document.querySelectorAll('[class*="node-type-"]').length);
-  record('T3 画布渲染 4 个节点', nodeCount === 4, String(nodeCount));
-  await page.screenshot({ path: 'gui-full-screenshots/ext_canvas.png' });
+  record('T3 画布渲染 3 个节点', nodeCount === 3, String(nodeCount));
 
   await page.getByRole('button', { name: '试运行', exact: true }).first().click();
   await page.waitForTimeout(1200);
@@ -156,10 +200,23 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
     if (!/运行中/.test(output)) break;
   }
   await page.screenshot({ path: 'gui-full-screenshots/ext_run.png' });
-  record('T4 SQL 节点真实查询返回 rows', /rows/.test(output) && /username/.test(output), output.replace(/\s+/g, ' ').slice(0, 180));
-  record('T5 Python 节点真实执行返回 result', /python-ok/.test(output) && /42/.test(output));
+  record('T4 Python 节点真实执行并透传输入', /echo/.test(output) && /length/.test(output), output.replace(/\s+/g, ' ').slice(0, 170));
   record('T6 试运行整体成功(无失败标记)', !/执行失败/.test(output));
   await browser.close();
+
+  // T5：开箱连库（API 级，理由见文件头注释）
+  const dbRes = await fetch(`${GATEWAY}/python/exec`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+    body: JSON.stringify({ code: CODE_PY_DB, params: dbConnection }),
+  });
+  const dbText = await dbRes.text();
+  record(
+    'T5 Python 节点开箱连库（无需 pip install）',
+    dbRes.ok && /pg8000/.test(dbText) && /admin|username/.test(dbText),
+    dbText.slice(0, 170),
+  );
+
   const passed = results.filter(Boolean).length;
   console.log(`\n===== 本地扩展节点验收: ${passed}/${results.length} passed =====`);
   process.exit(passed === results.length ? 0 : 1);

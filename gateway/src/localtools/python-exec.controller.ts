@@ -2,9 +2,10 @@ import { BadRequestException, Body, Controller, Post, Request, UseGuards } from 
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { Logger } from '@nestjs/common';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 interface PythonExecPayload {
   code?: string;
@@ -14,6 +15,32 @@ interface PythonExecPayload {
 const MAX_CODE_LENGTH = 50_000;
 const EXEC_TIMEOUT_MS = 15_000;
 const RESULT_MARKER = '__FF_RESULT__';
+
+/**
+ * 随仓库携带的 Python 依赖目录（纯 Python 包，清单与更新方式见 gateway/vendor/README.md）。
+ *
+ * 本地试运行执行的是**宿主机**的 Python，把依赖装进 Dify Sandbox 镜像对本链路无效。
+ * 这里注入 PYTHONPATH，让用户无需 pip install 即可使用常见库（如连接数据库的
+ * pg8000），同时不污染用户自己的 Python 环境。
+ *
+ * 路径说明：运行时 __dirname 是 dist/localtools，经 ts-node 跑测试时是
+ * src/localtools，上溯两级都落在 gateway/，因此同一个相对路径两边都成立。
+ */
+const VENDORED_MODULES_DIR = join(__dirname, '..', '..', 'vendor', 'python');
+
+/** 组装传给子进程的 PYTHONPATH：额外目录（用户指定）＞ 随仓库携带的目录 ＞ 原有值。 */
+export function buildPythonPath(
+  extra = process.env.PYTHON_EXTRA_MODULES_PATH,
+  vendored = VENDORED_MODULES_DIR,
+  existing = process.env.PYTHONPATH,
+): string | undefined {
+  const parts = [
+    ...(extra ? extra.split(delimiter) : []),
+    ...(vendored && existsSync(vendored) ? [vendored] : []),
+    ...(existing ? existing.split(delimiter) : []),
+  ].filter(Boolean);
+  return parts.length ? parts.join(delimiter) : undefined;
+}
 
 /**
  * 本机 Python 的运行器脚本。
@@ -121,10 +148,12 @@ export class PythonExecController {
       await writeFile(paramsFile, JSON.stringify(payload.params ?? {}), 'utf8');
 
       const stdout = await new Promise<string>((resolve, reject) => {
+        const pythonPath = buildPythonPath();
         const child = spawn(python, [runnerFile, paramsFile, userFile], {
           cwd: dir,
           timeout: EXEC_TIMEOUT_MS,
           windowsHide: true,
+          env: pythonPath ? { ...process.env, PYTHONPATH: pythonPath } : process.env,
         });
         let out = '';
         let err = '';
