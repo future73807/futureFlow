@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { describeError } from '../common/describe-error';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { FlowGramJSON } from '../converter/types';
 import {
@@ -116,7 +117,7 @@ export class TasksService {
         this.converter.toDifyDSL(workflow.flowgramJson as FlowGramJSON);
       } catch (error) {
         throw new BadRequestException(
-          `当前草稿无法执行：${this.errorMessage(error)}`.slice(0, 300),
+          `当前草稿无法执行：${describeError(error)}`.slice(0, 300),
         );
       }
     }
@@ -241,7 +242,7 @@ export class TasksService {
     // 后台执行不阻塞创建接口；catch 兜底确保任何异常都不会变成未处理的 rejection。
     void this.runBatchTask(taskId, userId).catch((error) => {
       this.logger.error(
-        `批量任务后台执行异常: taskId=${taskId}, ${this.errorMessage(error)}`,
+        `批量任务后台执行异常: taskId=${taskId}, ${describeError(error)}`,
       );
     });
   }
@@ -340,7 +341,7 @@ export class TasksService {
         finishedAt: new Date(),
       });
     } catch (error) {
-      const message = this.errorMessage(error);
+      const message = describeError(error);
       this.logger.error(`批量任务执行失败: taskId=${taskId}, ${message}`);
       try {
         await this.batchTaskRepo.update(taskId, {
@@ -350,7 +351,7 @@ export class TasksService {
         });
       } catch (updateError) {
         this.logger.error(
-          `批量任务状态落库失败: taskId=${taskId}, ${this.errorMessage(updateError)}`,
+          `批量任务状态落库失败: taskId=${taskId}, ${describeError(updateError)}`,
         );
       }
     } finally {
@@ -411,7 +412,7 @@ export class TasksService {
       return {
         index,
         status: 'failed',
-        error: this.errorMessage(error).slice(0, MAX_ROW_TEXT_LENGTH),
+        error: describeError(error).slice(0, MAX_ROW_TEXT_LENGTH),
       };
     }
 
@@ -528,7 +529,4 @@ export class TasksService {
     };
   }
 
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

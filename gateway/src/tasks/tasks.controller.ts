@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -19,10 +18,8 @@ import {
   ListAsyncRunsQueryDto,
   ListBatchTasksQueryDto,
 } from './dto/tasks.dto';
+import { TASK_ID_PIPE } from '../security/uuid-param.pipe';
 import { TasksService } from './tasks.service';
-
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const strictValidation = new ValidationPipe({
   whitelist: true,
@@ -50,12 +47,6 @@ export class TasksController {
     return String(userId);
   }
 
-  private assertTaskId(taskId: string): void {
-    if (!UUID.test(taskId)) {
-      throw new BadRequestException('任务 ID 格式无效');
-    }
-  }
-
   @Get('batch')
   listBatchTasks(
     @Request() req: any,
@@ -75,15 +66,13 @@ export class TasksController {
   }
 
   @Get('batch/:id')
-  getBatchTask(@Request() req: any, @Param('id') id: string) {
-    this.assertTaskId(id);
+  getBatchTask(@Request() req: any, @Param('id', TASK_ID_PIPE) id: string) {
     return this.tasks.getBatchTask(this.currentUserId(req), id);
   }
 
   @Post('batch/:id/cancel')
   @HttpCode(200)
-  cancelBatchTask(@Request() req: any, @Param('id') id: string) {
-    this.assertTaskId(id);
+  cancelBatchTask(@Request() req: any, @Param('id', TASK_ID_PIPE) id: string) {
     return this.tasks.cancelBatchTask(this.currentUserId(req), id);
   }
 

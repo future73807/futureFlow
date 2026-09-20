@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
+import { describeErrorBrief } from '../common/describe-error';
 import { DifyIntegration } from '../database/entities/dify-integration.entity';
 
 export interface DifyConsoleAuthorization {
@@ -1726,7 +1727,11 @@ export class DifyIntegrationService implements OnModuleInit {
     return createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
   }
 
+  /**
+   * 结果会被拼进「Dify 自动授权失败…」这条抛出的异常消息（可能经接口暴露给
+   * 调用方），因此用不返回 stack 的安全版本。
+   */
   private safeError(error: unknown): string {
-    return error instanceof Error ? error.message : '未知错误';
+    return describeErrorBrief(error);
   }
 }

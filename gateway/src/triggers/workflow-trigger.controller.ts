@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { TRIGGER_ID_PIPE, WORKFLOW_ID_PIPE } from '../security/uuid-param.pipe';
 import { CreateWorkflowTriggerDto, UpdateWorkflowTriggerDto } from './dto/workflow-trigger.dto';
 import { WorkflowTriggerService } from './workflow-trigger.service';
 
@@ -9,13 +10,13 @@ export class WorkflowTriggerController {
   constructor(private readonly triggers: WorkflowTriggerService) {}
 
   @Get()
-  list(@Param('workflowId') workflowId: string, @Request() req) {
+  list(@Param('workflowId', WORKFLOW_ID_PIPE) workflowId: string, @Request() req) {
     return this.triggers.list(req.user.id, workflowId);
   }
 
   @Post()
   create(
-    @Param('workflowId') workflowId: string,
+    @Param('workflowId', WORKFLOW_ID_PIPE) workflowId: string,
     @Body() dto: CreateWorkflowTriggerDto,
     @Request() req,
   ) {
@@ -24,7 +25,7 @@ export class WorkflowTriggerController {
 
   @Patch(':triggerId')
   update(
-    @Param('triggerId') triggerId: string,
+    @Param('triggerId', TRIGGER_ID_PIPE) triggerId: string,
     @Body() dto: UpdateWorkflowTriggerDto,
     @Request() req,
   ) {
@@ -32,12 +33,12 @@ export class WorkflowTriggerController {
   }
 
   @Post(':triggerId/rotate-webhook')
-  rotate(@Param('triggerId') triggerId: string, @Request() req) {
+  rotate(@Param('triggerId', TRIGGER_ID_PIPE) triggerId: string, @Request() req) {
     return this.triggers.rotateWebhook(req.user.id, triggerId);
   }
 
   @Delete(':triggerId')
-  async remove(@Param('triggerId') triggerId: string, @Request() req) {
+  async remove(@Param('triggerId', TRIGGER_ID_PIPE) triggerId: string, @Request() req) {
     await this.triggers.remove(req.user.id, triggerId);
     return { success: true };
   }

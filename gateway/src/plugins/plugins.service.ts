@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
+import { describeError } from '../common/describe-error';
 import { PluginFavorite } from '../database/entities/plugin-favorite.entity';
 import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { PLUGIN_CATALOG, PluginCatalogEntry, PluginTool } from './plugin-catalog';
@@ -190,7 +191,7 @@ export class PluginsService {
           return value;
         })
         .catch((err) => {
-          this.logger.warn(`插件统计聚合失败，返回空统计: ${err?.message || err}`);
+          this.logger.warn(`插件统计聚合失败，返回空统计: ${describeError(err)}`);
           return new Map<string, PluginStats>();
         })
         .finally(() => {

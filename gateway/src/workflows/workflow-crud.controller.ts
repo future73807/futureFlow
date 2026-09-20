@@ -21,6 +21,7 @@ import {
   ImportWorkflowDto,
 } from './dto/workflow-crud.dto';
 import { formatVersionLabel } from '../database/entities/workflow-version.entity';
+import { WORKFLOW_ID_PIPE } from '../security/uuid-param.pipe';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -33,13 +34,13 @@ export class WorkflowCrudController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string, @Request() req) {
+  async getById(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     return this.crudService.getById(id, req.user.id);
   }
 
   @Get(':id/runs')
   async listRuns(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Request() req,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '30',
@@ -50,14 +51,14 @@ export class WorkflowCrudController {
   }
 
   @Get(':id/versions')
-  async listVersions(@Param('id') id: string, @Request() req) {
+  async listVersions(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     return this.crudService.listVersions(id, req.user.id);
   }
 
   /** 另存为版本：把当前草稿固化成可回溯记录，请求体只携带说明。 */
   @Post(':id/versions')
   async createVersion(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Body() dto: CreateWorkflowVersionDto,
     @Request() req,
   ) {
@@ -66,7 +67,7 @@ export class WorkflowCrudController {
 
   @Patch(':id/versions/:version')
   async updateVersionComment(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Param('version') version = '',
     @Body() dto: UpdateVersionCommentDto,
     @Request() req,
@@ -77,7 +78,7 @@ export class WorkflowCrudController {
 
   /** 子工作流节点配置数据：目标工作流已发布快照的入参出参契约。 */
   @Get(':id/subflow-meta')
-  async subflowMeta(@Param('id') id: string, @Request() req) {
+  async subflowMeta(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     return this.crudService.getSubflowMeta(id, req.user.id);
   }
 
@@ -94,7 +95,7 @@ export class WorkflowCrudController {
 
   @Put(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Body() dto: UpdateWorkflowDto,
     @Request() req,
   ) {
@@ -102,18 +103,18 @@ export class WorkflowCrudController {
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: string, @Request() req) {
+  async delete(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     await this.crudService.delete(id, req.user.id);
     return { success: true };
   }
 
   @Post(':id/duplicate')
-  async duplicate(@Param('id') id: string, @Request() req) {
+  async duplicate(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     return this.crudService.duplicate(id, req.user.id);
   }
 
   @Post(':id/publish')
-  async publish(@Param('id') id: string, @Request() req) {
+  async publish(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     const published = await this.crudService.publish(id, req.user.id);
     const { difySync, ...workflow } = published;
     return {
@@ -125,12 +126,12 @@ export class WorkflowCrudController {
   }
 
   @Post(':id/dify/sync')
-  async syncDify(@Param('id') id: string, @Request() req) {
+  async syncDify(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     return this.crudService.syncPublishedDify(id, req.user.id);
   }
 
   @Post(':id/unpublish')
-  async unpublish(@Param('id') id: string, @Request() req) {
+  async unpublish(@Param('id', WORKFLOW_ID_PIPE) id: string, @Request() req) {
     const workflow = await this.crudService.unpublish(id, req.user.id);
     return { workflow, success: true };
   }
@@ -138,7 +139,7 @@ export class WorkflowCrudController {
   /** Restoring is intentionally a draft-only operation; publish remains explicit. */
   @Post(':id/versions/:version/restore')
   async restoreVersion(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Param('version') version = '',
     @Request() req,
   ) {

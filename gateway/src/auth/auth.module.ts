@@ -28,10 +28,33 @@ export const VIP_NODE_PERMISSIONS: Record<string, string[]> = {
 };
 
 /**
+ * 已实现但只在本地试运行链路成立的节点：不能发布，也不能云端试运行。
+ *
+ * 它们不在任何等级的 VIP 白名单里，但用「当前 VIP 等级无权使用」来解释会
+ * 误导用户去升级套餐（升级后依然不可用）。因此单独识别，给出准确文案。
+ * 与 gateway/src/converter/dify-converter.service.ts 中 database/python 的
+ * BadRequestException、以及前端节点面板的「仅本地试运行」标记保持一致。
+ */
+export const LOCAL_ONLY_NODE_TYPES = ['database', 'python'];
+
+const LOCAL_ONLY_NODE_LABELS: Record<string, string> = {
+  database: 'SQL 查询',
+  python: 'Python 执行',
+};
+
+/**
  * 权限校验工具:检查用户 VIP 等级是否有权使用指定节点类型
  */
 @Injectable()
 export class PermissionChecker {
+  /** 返回图中「仅本地试运行可用」节点的中文名，供调用方给出准确报错。 */
+  findLocalOnlyNodes(nodeTypes: string[]): string[] {
+    const matched = new Set(
+      nodeTypes.filter((type) => LOCAL_ONLY_NODE_TYPES.includes(type)),
+    );
+    return [...matched].map((type) => LOCAL_ONLY_NODE_LABELS[type] || type);
+  }
+
   checkNodePermissions(
     vipLevel: string,
     nodeTypes: string[],

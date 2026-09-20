@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt.guard';
 import { ApiKeyService } from './api-key.service';
+import { API_KEY_ID_PIPE } from '../security/uuid-param.pipe';
 
 @Controller('user/api-keys')
 @UseGuards(JwtAuthGuard)
@@ -52,7 +53,7 @@ export class ApiKeyController {
   }
 
   @Delete(':id')
-  async revoke(@Param('id') id: string, @Request() req) {
+  async revoke(@Param('id', API_KEY_ID_PIPE) id: string, @Request() req) {
     await this.apiKeyService.revoke(id, req.user.id);
     return { success: true };
   }

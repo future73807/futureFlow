@@ -164,9 +164,12 @@ const invalid = (mutate: (draft: any) => void, expected: RegExp) => {
   assert.throws(() => converter.toDifyDSL(draft), expected);
 };
 
-invalid((flow) => { flow.nodes[2].blocks.pop(); }, /子画布必须固定/);
-invalid((flow) => { flow.nodes[2].edges.pop(); }, /内部连线必须且只能有两条/);
-invalid((flow) => { flow.nodes[2].blocks[1].type = 'http'; }, /仅允许一个同步 JavaScript/);
+// 循环体已从「固定一个同步 JavaScript 节点」演进为「块开始 → 任意业务节点
+// 单链 → 块结束」，因此这里断言的是仍然禁止的结构，而不是旧的固定画布约束。
+invalid((flow) => { flow.nodes[2].blocks.pop(); }, /循环体至少需要一个节点/);
+invalid((flow) => { flow.nodes[2].edges.pop(); }, /内部连线必须是/);
+invalid((flow) => { flow.nodes[2].blocks[1].type = 'condition'; }, /循环体内暂不支持分支节点/);
+invalid((flow) => { flow.nodes[2].blocks[1].type = 'loop'; }, /暂不支持嵌套循环/);
 invalid((flow) => {
   flow.nodes[2].blocks[1].data.script.content =
     'async function main({ params }) { return { result: params.item }; }';
@@ -193,12 +196,12 @@ invalid((flow) => {
     '对象数组应被接受（循环体可读取数组元素的属性）',
   );
 }
-invalid((flow) => { flow.nodes[2].blocks[1].data.outputs.properties.result.type = 'object'; }, /逐项输出仅支持/);
+invalid((flow) => { flow.nodes[2].blocks[1].data.outputs.properties.result.type = 'object'; }, /输出仅支持字符串或数字/);
 invalid((flow) => { flow.nodes[2].data.outputs.properties.result.items.type = 'string'; }, /输出声明与批处理结果不一致/);
-invalid((flow) => { flow.nodes[2].data.loopOutputs.result.content[1] = 'missing'; }, /唯一输出/);
+invalid((flow) => { flow.nodes[2].data.loopOutputs.result.content[1] = 'missing'; }, /输出必须引用循环体内某个节点的输出/);
 invalid((flow) => {
   flow.nodes[2].blocks[1].data.inputsValues.item.content = ['source', 'items'];
-}, /只能引用当前项 item 或序号 index/);
+}, /只能引用当前项 item/);
 invalid((flow) => {
   flow.edges.push({ sourceNodeID: 'start', targetNodeID: 'batch' });
 }, /必须来自所有执行路径都会经过的上游节点/);

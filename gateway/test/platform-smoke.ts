@@ -7,6 +7,7 @@ import * as bcrypt from 'bcryptjs';
 import { PermissionChecker } from '../src/auth/auth.module';
 import { ApiKeyService } from '../src/auth/api-key.service';
 import { AuthMiddleware } from '../src/auth/auth.middleware';
+import { describeError, describeErrorBrief } from '../src/common/describe-error';
 import { DifyConverterService } from '../src/converter/dify-converter.service';
 import { DifyConsoleService } from '../src/dify/dify-console.service';
 import { DifyIntegrationService } from '../src/dify/dify-integration.service';
@@ -1277,6 +1278,22 @@ async function testWorkflowValidationAndDirectModeGuard() {
   assert.equal(permissions.checkNodePermissions('free', ['loop']).allowed, false);
   assert.equal(permissions.checkNodePermissions('pro', ['loop']).allowed, true);
   assert.equal(permissions.checkNodePermissions('enterprise', ['loop']).allowed, true);
+  // SQL 查询 / Python 执行只在本地试运行链路成立：任何等级都不可云端执行，
+  // 报错必须走「暂不支持云端执行」而不是「VIP 等级无权」。
+  for (const level of ['free', 'pro', 'enterprise']) {
+    assert.deepEqual(
+      permissions.findLocalOnlyNodes(['start', 'database', 'python', 'end']),
+      ['SQL 查询', 'Python 执行'],
+      `${level} 等级也应识别出仅本地试运行节点`,
+    );
+    assert.equal(permissions.checkNodePermissions(level, ['database']).allowed, false);
+  }
+  assert.deepEqual(permissions.findLocalOnlyNodes(['start', 'llm', 'end']), []);
+  assert.deepEqual(
+    permissions.findLocalOnlyNodes(['database', 'database']),
+    ['SQL 查询'],
+    '重复节点只提示一次',
+  );
   assert.throws(
     () =>
       converter.validateFlowGram({
@@ -3766,6 +3783,39 @@ async function testDifyPendingImportMustBeConfirmedBeforePublish() {
   }
 }
 
+function testDescribeErrorKeepsDiagnostics() {
+  // 回归：驱动层错误可能带空 message，此时必须回退到 stack，
+  // 而不是让日志变成「扫描失败: 」这样没有线索的一句。
+  const blank = new Error('');
+  blank.stack = 'Error\n    at fakeFrame';
+  assert.equal(describeError(blank), 'Error\n    at fakeFrame');
+
+  assert.equal(describeError(new Error('连接超时')), '连接超时');
+
+  // 非 Error 值：字符串原样、对象 JSON、空壳与空值统一文案。
+  assert.equal(describeError('boom'), 'boom');
+  assert.equal(describeError('   '), '未知错误');
+  assert.equal(describeError({ code: 'ECONNRESET' }), '{"code":"ECONNRESET"}');
+  assert.equal(describeError({}), '未知错误');
+  assert.equal(describeError([]), '未知错误');
+  assert.equal(describeError(null), '未知错误');
+  assert.equal(describeError(undefined), '未知错误');
+  assert.equal(describeError(null, '上游不可达'), '上游不可达');
+
+  // 循环引用不能抛异常，否则日志本身会成为故障源。
+  const cyclic: any = {};
+  cyclic.self = cyclic;
+  assert.equal(typeof describeError(cyclic), 'string');
+
+  // 面向用户的版本永不回退到 stack：响应体不能泄露服务器本地路径。
+  assert.equal(describeErrorBrief(blank), '未知错误');
+  assert.equal(describeErrorBrief(blank, '上游不可达'), '上游不可达');
+  assert.equal(describeErrorBrief(new Error('连接超时')), '连接超时');
+  assert.equal(describeErrorBrief({ code: 'ECONNRESET' }), '未知错误');
+  assert.equal(describeErrorBrief(null), '未知错误');
+  assert.equal(describeErrorBrief('boom'), 'boom');
+}
+
 async function main() {
   await testGatewaySecurityDefaults();
 
@@ -3794,6 +3844,7 @@ async function main() {
   await testDify015ConditionValueRuntimeContract();
   await testDifyRejectsAmbiguousMergedEnd();
   await testExitNodeConversion();
+  testDescribeErrorKeepsDiagnostics();
   console.log('platform smoke tests passed');
 }
 

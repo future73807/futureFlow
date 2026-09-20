@@ -3,6 +3,7 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { describeError } from '../common/describe-error';
 import { DifyConfigService } from './dify-config.service';
 import { DifyIntegrationService } from './dify-integration.service';
 import {
@@ -127,7 +128,7 @@ export class DifyClientService {
       // 其他状态码都说明服务可达
       return { reachable: true, latency };
     } catch (err) {
-      this.logger.warn(`Dify 健康检查失败: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`Dify 健康检查失败: ${describeError(err)}`);
       return {
         reachable: false,
         error: 'Dify 服务不可达，请检查网络连接和服务状态',
@@ -192,7 +193,7 @@ export class DifyClientService {
       });
     } catch (err) {
       this.logger.error(
-        `Dify 连接失败: ${err instanceof Error ? err.message : String(err)}`,
+        `Dify 连接失败: ${describeError(err)}`,
       );
       throw new InternalServerErrorException(
         'Dify 服务连接失败，请确认服务已启动且配置地址可达。',

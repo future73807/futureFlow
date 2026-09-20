@@ -21,9 +21,18 @@ interface NodeProps {
   onClick: React.MouseEventHandler<HTMLButtonElement>;
   disabled: boolean;
   availability?: string;
+  /** 已实现但只在本地试运行链路成立，仅作提示，不禁用节点。 */
+  localOnly?: boolean;
 }
 
 const PROFESSIONAL_NODE_TYPES = new Set(['http', 'code', 'loop', 'knowledge', 'subworkflow', 'mcp']);
+
+/**
+ * 与网关 `LOCAL_ONLY_NODE_TYPES`（gateway/src/auth/auth.module.ts）对齐：
+ * 这些节点可以添加、可以本地试运行，但发布与云端试运行会被网关拒绝。
+ * 这里只加提示徽标、不置灰，避免挡住文档里承诺的本地试运行能力。
+ */
+const LOCAL_ONLY_NODE_TYPES = new Set(['database', 'python']);
 
 const NodeIcon = ({ icon }: { icon?: string }) => {
   const [imageFailed, setImageFailed] = useState(!icon);
@@ -59,6 +68,9 @@ function Node(props: NodeProps) {
         <span className="canvas-node-option-title">
           <strong>{props.label}</strong>
           {props.availability && <em>{props.availability}</em>}
+          {props.localOnly && (
+            <em className="canvas-node-option-badge-local">仅本地试运行</em>
+          )}
         </span>
       </span>
     </button>
@@ -163,13 +175,16 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
           const label = NodeLabels[registry.type as string] || (registry.type as string);
           const requiresProfessional = vipLevel === 'free'
             && PROFESSIONAL_NODE_TYPES.has(registry.type as string);
+          const localOnly = LOCAL_ONLY_NODE_TYPES.has(registry.type as string);
+          const description = NodeDescriptions[registry.type as string] || registry.info?.description || '';
           return (
             <Node
               key={registry.type}
               label={label}
-              description={NodeDescriptions[registry.type as string] || registry.info?.description || ''}
+              description={localOnly ? `${description}（仅本地试运行，不可发布）` : description}
               icon={registry.info?.icon}
               availability={requiresProfessional ? '专业版' : undefined}
+              localOnly={localOnly}
               disabled={requiresProfessional || !(registry.canAdd?.(context) ?? true)}
               onClick={(event) => handleClick(event, registry)}
             />

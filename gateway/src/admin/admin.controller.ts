@@ -12,6 +12,7 @@ import {
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 import { DifyIntegrationService } from '../dify/dify-integration.service';
+import { API_KEY_ID_PIPE, USER_ID_PIPE } from '../security/uuid-param.pipe';
 
 function parsePage(value: string, fallback: number, max: number): number {
   const parsed = Number.parseInt(value, 10);
@@ -123,24 +124,24 @@ export class AdminController {
 
   @Patch('users/:id/balance')
   async adjustBalance(
-    @Param('id') id: string,
+    @Param('id', USER_ID_PIPE) id: string,
     @Body() body: { delta: number; remark?: string },
   ) {
     return this.adminService.adjustBalance(id, body.delta, body.remark || '');
   }
 
   @Patch('users/:id/vip')
-  async updateVipLevel(@Param('id') id: string, @Body() body: { vipLevel: string }) {
+  async updateVipLevel(@Param('id', USER_ID_PIPE) id: string, @Body() body: { vipLevel: string }) {
     return this.adminService.updateVipLevel(id, body.vipLevel);
   }
 
   @Patch('users/:id/status')
-  async updateUserStatus(@Param('id') id: string, @Body() body: { status: string }) {
+  async updateUserStatus(@Param('id', USER_ID_PIPE) id: string, @Body() body: { status: string }) {
     return this.adminService.updateUserStatus(id, body.status);
   }
 
   @Delete('users/:id')
-  async deleteUser(@Param('id') id: string) {
+  async deleteUser(@Param('id', USER_ID_PIPE) id: string) {
     return this.adminService.deleteUser(id);
   }
 
@@ -152,7 +153,7 @@ export class AdminController {
   }
 
   @Delete('api-keys/:id')
-  async revokeApiKey(@Param('id') id: string) {
+  async revokeApiKey(@Param('id', API_KEY_ID_PIPE) id: string) {
     return this.adminService.revokeApiKey(id);
   }
 

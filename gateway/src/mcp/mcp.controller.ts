@@ -13,6 +13,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { MCP_SERVER_ID_PIPE } from '../security/uuid-param.pipe';
 import { IsArray, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { McpExecutionGuard } from './mcp-execution.guard';
 import { McpService } from './mcp.service';
@@ -96,13 +97,13 @@ export class McpController {
 
   @Delete('servers/:serverId')
   @UseGuards(JwtAuthGuard)
-  deleteServer(@Request() req: any, @Param('serverId') serverId: string) {
+  deleteServer(@Request() req: any, @Param('serverId', MCP_SERVER_ID_PIPE) serverId: string) {
     return this.mcp.deleteServer(this.currentUserId(req), serverId, this.isAdmin(req));
   }
 
   @Post('servers/:serverId/tools')
   @UseGuards(JwtAuthGuard)
-  listTools(@Request() req: any, @Param('serverId') serverId: string) {
+  listTools(@Request() req: any, @Param('serverId', MCP_SERVER_ID_PIPE) serverId: string) {
     return this.mcp.listTools(this.currentUserId(req), serverId, this.isAdmin(req));
   }
 

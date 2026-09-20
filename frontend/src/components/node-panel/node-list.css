@@ -113,6 +113,12 @@
   font-weight: 500;
 }
 
+/* 「仅本地试运行」提示：与灰色「专业版」徽标区分开，但同样不禁用节点。 */
+.canvas-node-option-title em.canvas-node-option-badge-local {
+  background: #fff7e6;
+  color: #b25e09;
+}
+
 .canvas-node-option:disabled .canvas-node-icon {
   filter: grayscale(0.35);
 }

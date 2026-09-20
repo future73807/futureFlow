@@ -135,6 +135,14 @@ export class WorkflowCrudService {
       const owner = await manager.getRepository(User).findOne({ where: { id: userId } });
       if (!owner) throw new NotFoundException('工作流所有者不存在');
       const nodeTypes = (wf.flowgramJson as FlowGramJSON).nodes.map((node) => node.type);
+      // 先判「仅本地试运行」节点：它们不在任何等级的 VIP 白名单里，若走到
+      // 下面那句会提示「VIP 等级无权发布」，让人误以为升级套餐就能解决。
+      const localOnlyNodes = this.permissionChecker.findLocalOnlyNodes(nodeTypes);
+      if (localOnlyNodes.length > 0) {
+        throw new BadRequestException(
+          `${localOnlyNodes.join('、')}节点暂不支持云端执行（发布与云端试运行均不可用），请在画布中使用本地试运行`,
+        );
+      }
       const permission = this.permissionChecker.checkNodePermissions(owner.vipLevel, nodeTypes);
       if (!permission.allowed) {
         throw new BadRequestException(

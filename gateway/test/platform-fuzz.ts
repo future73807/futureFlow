@@ -286,7 +286,7 @@ function invalidFlow(index: number): { flow: FlowGramJSON; expected: RegExp } {
       return { flow, expected: /自环连线/ };
     case 15:
       flow.nodes[1].type = 'loop';
-      return { flow, expected: /子画布必须固定/ };
+      return { flow, expected: /循环体至少需要一个节点/ };
     case 16:
       flow.nodes[0].data = [];
       return { flow, expected: /缺少 type 或 data/ };
@@ -446,7 +446,9 @@ function assertBatchFuzz() {
     if (variant === 5) invalidLoop.blocks[1].data.script.content = 'async function main({ params }) { return { result: params.item }; }';
     assertRejected(
       invalid,
-      /子画布必须固定|内部连线|只能声明一个输出|只能引用当前项|唯一输出|暂不支持 async|必须同步执行/,
+      // 循环体已支持任意业务节点单链，校验文案随之更新；这里覆盖
+      // validateBatchLoopNode 当前会抛出的全部结构类错误。
+      /循环体至少需要一个节点|必须以块开始\/块结束包住内部节点|内部连线|必须且只能声明一个输出|只能引用当前项|输出必须引用循环体内某个节点|暂不支持 async|必须同步执行|暂不支持嵌套循环|循环体内暂不支持分支节点/,
       index,
     );
   }

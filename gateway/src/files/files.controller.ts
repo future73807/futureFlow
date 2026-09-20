@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { FILE_ID_PIPE } from '../security/uuid-param.pipe';
 import { FileStorageService } from './file-storage.service';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -61,10 +62,7 @@ export class FilesController {
   }
 
   @Get(':fileId/download')
-  async download(@Request() req: any, @Param('fileId') fileId: string, @Res() res: Response) {
-    if (!/^[0-9a-f-]{36}$/i.test(fileId)) {
-      throw new BadRequestException('文件 ID 格式无效');
-    }
+  async download(@Request() req: any, @Param('fileId', FILE_ID_PIPE) fileId: string, @Res() res: Response) {
     const { record, absolutePath } = await this.storage.open(
       this.currentUserId(req),
       fileId,
@@ -80,10 +78,7 @@ export class FilesController {
   }
 
   @Delete(':fileId')
-  async remove(@Request() req: any, @Param('fileId') fileId: string) {
-    if (!/^[0-9a-f-]{36}$/i.test(fileId)) {
-      throw new BadRequestException('文件 ID 格式无效');
-    }
+  async remove(@Request() req: any, @Param('fileId', FILE_ID_PIPE) fileId: string) {
     await this.storage.remove(this.currentUserId(req), fileId, this.isAdmin(req));
     return { ok: true };
   }

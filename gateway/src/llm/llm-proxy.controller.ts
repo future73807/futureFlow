@@ -2,6 +2,7 @@ import { BadRequestException, Controller, Post, Body, Res } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { Logger } from '@nestjs/common';
+import { describeError, describeErrorBrief } from '../common/describe-error';
 
 /**
  * LLM 直连代理（浏览器试运行专用）
@@ -60,10 +61,10 @@ export class LlmProxyController {
       res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
       res.send(text);
     } catch (error: any) {
-      this.logger.error(`LLM 代理请求失败: ${error?.message}`);
+      this.logger.error(`LLM 代理请求失败: ${describeError(error)}`);
       res.status(502).json({
         statusCode: 502,
-        message: `LLM 代理请求失败: ${error?.message || '上游不可达'}`,
+        message: `LLM 代理请求失败: ${describeErrorBrief(error, '上游不可达')}`,
       });
     }
   }

@@ -95,6 +95,13 @@ export class WorkflowsService {
 
     // ── 1. 权限校验 ──
     const nodeTypes = executableFlowgram.nodes.map((n) => n.type);
+    // 先判「仅本地试运行」节点，避免用「VIP 等级无权」误导用户去升级套餐。
+    const localOnlyNodes = this.permissionChecker.findLocalOnlyNodes(nodeTypes);
+    if (localOnlyNodes.length > 0) {
+      throw new BadRequestException(
+        `${localOnlyNodes.join('、')}节点暂不支持云端执行（发布与云端试运行均不可用），请在画布中使用本地试运行`,
+      );
+    }
     const permission = this.permissionChecker.checkNodePermissions(
       user.vipLevel,
       nodeTypes,

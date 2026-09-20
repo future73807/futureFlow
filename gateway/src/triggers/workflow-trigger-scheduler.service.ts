@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../common/describe-error';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
 
@@ -34,9 +35,19 @@ export class WorkflowTriggerSchedulerService implements OnModuleInit, OnModuleDe
     this.running = true;
     try {
       const due = await this.triggers.claimDueSchedules();
-      await Promise.all(due.map((trigger) => this.execute(trigger.id)));
+      // 单个触发器失败不能中断同一批次的其他任务：execute 内部已记录错误并
+      // 回写结果，这里再用 allSettled 兜一层，并把未处理的拒绝显式打出来，
+      // 避免「任务静默不执行」。
+      const results = await Promise.allSettled(
+        due.map((trigger) => this.execute(trigger.id)),
+      );
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          this.logger.error(`定时触发调度未处理异常: ${describeError(result.reason)}`);
+        }
+      }
     } catch (error) {
-      this.logger.error(`定时触发扫描失败: ${error.message}`);
+      this.logger.error(`定时触发扫描失败: ${describeError(error)}`);
     } finally {
       this.running = false;
     }
@@ -61,7 +72,7 @@ export class WorkflowTriggerSchedulerService implements OnModuleInit, OnModuleDe
         if (event.event === 'workflow_finished' && event.data?.status === 'succeeded') succeeded = true;
       }
     } catch (error) {
-      this.logger.error(`定时触发执行失败: trigger=${triggerId}, ${error.message}`);
+      this.logger.error(`定时触发执行失败: trigger=${triggerId}, ${describeError(error)}`);
     } finally {
       await this.triggers.recordResult(triggerId, succeeded);
     }

@@ -19,6 +19,8 @@ import { FlowGramJSON } from '../converter/types';
 import { DifyConfigService } from '../dify/dify-config.service';
 import { WorkflowCrudService } from './workflow-crud.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { describeError } from '../common/describe-error';
+import { WORKFLOW_ID_PIPE } from '../security/uuid-param.pipe';
 
 /**
  * 工作流控制器
@@ -62,7 +64,7 @@ export class WorkflowsController {
   @Post(':id/execute')
   @HttpCode(200)
   async executePublishedWorkflow(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Body() dto: RunPublishedWorkflowDto,
     @Res() res: Response,
     @Headers('idempotency-key') idempotencyKey?: string,
@@ -103,7 +105,7 @@ export class WorkflowsController {
   @Post(':id/draft-run')
   @HttpCode(200)
   async draftRun(
-    @Param('id') id: string,
+    @Param('id', WORKFLOW_ID_PIPE) id: string,
     @Body() dto: RunPublishedWorkflowDto,
     @Res() res: Response,
     @Headers('idempotency-key') idempotencyKey?: string,
@@ -196,7 +198,7 @@ export class WorkflowsController {
         // 必须继续迭代到生成器自然结束。
       }
     } catch (error) {
-      this.logger.error(`工作流执行错误: ${error.message}`);
+      this.logger.error(`工作流执行错误: ${describeError(error)}`);
       if (!res.headersSent) {
         const status = typeof error.getStatus === 'function' ? error.getStatus() : error.status || 500;
         res.status(status).json({

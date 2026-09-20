@@ -7,7 +7,6 @@ import {
   Headers,
   HttpStatus,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Request,
@@ -17,6 +16,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { MEDIA_ASSET_ID_PIPE } from '../security/uuid-param.pipe';
 import {
   CreateMediaCredentialDto,
   GenerateImageDto,
@@ -61,7 +61,7 @@ export class MediaController {
   @Patch('credentials/:id')
   updateCredential(
     @Request() req: MediaAuthenticatedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', MEDIA_ASSET_ID_PIPE) id: string,
     @Body() dto: UpdateMediaCredentialDto,
   ) {
     return this.credentials.update(req.user!.id, id, dto);
@@ -70,7 +70,7 @@ export class MediaController {
   @Delete('credentials/:id')
   async deleteCredential(
     @Request() req: MediaAuthenticatedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', MEDIA_ASSET_ID_PIPE) id: string,
   ) {
     await this.credentials.remove(req.user!.id, id);
     return { success: true };
@@ -107,7 +107,7 @@ export class MediaController {
   @Get('jobs/:id')
   getJob(
     @Request() req: MediaAuthenticatedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', MEDIA_ASSET_ID_PIPE) id: string,
   ) {
     return this.jobs.getAndPoll(req.user!.id, id, mediaExecutionScope(req));
   }
@@ -115,7 +115,7 @@ export class MediaController {
   @Get('assets/:id')
   async downloadAsset(
     @Request() req: MediaAuthenticatedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', MEDIA_ASSET_ID_PIPE) id: string,
     @Headers('range') range: string | undefined,
     @Res() response: Response,
   ): Promise<void> {

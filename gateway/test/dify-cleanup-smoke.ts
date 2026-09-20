@@ -1464,7 +1464,10 @@ function createConcurrentWorkflowService(
     { syncPublishedWorkflow: sync } as any,
     { deleteWorkflowIntegrations: cleanup } as any,
     { assertFlowgramDatasetsOwned: async () => undefined } as any,
-    { checkNodePermissions: () => ({ allowed: true, deniedNodes: [] }) } as any,
+    {
+      checkNodePermissions: () => ({ allowed: true, deniedNodes: [] }),
+      findLocalOnlyNodes: () => [],
+    } as any,
   );
 }
 

@@ -13,10 +13,9 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { DATASET_ID_PIPE, DOCUMENT_ID_PIPE } from '../security/uuid-param.pipe';
 import { CreateKnowledgeDatasetDto, CreateKnowledgeDocumentDto } from './dto/knowledge.dto';
 import { KnowledgeService } from './knowledge.service';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const strictValidation = new ValidationPipe({
   whitelist: true,
@@ -30,18 +29,6 @@ const strictValidation = new ValidationPipe({
 @Controller('knowledge')
 export class KnowledgeController {
   constructor(private readonly knowledge: KnowledgeService) {}
-
-  private assertDatasetId(datasetId: string): void {
-    if (!UUID.test(datasetId)) {
-      throw new BadRequestException('知识库 ID 格式无效');
-    }
-  }
-
-  private assertDocumentId(documentId: string): void {
-    if (!UUID.test(documentId)) {
-      throw new BadRequestException('知识文档 ID 格式无效');
-    }
-  }
 
   private currentUserId(req: any): string {
     const userId = req?.user?.id;
@@ -77,25 +64,22 @@ export class KnowledgeController {
   }
 
   @Delete('datasets/:datasetId')
-  async deleteDataset(@Request() req: any, @Param('datasetId') datasetId: string) {
-    this.assertDatasetId(datasetId);
+  async deleteDataset(@Request() req: any, @Param('datasetId', DATASET_ID_PIPE) datasetId: string) {
     await this.knowledge.deleteDataset(this.currentUserId(req), datasetId, this.isAdmin(req));
     return { ok: true };
   }
 
   @Get('datasets/:datasetId/documents')
-  listDocuments(@Request() req: any, @Param('datasetId') datasetId: string) {
-    this.assertDatasetId(datasetId);
+  listDocuments(@Request() req: any, @Param('datasetId', DATASET_ID_PIPE) datasetId: string) {
     return this.knowledge.listDocuments(this.currentUserId(req), datasetId, this.isAdmin(req));
   }
 
   @Post('datasets/:datasetId/documents')
   createDocument(
     @Request() req: any,
-    @Param('datasetId') datasetId: string,
+    @Param('datasetId', DATASET_ID_PIPE) datasetId: string,
     @Body() dto: CreateKnowledgeDocumentDto,
   ) {
-    this.assertDatasetId(datasetId);
     return this.knowledge.createDocumentByText(
       this.currentUserId(req),
       datasetId,
@@ -108,11 +92,9 @@ export class KnowledgeController {
   @Delete('datasets/:datasetId/documents/:documentId')
   async deleteDocument(
     @Request() req: any,
-    @Param('datasetId') datasetId: string,
-    @Param('documentId') documentId: string,
+    @Param('datasetId', DATASET_ID_PIPE) datasetId: string,
+    @Param('documentId', DOCUMENT_ID_PIPE) documentId: string,
   ) {
-    this.assertDatasetId(datasetId);
-    this.assertDocumentId(documentId);
     await this.knowledge.deleteDocument(this.currentUserId(req), datasetId, documentId, this.isAdmin(req));
     return { ok: true };
   }
@@ -121,10 +103,9 @@ export class KnowledgeController {
   @Post('datasets/:datasetId/hit-test')
   hitTest(
     @Request() req: any,
-    @Param('datasetId') datasetId: string,
+    @Param('datasetId', DATASET_ID_PIPE) datasetId: string,
     @Body() body: { query?: string; topK?: number },
   ) {
-    this.assertDatasetId(datasetId);
     const query = String(body?.query || '').trim();
     if (!query) {
       throw new BadRequestException('检索语句不能为空');
