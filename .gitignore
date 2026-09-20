@@ -58,3 +58,6 @@ gui-full-screenshots/
 
 # Gateway runtime stderr log
 gateway-run.log.err
+
+# WorkBuddy AI 工作区数据（记忆、技能等本地状态，不随仓库分发）
+.workbuddy-ai/
