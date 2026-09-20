@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +13,7 @@ import { User } from '../database/entities/user.entity';
 import { Workflow } from '../database/entities/workflow.entity';
 import { WorkflowTrigger } from '../database/entities/workflow-trigger.entity';
 import { nextCronDate, parseCron, validateCron } from './cron.parser';
+import { describeConsecutiveFailure, resolveRetryPolicy } from './trigger-retry.policy';
 import { CreateWorkflowTriggerDto, UpdateWorkflowTriggerDto } from './dto/workflow-trigger.dto';
 
 export interface RunnableTrigger {
@@ -22,6 +24,8 @@ export interface RunnableTrigger {
 
 @Injectable()
 export class WorkflowTriggerService {
+  private readonly logger = new Logger(WorkflowTriggerService.name);
+
   constructor(
     @InjectRepository(WorkflowTrigger)
     private readonly triggerRepo: Repository<WorkflowTrigger>,
@@ -255,10 +259,12 @@ export class WorkflowTriggerService {
   }
 
   /**
-   * 回写一次调度结果。
+   * 回写一次调度结果，并在连续失败达到阈值时输出 error 级告警。
    *
-   * 返回值供调用方（调度器）判断是否需要升级告警——`failureCount` 虽然早已入库并在
-   * 接口返回，但没有任何主动推送，只看数据不会有人发现某个定时任务已经连续失败很多次。
+   * 告警刻意放在这里而不是调用方：`recordResult` 是定时调度与 webhook 两条执行链路
+   * 的唯一收口，放在内部才能保证两边都覆盖、将来新增链路也不会漏。`failureCount`
+   * 虽然早已入库并随接口返回，但没有任何主动推送，只看数据不会有人发现某个定时任务
+   * 已经连续失败很多次。
    */
   async recordResult(triggerId: string, succeeded: boolean) {
     const trigger = await this.triggerRepo.findOne({ where: { id: triggerId } });
@@ -267,6 +273,16 @@ export class WorkflowTriggerService {
     trigger.lastRunStatus = succeeded ? 'succeeded' : 'failed';
     trigger.failureCount = succeeded ? 0 : trigger.failureCount + 1;
     await this.triggerRepo.save(trigger);
+
+    if (!succeeded) {
+      const policy = resolveRetryPolicy({
+        WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD:
+          this.config.get('WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD'),
+      });
+      const alert = describeConsecutiveFailure(trigger.failureCount, trigger.name, policy);
+      if (alert) this.logger.error(`${alert}（类型=${trigger.type}）`);
+    }
+
     return {
       id: trigger.id,
       name: trigger.name,

@@ -4,7 +4,6 @@ import { describeError } from '../common/describe-error';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
 import {
-  describeConsecutiveFailure,
   resolveRetryPolicy,
   retryDelayMs,
   shouldRetry,
@@ -151,16 +150,19 @@ export class WorkflowTriggerSchedulerService implements OnModuleInit, OnModuleDe
       break;
     }
 
-    if (!succeeded && retryable && lastError) {
+    // 只要真正重试过且最终仍失败，就给出一条明确的汇总。
+    // 注意不能以「有没有异常对象」为条件：工作流「正常结束但状态 failed」（例如节点
+    // 抛错被引擎捕获）不会产生异常，此时若不输出汇总，日志里只有几次重试 WARN 就断了，
+    // 读日志的人无法判断这次调度最终是失败还是仍在进行中。
+    if (!succeeded && attempts > 1) {
       this.logger.error(
-        `定时触发重试 ${policy.maxAttempts} 次后仍失败: trigger=${triggerId}, ${describeError(lastError)}`,
+        `定时触发重试 ${attempts} 次后仍失败: trigger=${triggerId}`
+          + (lastError ? `, ${describeError(lastError)}` : ''),
       );
     }
 
-    const recorded = await this.triggers.recordResult(triggerId, succeeded);
-    const alert = !succeeded && recorded
-      ? describeConsecutiveFailure(recorded.failureCount, recorded.name, policy)
-      : null;
-    if (alert) this.logger.error(alert);
+    // 连续失败告警由 WorkflowTriggerService.recordResult 统一发出（webhook 链路同样
+    // 收口在那里），这里不再重复记录，避免同一件事打两条日志。
+    await this.triggers.recordResult(triggerId, succeeded);
   }
 }

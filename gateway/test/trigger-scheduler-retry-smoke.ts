@@ -13,8 +13,14 @@ import { WorkflowTriggerSchedulerService } from '../src/triggers/workflow-trigge
  */
 
 interface Scenario {
-  /** 每次尝试的行为：返回是否成功、抛错、或抛「不可运行」。 */
-  attempts: Array<'ok' | 'fail' | 'gone'>;
+  /**
+   * 每次尝试的行为：
+   *   ok        —— 成功
+   *   fail      —— 抛异常
+   *   softfail  —— 不抛异常，但工作流以 failed 状态正常结束（节点抛错被引擎捕获）
+   *   gone      —— 触发器已删除/暂停（不可重试）
+   */
+  attempts: Array<'ok' | 'fail' | 'softfail' | 'gone'>;
 }
 
 function buildHarness(scenario: Scenario, config: Record<string, string> = {}) {
@@ -45,6 +51,11 @@ function buildHarness(scenario: Scenario, config: Record<string, string> = {}) {
       // 与 toRunnableById 同一轮尝试的结果保持一致
       const behavior = scenario.attempts[calls.runOnce - 1] ?? 'fail';
       if (behavior === 'fail') throw new Error('模型服务 503');
+      if (behavior === 'softfail') {
+        // 关键场景：不抛异常，工作流以 failed 状态结束（节点抛错被引擎捕获）
+        yield { event: 'workflow_finished', data: { status: 'failed' } };
+        return;
+      }
       yield { event: 'workflow_finished', data: { status: 'succeeded' } };
     },
   };
@@ -122,17 +133,17 @@ async function main() {
     );
   }
 
-  // ── 5. 连续失败达到阈值：升级为 error 告警 ──────────────────────
+  // ── 5. 连续失败升级告警 ─────────────────────────────────────────
+  // 该职责已下沉到 WorkflowTriggerService.recordResult（webhook 与定时两条链路
+  // 的唯一收口），由 trigger-result-alert-smoke 直接测真实服务。这里改用桩服务，
+  // 只断言调度器把「失败」如实回写，不再断言告警文案（否则测的是桩而非真实实现）。
   {
     const h = buildHarness({ attempts: ['fail', 'fail'] }, {
       ...FAST,
-      WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD: '1',
+      WORKFLOW_TRIGGER_RUN_MAX_ATTEMPTS: '1',
     });
     await (h.scheduler as any).execute('t1');
-    assert.ok(
-      h.logs.some((l) => l.level === 'error' && /连续失败 1 次.*日报任务/.test(l.message)),
-      `达到阈值应告警，实际日志: ${JSON.stringify(h.logs.map((l) => l.message))}`,
-    );
+    assert.deepEqual(h.calls.recorded, [{ succeeded: false }], '失败必须回写，供服务层判断是否告警');
   }
 
   // ── 6. 执行期间进入销毁：不再启动新的退避等待 ─────────────────────
@@ -146,7 +157,24 @@ async function main() {
     assert.equal(h.calls.runOnce, 1, '销毁后不应再等待重试，避免拖住进程退出');
   }
 
-  console.log('trigger scheduler retry tests passed: 自愈 / 上限 / 首成功 / 不可重试 / 失败升级 / 销毁中止');
+  // ── 7. 「正常结束但状态 failed」也要有重试耗尽的汇总日志 ─────────
+  // 这是真实环境实测发现的缺口：该场景不抛异常，早先的汇总日志以「有没有异常对象」
+  // 为条件，于是日志里只有几次重试 WARN 就断了，无法判断最终是失败还是仍在进行中。
+  {
+    const h = buildHarness(
+      { attempts: ['softfail', 'softfail', 'softfail'] },
+      { ...FAST, WORKFLOW_TRIGGER_RUN_MAX_ATTEMPTS: '3' },
+    );
+    await (h.scheduler as any).execute('t1');
+    assert.equal(h.calls.runOnce, 3, '软失败同样应重试到上限');
+    assert.ok(
+      h.logs.some((l) => l.level === 'error' && /重试 3 次后仍失败/.test(l.message)),
+      `无异常时也必须给出重试耗尽汇总，实际日志: ${JSON.stringify(h.logs.map((l) => l.message))}`,
+    );
+    assert.deepEqual(h.calls.recorded, [{ succeeded: false }]);
+  }
+
+  console.log('trigger scheduler retry tests passed: 自愈 / 上限 / 首成功 / 不可重试 / 软失败汇总 / 失败回写 / 销毁中止');
 }
 
 main().catch((error) => {
