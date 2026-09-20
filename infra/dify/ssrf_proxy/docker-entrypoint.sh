@@ -22,5 +22,12 @@ awk '{
     print
 }' /etc/squid/squid.conf.template >/etc/squid/squid.conf
 
+# 容器重启（restart: unless-stopped，或宿主机重启 / docker restart）会复用容器
+# 可写层，上一轮的 /run/squid.pid 会残留下来。Squid 读到「fresh instance PID
+# file」后直接 FATAL 退出，容器陷入无限重启；而 dify-api 依赖
+# `ssrf_proxy: service_healthy`，整栈因此永远起不来（表现为 pnpm start 一直卡在
+# 「等待 SSRF Proxy 健康」）。启动前清掉陈旧 PID 文件即可解除死锁。
+rm -f /run/squid.pid
+
 /usr/sbin/squid -Nz
 exec /usr/sbin/squid -f /etc/squid/squid.conf -NYC 1
