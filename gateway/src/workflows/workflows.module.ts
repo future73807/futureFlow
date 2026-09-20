@@ -10,6 +10,7 @@ import { WorkflowCrudController } from './workflow-crud.controller';
 import { WorkflowCrudService } from './workflow-crud.service';
 import { DraftRunService } from './draft-run.service';
 import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
+import { StaleRunReconcilerService } from './services/stale-run-reconciler.service';
 import { ConverterModule } from '../converter/converter.module';
 import { DifyModule } from '../dify/dify.module';
 import { BillingModule } from '../billing/billing.module';
@@ -31,6 +32,7 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
     WorkflowCrudService,
     DraftRunService,
     WorkflowExecutionGuardService,
+    StaleRunReconcilerService,
   ],
   exports: [WorkflowsService, WorkflowCrudService, DraftRunService],
 })

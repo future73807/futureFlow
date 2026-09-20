@@ -34,6 +34,9 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
   requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_RUN_MAX_ATTEMPTS', 2);
   requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_RETRY_BASE_MS', 2000);
   requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD', 3);
+  // 残留运行对账：回收进程崩溃后卡在 running 的记录（同时解除冻结与并发占用）。
+  requirePositiveInteger(environment, 'WORKFLOW_STALE_RUN_MINUTES', 30);
+  requirePositiveInteger(environment, 'WORKFLOW_STALE_RUN_SWEEP_SECONDS', 300);
   requirePositiveInteger(environment, 'LLM_REQUEST_TIMEOUT_MS', 120000);
   requirePositiveInteger(environment, 'MEDIA_PROVIDER_TIMEOUT_MS', 120000);
   requirePositiveInteger(environment, 'MEDIA_PROVIDER_JSON_MAX_BYTES', 41943040);
