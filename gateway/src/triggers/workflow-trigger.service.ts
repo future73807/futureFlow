@@ -254,13 +254,24 @@ export class WorkflowTriggerService {
     return this.toRunnable(trigger);
   }
 
+  /**
+   * 回写一次调度结果。
+   *
+   * 返回值供调用方（调度器）判断是否需要升级告警——`failureCount` 虽然早已入库并在
+   * 接口返回，但没有任何主动推送，只看数据不会有人发现某个定时任务已经连续失败很多次。
+   */
   async recordResult(triggerId: string, succeeded: boolean) {
     const trigger = await this.triggerRepo.findOne({ where: { id: triggerId } });
-    if (!trigger) return;
+    if (!trigger) return null;
     trigger.lastTriggeredAt = new Date();
     trigger.lastRunStatus = succeeded ? 'succeeded' : 'failed';
     trigger.failureCount = succeeded ? 0 : trigger.failureCount + 1;
     await this.triggerRepo.save(trigger);
+    return {
+      id: trigger.id,
+      name: trigger.name,
+      failureCount: trigger.failureCount,
+    };
   }
 
   private async getOwned(userId: string, triggerId: string) {

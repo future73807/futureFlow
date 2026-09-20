@@ -30,6 +30,10 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
   requirePositiveInteger(environment, 'WORKFLOW_MAX_CONCURRENT_PER_USER', 3);
   requirePositiveInteger(environment, 'WORKFLOW_MAX_RUNS_PER_MINUTE', 30);
   requirePositiveInteger(environment, 'WORKFLOW_SCHEDULE_TICK_SECONDS', 30);
+  // 定时触发器失败重试：默认只额外重试一次、退避 2s，连续失败 3 次起升级为 error 日志。
+  requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_RUN_MAX_ATTEMPTS', 2);
+  requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_RETRY_BASE_MS', 2000);
+  requirePositiveInteger(environment, 'WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD', 3);
   requirePositiveInteger(environment, 'LLM_REQUEST_TIMEOUT_MS', 120000);
   requirePositiveInteger(environment, 'MEDIA_PROVIDER_TIMEOUT_MS', 120000);
   requirePositiveInteger(environment, 'MEDIA_PROVIDER_JSON_MAX_BYTES', 41943040);

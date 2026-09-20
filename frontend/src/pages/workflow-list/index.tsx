@@ -93,6 +93,9 @@ interface WorkflowTrigger {
   staticInputs?: Record<string, string | number | boolean> | null;
   nextRunAt?: string | null;
   lastRunStatus?: string | null;
+  lastTriggeredAt?: string | null;
+  /** 连续失败次数（成功一次即清零）。用于让「一直失败」的定时任务可见。 */
+  failureCount?: number;
 }
 
 interface WorkflowVersion {
@@ -2055,7 +2058,14 @@ export const WorkflowListPage = () => {
                   ) : (
                     '使用专属安全地址调用'
                   )}
-                  {trigger.lastRunStatus ? ` · 上次 ${trigger.lastRunStatus}` : ''}
+                  {trigger.lastRunStatus
+                    ? ` · 上次 ${trigger.lastRunStatus === 'succeeded' ? '成功' : '失败'}`
+                    : ''}
+                  {/* 连续失败次数原先已由接口返回、但界面不展示，导致「一直失败」的
+                      定时任务在页面上看只是「上次失败」，无法察觉严重程度。 */}
+                  {trigger.failureCount && trigger.failureCount > 0
+                    ? ` · 连续失败 ${trigger.failureCount} 次`
+                    : ''}
                 </RunMeta>
                 <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
                   <Button
