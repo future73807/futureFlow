@@ -15,7 +15,18 @@ const MAX_CODE_LENGTH = 50_000;
 const EXEC_TIMEOUT_MS = 15_000;
 const RESULT_MARKER = '__FF_RESULT__';
 
-const RUNNER_SOURCE = `import json, sys
+/**
+ * 本机 Python 的运行器脚本。
+ *
+ * 契约：用户代码必须定义 `def main(params)`，**params 就是本次运行的工作流输入
+ * 本身**（前端把开始节点声明的字段展开成 {{引用}} 模板后放进 payload.params）。
+ * 不要写成 `main({'params': params})` —— 那会多包一层，导致官方默认模板里的
+ * `params.get("query")` 永远取到空值且不报错（历史缺陷，已由本文件与
+ * frontend/src/nodes/python/runtime.ts 一起修正）。
+ *
+ * 导出是为了让 scripts/test-python-runtime.cjs 能直接拿真实脚本做回归。
+ */
+export const RUNNER_SOURCE = `import json, sys
 
 params = {}
 if len(sys.argv) > 1:
@@ -35,7 +46,7 @@ if not callable(main):
     raise SystemExit(2)
 
 try:
-    result = main({'params': params})
+    result = main(params)
 except Exception as exc:
     print(json.dumps({'error': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False))
     raise SystemExit(3)

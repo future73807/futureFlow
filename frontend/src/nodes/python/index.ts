@@ -14,7 +14,7 @@ export const PythonNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.Python,
   info: {
     icon: pluginIconUrl('python'),
-    description: '在本机 Python 中执行 main({params}) 函数并返回结果（本地试运行）。',
+    description: '在本机 Python 中执行 main(params) 函数并返回结果；params 是本次运行的工作流输入（本地试运行）。',
   },
   meta: {
     defaultPorts: [{ type: 'input' }, { type: 'output' }],

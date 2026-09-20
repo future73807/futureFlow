@@ -24,7 +24,7 @@ export const FormRender = ({ form }: FormRenderProps<FlowNodeJSON>) => {
               name="Python 代码"
               required
               vertical
-              description="必须定义 main({params}) 并返回一个可 JSON 序列化的对象；在本机 Python 3 中执行，15 秒超时"
+              description="必须定义 main(params) 并返回一个可 JSON 序列化的对象；params 是本次运行的工作流输入（开始节点声明的字段）；在本机 Python 3 中执行，15 秒超时"
             >
               <TextArea
                 value={field.value?.content ?? ''}
