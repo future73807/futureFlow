@@ -45,10 +45,14 @@ async function main() {
   const json = (res) => res.json().catch(() => ({}));
 
   // ---- 知识库模块 ----
+  // Dify 的 dataset 名全局唯一，且残留数据不会随容器重启消失。若上一轮验收被
+  // 中断（例如容器被 kill），清理步骤没跑到，固定名字会让本用例在之后每次运行
+  // 都撞 409 dataset_name_duplicate。加唯一后缀让用例自身幂等。
+  const datasetName = `验收知识库-${Date.now().toString(36)}`;
   const created = await json(await fetch(`${BASE}/knowledge/datasets`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: '验收知识库', description: 'API 冒烟' }),
+    body: JSON.stringify({ name: datasetName, description: 'API 冒烟' }),
   }));
   record('知识库：创建 dataset（Dify 代理）', Boolean(created.id), created.id || JSON.stringify(created).slice(0, 120));
 

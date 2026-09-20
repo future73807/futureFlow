@@ -171,10 +171,32 @@ async function main() {
     await shot(page, 't07_tools_done.png');
 
     // ===== T8 选中 LLM 节点配置 =====
+    // 前面的「自动布局 / 重做 / 撤销」会把节点挪到不确定的位置：目标可能落在
+    // 可视区外，或被别的节点（如条件节点的 .ff-branch-ports 命中区）压住。
+    // 先「适应视图」把整图收进视口再点；若仍被遮挡，记录下来再兜底点击——
+    // 记录是为了不把「位置不稳」悄悄咽掉，兜底是为了让后续步骤能继续跑。
+    const fitView = page.getByRole('button', { name: '适应视图', exact: true }).first();
+    if (await fitView.count()) {
+      await fitView.click().catch(() => {});
+      await page.waitForTimeout(800);
+    }
     const llmNode = page.locator('.node-type-llm').first();
     const llmExists = (await llmNode.count()) >= 1;
     if (llmExists) {
-      await llmNode.click();
+      await llmNode.click({ timeout: 5000 }).catch(async (error) => {
+        const blocker = await page.evaluate(() => {
+          const llm = document.querySelector('.node-type-llm');
+          if (!llm) return 'LLM 节点不在 DOM 中';
+          const r = llm.getBoundingClientRect();
+          const top = document.elementFromPoint(
+            Math.round(r.x + r.width / 2),
+            Math.round(r.y + r.height / 2),
+          );
+          return top ? `${top.tagName}.${[...top.classList].join('.')}` : '无命中元素';
+        });
+        console.log(`[WARN] T8 点击 LLM 节点被遮挡（命中元素: ${blocker}）: ${error.message.split('\n')[0]}`);
+        await llmNode.dispatchEvent('click');
+      });
       await page.waitForTimeout(1500);
     }
     await shot(page, 't08_llm_selected.png');

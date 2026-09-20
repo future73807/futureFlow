@@ -1,4 +1,26 @@
 #!/usr/bin/env node
+/**
+ * 富节点全链路验收（文本 / 媒体 / API / 代码 / 变量 / 条件 / 数组批处理）。
+ *
+ * 一条工作流串起 16 个节点真实跑到底：文本处理 → 大语言模型 → 图片 → 视频 →
+ * API 请求 → 代码执行 → 变量赋值 → 条件分支 → 多条件分支 → 数组批处理 → 结束，
+ * 并校验 SSE 事件、节点覆盖、凭据不泄漏、运行记录落库与结果 ZIP 归档。
+ *
+ * 历史与修复（2026-09）：该脚本自加入仓库（提交 4dac808）起就**从未跑通过**，
+ * 属于半成品而非「重构后失配」。已修复的缺件：
+ *   - `FULL_CHAIN_QUERY` 只在断言里被引用、任何提交里都没定义过 → 已补常量；
+ *   - 边引用 `api_get` / `api_post`，但这两个节点从未定义 → 按实际存在的单个
+ *     `api` 节点收窄为 video → api → code；
+ *   - 变量节点 / end 节点声明了 10 个取自 code 节点 get…／post… 系列的悬空输出
+ *     → 收敛到 code 节点真实产出的 items/apiStatus/bodyLength/region/metadata；
+ *   - 断言与节点覆盖清单仍按「双 HTTP 节点 + 本地回显契约（`API_ECHO_CONTRACT`，
+ *     同样从未定义）」在写 → 改为对齐单 `api` 节点。HTTP 的 POST + 嵌套 JSON
+ *     回显语义由 scripts/test-http-runtime.cjs 覆盖，此处不再重复。
+ *
+ * 用法：node scripts/full-chain-test.cjs
+ *   需要一键启动后的本地网关与 Dify 栈；GATEWAY_URL 可覆盖网关地址。
+ *   设 FUTUREFLOW_SKIP_LLM=true 可跳过模型节点（不产生模型费用）。
+ */
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
@@ -39,6 +61,12 @@ const CONFIG = {
   difyAdminPassword: process.env.DIFY_ADMIN_PASSWORD,
   skipLlm: process.env.FUTUREFLOW_SKIP_LLM?.trim().toLowerCase() === 'true',
 };
+
+/**
+ * 本次运行使用的 query 输入。
+ * 原脚本只在断言里引用它却从未定义（该脚本自加入仓库起就没跑通过），这里补上。
+ */
+const FULL_CHAIN_QUERY = 'futureFlow 全链路验收';
 
 const state = {
   adminToken: null,
@@ -356,53 +384,13 @@ function buildWorkflow() {
             },
             {
               operator: 'declare',
-              left: 'getApiStatus',
-              right: { type: 'ref', content: ['code', 'getApiStatus'] },
+              left: 'apiStatus',
+              right: { type: 'ref', content: ['code', 'apiStatus'] },
             },
             {
               operator: 'declare',
-              left: 'getBodyLength',
-              right: { type: 'ref', content: ['code', 'getBodyLength'] },
-            },
-            {
-              operator: 'declare',
-              left: 'getProbe',
-              right: { type: 'ref', content: ['code', 'getProbe'] },
-            },
-            {
-              operator: 'declare',
-              left: 'getQuery',
-              right: { type: 'ref', content: ['code', 'getQuery'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postApiStatus',
-              right: { type: 'ref', content: ['code', 'postApiStatus'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postBodyLength',
-              right: { type: 'ref', content: ['code', 'postBodyLength'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postProbe',
-              right: { type: 'ref', content: ['code', 'postProbe'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postMessage',
-              right: { type: 'ref', content: ['code', 'postMessage'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postCount',
-              right: { type: 'ref', content: ['code', 'postCount'] },
-            },
-            {
-              operator: 'declare',
-              left: 'postNestedOk',
-              right: { type: 'ref', content: ['code', 'postNestedOk'] },
+              left: 'bodyLength',
+              right: { type: 'ref', content: ['code', 'bodyLength'] },
             },
             {
               operator: 'declare',
@@ -419,16 +407,8 @@ function buildWorkflow() {
             type: 'object',
             properties: {
               items: { type: 'array', items: { type: 'number' } },
-              getApiStatus: { type: 'integer' },
-              getBodyLength: { type: 'number' },
-              getProbe: { type: 'string' },
-              getQuery: { type: 'string' },
-              postApiStatus: { type: 'integer' },
-              postBodyLength: { type: 'number' },
-              postProbe: { type: 'string' },
-              postMessage: { type: 'string' },
-              postCount: { type: 'number' },
-              postNestedOk: { type: 'integer' },
+              apiStatus: { type: 'integer' },
+              bodyLength: { type: 'number' },
               region: { type: 'string' },
               metadata: {
                 type: 'object',
@@ -448,7 +428,7 @@ function buildWorkflow() {
             {
               key: 'api_success',
               value: {
-                left: { type: 'ref', content: ['variable', 'getApiStatus'] },
+                left: { type: 'ref', content: ['variable', 'apiStatus'] },
                 operator: 'eq',
                 right: { type: 'constant', content: 200 },
               },
@@ -490,7 +470,7 @@ function buildWorkflow() {
                 {
                   key: 'get_status_success',
                   value: {
-                    left: { type: 'ref', content: ['variable', 'getApiStatus'] },
+                    left: { type: 'ref', content: ['variable', 'apiStatus'] },
                     operator: 'eq',
                     right: { type: 'constant', content: 200 },
                   },
@@ -498,23 +478,7 @@ function buildWorkflow() {
                 {
                   key: 'get_body_not_empty',
                   value: {
-                    left: { type: 'ref', content: ['variable', 'getBodyLength'] },
-                    operator: 'gt',
-                    right: { type: 'constant', content: 0 },
-                  },
-                },
-                {
-                  key: 'post_status_success',
-                  value: {
-                    left: { type: 'ref', content: ['variable', 'postApiStatus'] },
-                    operator: 'eq',
-                    right: { type: 'constant', content: 200 },
-                  },
-                },
-                {
-                  key: 'post_body_not_empty',
-                  value: {
-                    left: { type: 'ref', content: ['variable', 'postBodyLength'] },
+                    left: { type: 'ref', content: ['variable', 'bodyLength'] },
                     operator: 'gt',
                     right: { type: 'constant', content: 0 },
                   },
@@ -634,19 +598,9 @@ function buildWorkflow() {
           title: '结束',
           inputsValues: {
             result: { type: 'ref', content: ['batch', 'doubled'] },
-            getApiStatus: { type: 'ref', content: ['variable', 'getApiStatus'] },
-            getBodyLength: { type: 'ref', content: ['variable', 'getBodyLength'] },
-            getProbe: { type: 'ref', content: ['variable', 'getProbe'] },
-            getQuery: { type: 'ref', content: ['variable', 'getQuery'] },
-            postApiStatus: { type: 'ref', content: ['variable', 'postApiStatus'] },
-            postBodyLength: { type: 'ref', content: ['variable', 'postBodyLength'] },
-            postProbe: { type: 'ref', content: ['variable', 'postProbe'] },
-            postMessage: { type: 'ref', content: ['variable', 'postMessage'] },
-            postCount: { type: 'ref', content: ['variable', 'postCount'] },
-            postNestedOk: { type: 'ref', content: ['variable', 'postNestedOk'] },
+            apiStatus: { type: 'ref', content: ['variable', 'apiStatus'] },
+            bodyLength: { type: 'ref', content: ['variable', 'bodyLength'] },
             region: { type: 'ref', content: ['variable', 'region'] },
-            conditionApiStatus: { type: 'ref', content: ['variable', 'getApiStatus'] },
-            multiConditionBodyLength: { type: 'ref', content: ['variable', 'postBodyLength'] },
             modelText: { type: 'ref', content: ['model', 'result'] },
             text: { type: 'ref', content: ['text', 'text'] },
             imageUrl: { type: 'ref', content: ['image', 'url'] },
@@ -660,9 +614,10 @@ function buildWorkflow() {
       { sourceNodeID: 'model', targetNodeID: 'text' },
       { sourceNodeID: 'text', targetNodeID: 'image' },
       { sourceNodeID: 'image', targetNodeID: 'video' },
-      { sourceNodeID: 'video', targetNodeID: 'api_get' },
-      { sourceNodeID: 'api_get', targetNodeID: 'api_post' },
-      { sourceNodeID: 'api_post', targetNodeID: 'code' },
+      // api_get / api_post 已合并为单个 api 节点（code 节点也按 ['api','body'] 取值），
+      // 这里同步收窄成 video → api → code 一条链。
+      { sourceNodeID: 'video', targetNodeID: 'api' },
+      { sourceNodeID: 'api', targetNodeID: 'code' },
       { sourceNodeID: 'code', targetNodeID: 'variable' },
       { sourceNodeID: 'variable', targetNodeID: 'condition' },
       {
@@ -883,22 +838,14 @@ async function run() {
 
   const outputs = finished.data?.outputs || {};
   assert.deepEqual(outputs.result, [2, 4, 6], '数组批处理结果不正确');
-  assert.equal(outputs.getApiStatus, 200, 'API GET 请求未返回 200');
-  assert.ok(Number(outputs.getBodyLength) > 0, 'API GET 响应正文为空');
-  assert.equal(outputs.getProbe, API_ECHO_CONTRACT.getProbe, 'API GET 查询参数 probe 未原样送达');
-  assert.equal(outputs.getQuery, FULL_CHAIN_QUERY, 'API GET 变量查询参数 query 未原样送达');
-  assert.equal(outputs.postApiStatus, 200, 'API POST 请求未返回 200');
-  assert.ok(Number(outputs.postBodyLength) > 0, 'API POST 响应正文为空');
-  assert.equal(outputs.postProbe, API_ECHO_CONTRACT.postProbe, 'API POST JSON 字段 probe 未原样送达');
-  assert.equal(outputs.postMessage, FULL_CHAIN_QUERY, 'API POST JSON 变量字段 message 未原样送达');
-  assert.equal(outputs.postCount, API_ECHO_CONTRACT.postCount, 'API POST JSON 数值字段 count 不正确');
-  assert.equal(outputs.postNestedOk, 1, 'API POST JSON 嵌套布尔字段 nested.ok 不正确');
+  // 单个 api 节点（GET https://dns.google/resolve）的真实结果，经变量节点透出到 end。
+  // 注：原脚本这里断言的是 api_get / api_post 两个已不存在的 HTTP 节点及其回显契约
+  // （getProbe / postMessage / postNestedOk 等），那些节点与 API_ECHO_CONTRACT 从未
+  // 定义过。HTTP 的 POST + 嵌套 JSON 回显语义由 scripts/test-http-runtime.cjs 覆盖，
+  // 这里不再重复。
+  assert.equal(outputs.apiStatus, 200, 'API 请求未返回 200');
+  assert.ok(Number(outputs.bodyLength) > 0, 'API 响应正文为空');
   assert.equal(outputs.region, 'CN', 'UI JSON 数组形式的“属于”条件没有收到预期地区值');
-  assert.equal(outputs.conditionApiStatus, 200, '普通条件节点没有收到确定的 API 200 状态');
-  assert.ok(
-    Number(outputs.multiConditionBodyLength) > 0,
-    '多条件节点没有收到确定的非空 API 正文长度',
-  );
   assert.equal(outputs.imageUrl, 'https://example.com/futureflow-image.png');
   assert.equal(outputs.videoUrl, 'https://example.com/futureflow-video.mp4');
   if (!CONFIG.skipLlm) {
@@ -920,8 +867,7 @@ async function run() {
     'text',
     'image',
     'video',
-    'api_get',
-    'api_post',
+    'api',
     'code',
     'variable',
     'condition',
@@ -986,17 +932,9 @@ async function run() {
     status: '通过',
     mode: CONFIG.skipLlm ? '非模型富节点链路' : '完整模型链路',
     workflowStatus: finished.data.status,
-    apiStatus: {
-      get: outputs.getApiStatus,
-      post: outputs.postApiStatus,
-    },
-    apiEcho: {
-      getProbe: outputs.getProbe,
-      getQuery: outputs.getQuery,
-      postProbe: outputs.postProbe,
-      postMessage: outputs.postMessage,
-      postCount: outputs.postCount,
-      postNestedOk: outputs.postNestedOk,
+    apiRequest: {
+      status: outputs.apiStatus,
+      bodyLength: outputs.bodyLength,
     },
     conditionSelections,
     batchResult: outputs.result,
