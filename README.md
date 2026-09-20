@@ -357,20 +357,20 @@ pnpm run verify
 ### 端到端验收（需要真实栈）
 
 ```bash
-pnpm run test:e2e-all                      # 全部 22 个套件
+pnpm run test:e2e-all                      # 全部 23 个套件
 pnpm run test:e2e-local                    # 只跑零依赖的 local 组
 node scripts/e2e-all.cjs --list            # 列出套件清单
 node scripts/e2e-all.cjs --group=api       # 只跑某一层
 node scripts/e2e-all.cjs --suite=gui-full  # 只跑某一个
 ```
 
-按三层组织，共 22 个套件：
+按三层组织，共 23 个套件：
 
 | 层 | 数量 | 前置条件 | 覆盖 |
 | ---- | ---- | -------- | ---- |
 | `local` | 9 | 无 | 结果 ZIP 归档、媒体凭据隔离、Python `params` 契约、条件 / 退出 / HTTP / 批处理 / 变量聚合 / 循环类型的本地运行时 |
 | `api` | 7 | 网关 + Dify 栈 | 知识库·文件·MCP、版本管理与导入导出、批量任务、草稿云端试运行、文本→模型→代码、媒体桥、16 节点全链路 |
-| `gui` | 6 | 网关 + 前端 + Chrome/Edge | 模拟点击、全流程、按钮逐一枚举、循环体节点操作与交互、Python 节点真实执行（含连库） |
+| `gui` | 7 | 网关 + 前端 + Chrome/Edge | 模拟点击、全流程、按钮逐一枚举、循环体节点操作与交互、Python 节点真实执行（含连库）、触发器「连续失败」界面可见性 |
 
 地址与管理员密码按「环境变量 → 仓库根 `.env` → 内置默认」解析，可显式覆盖：
 

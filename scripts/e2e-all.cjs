@@ -102,7 +102,8 @@ const SUITES = [
   { id: 'page-buttons', script: 'test-page-buttons.cjs', group: 'gui', needsPassword: true, desc: '页面按钮逐一枚举核查' },
   { id: 'loop-body-node-ops', script: 'test-loop-body-node-ops.cjs', group: 'gui', needsPassword: true, desc: '循环体节点删除/移出/复制' },
   { id: 'loop-interactions', script: 'test-loop-interactions.cjs', group: 'gui', needsPassword: true, desc: '循环体折叠/展开/拖拽解耦' },
-  { id: 'local-tools', script: 'test-local-tools.cjs', group: 'gui', needsPassword: true, desc: 'SQL / Python 节点真实执行' },
+  { id: 'local-tools', script: 'test-local-tools.cjs', group: 'gui', needsPassword: true, desc: 'Python 节点真实执行（含连库）' },
+  { id: 'trigger-failure-display', script: 'test-trigger-failure-display.cjs', group: 'gui', needsPassword: true, desc: '触发器「连续失败」界面可见性（依赖真实调度）' },
 ];
 
 // ───────────────────────── 前置检查 ─────────────────────────

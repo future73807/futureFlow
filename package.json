@@ -38,6 +38,7 @@
     "test:e2e": "node scripts/e2e-full-test.cjs",
     "test:e2e-all": "node scripts/e2e-all.cjs",
     "test:e2e-local": "node scripts/e2e-all.cjs --group=local",
+    "test:trigger-failure-display": "node scripts/test-trigger-failure-display.cjs",
     "test:gui-click": "node scripts/test-gui-click.cjs",
     "test:new-modules": "node scripts/test-new-modules-api.cjs",
     "test:draft-run-online": "node scripts/test-draft-run-online.cjs",
