@@ -1278,20 +1278,20 @@ async function testWorkflowValidationAndDirectModeGuard() {
   assert.equal(permissions.checkNodePermissions('free', ['loop']).allowed, false);
   assert.equal(permissions.checkNodePermissions('pro', ['loop']).allowed, true);
   assert.equal(permissions.checkNodePermissions('enterprise', ['loop']).allowed, true);
-  // SQL 查询 / Python 执行只在本地试运行链路成立：任何等级都不可云端执行，
+  // Python 执行只在本地试运行链路成立：任何等级都不可云端执行，
   // 报错必须走「暂不支持云端执行」而不是「VIP 等级无权」。
   for (const level of ['free', 'pro', 'enterprise']) {
     assert.deepEqual(
-      permissions.findLocalOnlyNodes(['start', 'database', 'python', 'end']),
-      ['SQL 查询', 'Python 执行'],
+      permissions.findLocalOnlyNodes(['start', 'python', 'end']),
+      ['Python 执行'],
       `${level} 等级也应识别出仅本地试运行节点`,
     );
-    assert.equal(permissions.checkNodePermissions(level, ['database']).allowed, false);
+    assert.equal(permissions.checkNodePermissions(level, ['python']).allowed, false);
   }
   assert.deepEqual(permissions.findLocalOnlyNodes(['start', 'llm', 'end']), []);
   assert.deepEqual(
-    permissions.findLocalOnlyNodes(['database', 'database']),
-    ['SQL 查询'],
+    permissions.findLocalOnlyNodes(['python', 'python']),
+    ['Python 执行'],
     '重复节点只提示一次',
   );
   assert.throws(

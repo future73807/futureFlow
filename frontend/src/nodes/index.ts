@@ -18,7 +18,6 @@ import { HTTPNodeRegistry } from './http';
 import { KnowledgeNodeRegistry } from './knowledge';
 import { SubworkflowNodeRegistry } from './subworkflow';
 import { McpNodeRegistry } from './mcp';
-import { DatabaseNodeRegistry } from './database';
 import { PythonNodeRegistry } from './python';
 import { GroupNodeRegistry } from './group';
 import { EndNodeRegistry } from './end';
@@ -49,8 +48,7 @@ export const nodeRegistries: FlowNodeRegistry[] = [
   KnowledgeNodeRegistry,
   SubworkflowNodeRegistry,
   McpNodeRegistry,
-DatabaseNodeRegistry,
-PythonNodeRegistry,
+  PythonNodeRegistry,
   ExitNodeRegistry,
   VariableNodeRegistry,
   VariableAggregatorNodeRegistry,

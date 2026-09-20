@@ -521,70 +521,6 @@ const MCP_PLUGIN: PluginCatalogEntry = {
   capability: '需要调用 MCP 工具扩展平台能力时使用。',
 };
 
-const DATABASE_PLUGIN: PluginCatalogEntry = {
-  id: 'database',
-  nodeType: 'database',
-  name: 'SQL 查询',
-  category: '扩展能力',
-  summary: '对 PostgreSQL 执行只读 SELECT 查询。',
-  description:
-    '通过主机、端口、用户名和密码连接 PostgreSQL，执行单条 SELECT/WITH 只读查询，可用 {{变量}} 引用上游结果，最多返回 200 行。输出查询行数据、行数和是否截断标记；密码仅用于本次查询，不会被保存。',
-  tags: ['数据库', 'SQL', '只读查询'],
-  icon: 'icon-database',
-  tools: [
-    {
-      name: 'database_query',
-      description: '执行一条只读 SQL 查询并返回结构化行数据。',
-      params: [
-        {
-          name: 'host',
-          type: 'string',
-          required: true,
-          description: '数据库主机',
-          default: 'localhost',
-        },
-        {
-          name: 'port',
-          type: 'number',
-          required: true,
-          description: '数据库端口',
-          default: 5432,
-        },
-        {
-          name: 'username',
-          type: 'string',
-          required: true,
-          description: '数据库用户名',
-        },
-        {
-          name: 'password',
-          type: 'string',
-          required: false,
-          description: '数据库密码，仅用于本次查询请求',
-        },
-        {
-          name: 'database',
-          type: 'string',
-          required: true,
-          description: '数据库名',
-        },
-        {
-          name: 'sql',
-          type: 'string',
-          required: true,
-          description: '单条 SELECT/WITH 只读查询，可用 {{变量}} 引用上游结果',
-        },
-      ],
-      outputs: [
-        { name: 'rows', type: 'array', description: '查询结果行数据（最多 200 行）' },
-        { name: 'rowCount', type: 'integer', description: '返回行数' },
-        { name: 'truncated', type: 'boolean', description: '结果是否被截断' },
-      ],
-    },
-  ],
-  capability: '需要从 PostgreSQL 读取业务数据时使用。',
-};
-
 const PYTHON_PLUGIN: PluginCatalogEntry = {
   id: 'python',
   nodeType: 'python',
@@ -808,7 +744,6 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   KNOWLEDGE_PLUGIN,
   SUBWORKFLOW_PLUGIN,
   MCP_PLUGIN,
-  DATABASE_PLUGIN,
   PYTHON_PLUGIN,
   // 流程控制
   CONDITION_PLUGIN,

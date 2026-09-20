@@ -4,7 +4,7 @@
  *
  * 通过平台 API 创建三条工作流，覆盖画布上可运行的全部节点类型：
  *   A 本地链路：开始 → 文本处理 → 大语言模型 → 条件分支 → 代码执行
- *             → 多条件分支 → 循环 → SQL 查询 → Python 执行 → 结束
+ *             → 多条件分支 → 循环 → Python 执行 → 结束
  *   B 云端链路：开始 → API 请求（每日诗词）→ 知识检索 → MCP 工具
  *             → 文本处理 → 子工作流 → 文本处理 → 结束
  *   C 子工作流目标：开始 → 代码执行 → 结束（发布后供 B 引用）
@@ -30,18 +30,6 @@ const BASE = (() => {
 const PASSWORD = process.argv[2] || 'futureFlow@';
 
 /** 从 .env 读平台库连接，SQL 节点直连平台自身的 PostgreSQL */
-const postgres = (() => {
-  const env = fs.readFileSync(join(process.cwd(), '.env'), 'utf8');
-  const read = (key) => env.match(new RegExp(`^${key}=(.*)$`, 'm'))?.[1]?.trim() || '';
-  return {
-    host: read('POSTGRES_HOST') || 'localhost',
-    port: Number(read('POSTGRES_PORT') || 5432),
-    username: read('POSTGRES_USER'),
-    password: read('POSTGRES_PASSWORD'),
-    database: read('POSTGRES_DB'),
-  };
-})();
-
 async function json(method, path, token, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -240,27 +228,6 @@ const buildLocalGraph = () => ({
       ],
     },
     {
-      id: 'database_0',
-      type: 'database',
-      meta: { position: { x: 1760, y: 420 } },
-      data: {
-        title: 'SQL 查询·工作流总数',
-        connection: postgres,
-        sqlValue: {
-          type: 'template',
-          content: 'SELECT count(*)::int AS total FROM workflows',
-        },
-        outputs: {
-          type: 'object',
-          properties: {
-            rows: { type: 'array', items: { type: 'object' }, title: '查询结果' },
-            rowCount: { type: 'integer', title: '行数' },
-            truncated: { type: 'boolean', title: '是否截断' },
-          },
-        },
-      },
-    },
-    {
       id: 'python_0',
       type: 'python',
       meta: { position: { x: 2060, y: 420 } },
@@ -288,7 +255,6 @@ const buildLocalGraph = () => ({
           llm_result: { type: 'ref', content: ['llm_0', 'result'] },
           code_result: { type: 'ref', content: ['code_0', 'result'] },
           loop_result: { type: 'ref', content: ['loop_0', 'result'] },
-          db_rows: { type: 'ref', content: ['database_0', 'rows'] },
           python_result: { type: 'ref', content: ['python_0', 'result'] },
         },
         inputs: {
@@ -297,7 +263,6 @@ const buildLocalGraph = () => ({
             llm_result: { type: 'string', title: '模型输出' },
             code_result: { type: 'object', title: '代码结果' },
             loop_result: { type: 'array', items: { type: 'number' }, title: '批处理结果' },
-            db_rows: { type: 'array', items: { type: 'object' }, title: '数据库行' },
             python_result: { type: 'object', title: 'Python 结果' },
           },
         },
@@ -312,8 +277,7 @@ const buildLocalGraph = () => ({
     { sourceNodeID: 'code_0', targetNodeID: 'code_list' },
     { sourceNodeID: 'code_list', targetNodeID: 'multi_0' },
     { sourceNodeID: 'multi_0', targetNodeID: 'loop_0', sourcePortID: 'branch.0' },
-    { sourceNodeID: 'loop_0', targetNodeID: 'database_0' },
-    { sourceNodeID: 'database_0', targetNodeID: 'python_0' },
+    { sourceNodeID: 'loop_0', targetNodeID: 'python_0' },
     { sourceNodeID: 'python_0', targetNodeID: 'end_0' },
     { sourceNodeID: 'condition_0', targetNodeID: 'end_0', sourcePortID: 'else' },
     { sourceNodeID: 'multi_0', targetNodeID: 'end_0', sourcePortID: 'else' },

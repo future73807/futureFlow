@@ -19,7 +19,7 @@ import { GATEWAY_URL } from '../utils/config';
 export interface ProxyChainSpec {
   /** 原始节点(将被替换为链路) */
   node: any;
-  /** 网关路径, 如 db/query */
+  /** 网关路径, 如 python/exec */
   gatewayPath: string;
   /** 请求体(普通对象; 字符串值保留 {{引用}} 模板语法) */
   payload: Record<string, unknown>;

@@ -20,7 +20,6 @@ export enum WorkflowNodeType {
   Knowledge = 'knowledge',
   Subworkflow = 'subworkflow',
   Mcp = 'mcp',
-  Database = 'database',
   Python = 'python',
   Variable = 'variable',
   VariableAggregator = 'variable-aggregator',

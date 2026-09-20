@@ -32,7 +32,7 @@ const PROFESSIONAL_NODE_TYPES = new Set(['http', 'code', 'loop', 'knowledge', 's
  * 这些节点可以添加、可以本地试运行，但发布与云端试运行会被网关拒绝。
  * 这里只加提示徽标、不置灰，避免挡住文档里承诺的本地试运行能力。
  */
-const LOCAL_ONLY_NODE_TYPES = new Set(['database', 'python']);
+const LOCAL_ONLY_NODE_TYPES = new Set(['python']);
 
 const NodeIcon = ({ icon }: { icon?: string }) => {
   const [imageFailed, setImageFailed] = useState(!icon);
@@ -122,7 +122,6 @@ export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
       image: '智能与内容',
       video: '智能与内容',
       http: '扩展能力',
-      database: '扩展能力',
       python: '扩展能力',
       code: '扩展能力',
       knowledge: '扩展能力',

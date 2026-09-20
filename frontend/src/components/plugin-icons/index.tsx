@@ -56,12 +56,6 @@ export const PLUGIN_ICON_SHAPES: Record<string, PluginIconShape[]> = {
     { kind: 'path', d: 'M7.4 8.8h9.2v4a4.6 4.6 0 01-9.2 0z' },
     { kind: 'path', d: 'M12 17.4V20.5' },
   ],
-  // SQL 查询：数据库柱体
-  database: [
-    { kind: 'ellipse', cx: 12, cy: 6.4, rx: 6.8, ry: 2.6 },
-    { kind: 'path', d: 'M5.2 6.4v11.2c0 1.4 3 2.6 6.8 2.6s6.8-1.2 6.8-2.6V6.4' },
-    { kind: 'path', d: 'M5.2 12c0 1.4 3 2.6 6.8 2.6s6.8-1.2 6.8-2.6' },
-  ],
   // Python 执行：终端窗口
   python: [
     { kind: 'rect', x: 3.6, y: 4.6, width: 16.8, height: 14.8, rx: 2.4 },
