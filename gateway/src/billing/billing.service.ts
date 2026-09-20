@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import { BalanceLog } from '../database/entities/balance-log.entity';
-import { MODEL_PRICING, DEFAULT_PRICING } from './pricing.config';
+import { pricePer1KTokens } from './pricing.config';
 
 /**
  * 扣费服务
@@ -104,12 +104,29 @@ export class BillingService {
 
       // 1. 解冻预扣金额
       user.frozenBalance = parseFloat(user.frozenBalance.toString()) - frozenAmount;
-      if (user.frozenBalance < 0) user.frozenBalance = 0;
+      const overFrozen = user.frozenBalance < 0;
+      if (overFrozen) user.frozenBalance = 0;
 
       // 2. 扣除实际费用
       user.balance = parseFloat(user.balance.toString()) - actualCost;
+      const negativeBalance = user.balance < 0;
 
       await manager.save(user);
+
+      // 两种「钱不够」的情况原先都是静默的：既没有告警也没有拒绝。它们本身不一定
+      // 是错误（用户确实消费了服务），但必须留下痕迹，否则只能靠翻流水才发现。
+      if (overFrozen) {
+        this.logger.error(
+          `解冻金额超过已冻结余额（冻结状态不一致）: userId=${userId}, runId=${workflowRunId}, `
+          + `frozenAmount=${frozenAmount}, actualCost=${actualCost}`,
+        );
+      }
+      if (negativeBalance) {
+        this.logger.error(
+          `扣费后余额为负（实际费用超过可用余额）: userId=${userId}, runId=${workflowRunId}, `
+          + `actualCost=${actualCost}, balance=${user.balance}`,
+        );
+      }
 
       // 记录解冻流水
       const unfreezeLog = manager.create(BalanceLog, {
@@ -195,9 +212,10 @@ export class BillingService {
       return Math.round(difyTotalPrice * 7.2 * 10000) / 10000;
     }
 
-    // 按 token 数粗略估算(假设 input:output = 1:1)
-    const pricing = MODEL_PRICING[modelName] || DEFAULT_PRICING;
-    const avgPricePer1K = (pricing.input + pricing.output) / 2;
+    // 按 token 数估算(假设 input:output = 1:1)。
+    // 费率取自 pricing.config 的 pricePer1KTokens —— 与预估（冻结）侧同一规则，
+    // 避免两处定价漂移。
+    const avgPricePer1K = pricePer1KTokens(modelName);
     const cost = (totalTokens / 1000) * avgPricePer1K;
     return Math.round(cost * 10000) / 10000;
   }

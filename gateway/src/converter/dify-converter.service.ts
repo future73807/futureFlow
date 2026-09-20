@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as YAML from 'yaml';
+import { pricePer1KTokens } from '../billing/pricing.config';
 import {
   FlowGramJSON,
   FlowNodeJSON,
@@ -3787,18 +3788,8 @@ main = function(args) {
 
   /** 根据模型和 token 数估算费用(元) */
   private estimateTokenCost(modelName: string, tokens: number): number {
-    // 简化的定价表(元/1K tokens),实际应从配置读取
-    const pricing: Record<string, number> = {
-      'gpt-3.5-turbo': 0.005,
-      'gpt-4': 0.15,
-      'gpt-4o': 0.03,
-      'gpt-4o-mini': 0.001,
-      'claude-3-sonnet': 0.02,
-      'claude-3.5-sonnet': 0.02,
-      'deepseek-chat': 0.001,
-      'glm-5.3-flash': 0.001,
-    };
-    const pricePer1K = pricing[modelName] || 0.01;
-    return (tokens / 1000) * pricePer1K;
+    // 费率与结算侧共用 pricing.config 的 pricePer1KTokens：这两处曾各有一份定价表，
+    // 最高相差 53 倍，导致「余额不足」误拦（详见 pricing-consistency-smoke）。
+    return (tokens / 1000) * pricePer1KTokens(modelName);
   }
 }
