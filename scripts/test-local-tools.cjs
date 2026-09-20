@@ -1,6 +1,57 @@
 'use strict';
 const { chromium } = require('playwright-core');
-const { existsSync } = require('node:fs');
+const { existsSync, readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+
+/**
+ * 从仓库根 .env 读取本地数据库连接信息。
+ *
+ * 本脚本此前把 POSTGRES_PASSWORD 明文写死。而 .env 里的密码是 `pnpm env:init`
+ * 在每台机器上随机生成的，写死既把真实凭据带进了 git 历史，也让脚本换台机器
+ * 必然连不上库。与 compose 保持同一组变量名（POSTGRES_*）。
+ */
+function loadEnvFile() {
+  const envPath = resolve(__dirname, '..', '.env');
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2].trim();
+    if (
+      value.length >= 2
+      && ((value.startsWith('"') && value.endsWith('"'))
+        || (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
+loadEnvFile();
+
+/** 前端/网关地址：优先环境变量，其次仓库根 .env，最后回落到默认端口。 */
+function resolveBase(envName, envKey, fallbackPort) {
+  if (process.env[envName]) return process.env[envName].replace(/\/+$/, '');
+  try {
+    const env = readFileSync(resolve(__dirname, '..', '.env'), 'utf8');
+    const value = env.match(new RegExp('^' + envKey + '=(.*)$', 'm'))?.[1]?.trim();
+    if (value) return envKey === 'PUBLIC_GATEWAY_URL' ? value.replace(/\/+$/, '') : `http://localhost:${value}`;
+  } catch { /* fall through */ }
+  return `http://localhost:${fallbackPort}`;
+}
+
+const GATEWAY = resolveBase('GATEWAY_URL', 'PUBLIC_GATEWAY_URL', 3001);
+const FRONTEND = resolveBase('FRONTEND_URL', 'FRONTEND_PORT', 3000);
+
+const dbConnection = {
+  host: process.env.POSTGRES_HOST || 'localhost',
+  port: Number(process.env.POSTGRES_PORT || 5432),
+  username: process.env.POSTGRES_USER || 'futureflow',
+  password: process.env.POSTGRES_PASSWORD || '',
+  database: process.env.POSTGRES_DB || 'futureflow',
+};
+
 function findBrowser() {
   const c = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -13,8 +64,13 @@ const results = [];
 const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ' :: ' + String(detail).slice(0, 160) : ''}`); };
 
 (async () => {
+  if (!dbConnection.password) {
+    console.error('缺少 POSTGRES_PASSWORD：请先在仓库根目录执行 `pnpm run env:init` 生成 .env');
+    process.exit(1);
+  }
+
   // ---- 通过 API 构建工作流 ----
-  const login = await (await fetch('http://localhost:3001/auth/login', {
+  const login = await (await fetch(`${GATEWAY}/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
   })).json();
@@ -23,7 +79,7 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
     nodes: [
       { id: 'start_0', type: 'start', meta: { position: { x: 80, y: 200 } }, data: { title: '开始', outputs: { type: 'object', properties: { query: { type: 'string', title: '用户输入', default: 'hello' } } } } },
       { id: 'db_test1', type: 'database', meta: { position: { x: 380, y: 200 } }, data: {
-        title: 'SQL 查询', connection: { host: 'localhost', port: 5432, username: 'futureflow', password: 'ff_pg_Kx92mRt7QwZ8nJb4Vc6HdL0Ts39Xe', database: 'futureflow' },
+        title: 'SQL 查询', connection: dbConnection,
         sqlValue: { type: 'template', content: 'SELECT username, role FROM users LIMIT 2' },
         outputs: { type: 'object', properties: { rows: { type: 'array', items: { type: 'object' }, title: '查询结果' }, rowCount: { type: 'integer', title: '行数' }, truncated: { type: 'boolean', title: '是否截断' } } },
       } },
@@ -47,7 +103,7 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
       { sourceNodeID: 'py_test1', targetNodeID: 'end_0' },
     ],
   };
-  const wf = await (await fetch('http://localhost:3001/workflows', {
+  const wf = await (await fetch(`${GATEWAY}/workflows`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
     body: JSON.stringify({ name: '本地扩展节点验收', description: 'SQL+Python 节点端到端', flowgram: JSON.stringify(flowgram) }),
@@ -57,7 +113,7 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
   // ---- 浏览器打开画布并试运行 ----
   const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
   const page = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
-  await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);
   await page.locator('#account').fill('admin');
   await page.locator('#password').fill('futureFlow@');
@@ -82,7 +138,7 @@ const record = (name, ok, detail = '') => { results.push(ok); console.log(`[${ok
   await page.keyboard.press('Escape').catch(() => {});
 
   // 打开验收工作流
-  await page.goto(`http://localhost:3000/canvas/${wf.id}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${FRONTEND}/canvas/${wf.id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5000);
   const nodeCount = await page.evaluate(() => document.querySelectorAll('[class*="node-type-"]').length);
   record('T3 画布渲染 4 个节点', nodeCount === 4, String(nodeCount));
