@@ -399,6 +399,7 @@ GATEWAY_URL=http://localhost:3401 FRONTEND_URL=http://localhost:3400 pnpm run te
 | 发布版本 | 已有 | 支持草稿、不可变发布快照、版本历史和版本专属 Dify 应用 |
 | 运行记录 | 已有 | 持久化运行状态、节点记录、耗时、步骤、令牌与计费信息，并提供管理员查询 |
 | 残留运行对账 | 已有 | 进程中断（部署重启 / OOM / 被 kill）会在 `workflow_runs` 留下永远 `running` 的记录，既占用 `frozenBalance` 又占用并发额度；达到上限后用户无法再启动工作流且不会自愈。启动时与每 5 分钟扫描一次，超过 `WORKFLOW_STALE_RUN_MINUTES`（默认 30）仍为 `running` 的标记为失败并解冻预扣费用 |
+| 残留媒体任务对账 | 已有 | 同类问题：进程中断会让任务永远停在 `creating`/`queued`/`processing`，界面一直「生成中」；且 `claim()` 对同一幂等键返回已存在任务，用户**无法用同一幂等键重试**。启动时与每 5 分钟扫描，先尝试用已落库资产补记为成功，仍不成立才标记 `failed`（`job_stale_timeout`），阈值 `MEDIA_STALE_JOB_MINUTES`（默认 30） |
 | 触发器与自动化 | 部分 | 已提供 Webhook 触发（一次性密钥 URL、独立限流）与定时触发（固定分钟间隔 / 每日固定时间 HH:MM，网关本地时区），支持 `Idempotency-Key` 幂等保护、密钥轮换与数据库级调度抢占（多实例不重复执行）；定时执行失败按可配置的有限次退避重试（`WORKFLOW_TRIGGER_RUN_MAX_ATTEMPTS` / `WORKFLOW_TRIGGER_RETRY_BASE_MS`），连续失败达阈值（`WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD`）输出 error 级日志，触发器列表展示连续失败次数；尚无事件总线、消息队列触发与外部告警通道 |
 | 批量与异步任务 | 部分 | 任务中心支持批量任务（最多 200 行输入、逐行串行、可取消、轮询进度）与 Webhook/定时/API 三类异步运行记录的查询；尚无任务重试、优先级队列与并发配额 |
 | 模板库 | 部分 | 内置三个模板（智能问答助手、中英翻译、内容大纲生成）一键建流；尚无用户自建模板、模板市场与模板版本化 |

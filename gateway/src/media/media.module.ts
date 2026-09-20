@@ -10,6 +10,7 @@ import { MediaController } from './media.controller';
 import { MediaCredentialCrypto } from './media-credential.crypto';
 import { MediaCredentialService } from './media-credential.service';
 import { MediaJobService } from './media-job.service';
+import { MediaStaleJobSchedulerService } from './media-stale-job-scheduler.service';
 import { ProviderHttpClient } from './provider-http.client';
 import { DoubaoMediaAdapter } from './providers/doubao.adapter';
 import { GoogleMediaAdapter } from './providers/google.adapter';
@@ -29,6 +30,7 @@ import { MediaExecutionGuard } from './media-execution.guard';
     MediaCredentialService,
     MediaAssetService,
     MediaJobService,
+    MediaStaleJobSchedulerService,
     ProviderHttpClient,
     OpenAiMediaAdapter,
     GoogleMediaAdapter,
