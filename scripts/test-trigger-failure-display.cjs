@@ -83,18 +83,21 @@ async function api(path, options = {}, token) {
     body: JSON.stringify({ name: wfName, description: '连续失败展示验证', flowgram: JSON.stringify(flowgram) }),
   }, tok);
   const workflowId = wf.data.id;
-  if (!workflowId) { console.error('创建工作流失败', JSON.stringify(wf).slice(0, 200)); process.exit(1); }
+  if (!workflowId) throw new Error(`创建工作流失败 ${JSON.stringify(wf).slice(0, 200)}`);
 
   const pub = await api(`/workflows/${workflowId}/publish`, { method: 'POST', body: '{}' }, tok);
-  if (!pub.ok) { console.error('发布失败', JSON.stringify(pub).slice(0, 200)); process.exit(1); }
+  if (!pub.ok) throw new Error(`发布失败 ${JSON.stringify(pub).slice(0, 200)}`);
 
   const trg = await api(`/workflows/${workflowId}/triggers`, {
     method: 'POST',
     body: JSON.stringify({ name: '展示验证探针', type: 'schedule', intervalMinutes: 1, staticInputs: { query: 'x' } }),
   }, tok);
   const triggerId = trg.data.trigger?.id;
-  if (!triggerId) { console.error('创建触发器失败', JSON.stringify(trg).slice(0, 200)); process.exit(1); }
+  if (!triggerId) throw new Error(`创建触发器失败 ${JSON.stringify(trg).slice(0, 200)}`);
   console.log('已挂定时触发器，等待真实调度失败…');
+
+  let browser = null;
+  try {
 
   // 等真实调度把它跑失败。
   //
@@ -128,12 +131,11 @@ async function api(path, options = {}, token) {
       lastRunStatus: snapshot?.lastRunStatus,
       intervalMinutes: snapshot?.intervalMinutes,
     }));
-    console.error(`已等待 ${MAX_POLLS * 3}s；若 nextRunAt 仍在未来，说明等待预算或调度 tick 配置需要调整`);
-    process.exit(1);
+    throw new Error(`已等待 ${MAX_POLLS * 3}s 仍未产生失败；若 nextRunAt 仍在未来，说明等待预算或调度 tick 配置需要调整`);
   }
 
   // ── 真实浏览器验证界面 ──
-  const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
+  browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
   const page = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
   await page.goto(`${FRONT}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1500);
@@ -177,14 +179,18 @@ async function api(path, options = {}, token) {
   );
   record('T4 上次状态已译为中文「失败」', /上次\s*失败/.test(bodyText), (bodyText.match(/上次[^\n]{0,12}/) || ['未出现「上次」'])[0]);
 
-  await browser.close();
-
-  // ── 清理 ──
-  await api(`/workflows/${workflowId}/triggers/${triggerId}`, { method: 'DELETE' }, tok);
-  await api(`/workflows/${workflowId}`, { method: 'DELETE' }, tok);
-  console.log('已清理测试工作流与触发器');
+  } finally {
+    // 必须先关浏览器：改用 exitCode 而非 process.exit 后，句柄不释放进程就不会退出。
+    await browser?.close().catch(() => {});
+    // 触发器一定要带走。遗留的 1 分钟触发器会一直失败重试，占满该用户的并发名额，
+    // 让完全不相干的套件随机报 concurrency_limit —— 实测库里就堆了 3 个「展示验证探针」
+    // （连续失败 190 / 97 / 44 次），正好吃满 WORKFLOW_MAX_CONCURRENT_PER_USER=3。
+    await api(`/workflows/${workflowId}/triggers/${triggerId}`, { method: 'DELETE' }, tok).catch(() => {});
+    await api(`/workflows/${workflowId}`, { method: 'DELETE' }, tok).catch(() => {});
+    console.log('已清理测试工作流与触发器');
+  }
 
   const passed = results.filter(Boolean).length;
   console.log(`\n===== 连续失败展示验证: ${passed}/${results.length} passed =====`);
-  process.exit(passed === results.length ? 0 : 1);
-})().catch((e) => { console.error('FATAL', e.message); process.exit(1); });
+  process.exitCode = passed === results.length ? 0 : 1;
+})().catch((e) => { console.error('FATAL', e.message); process.exitCode = 1; });

@@ -136,19 +136,30 @@ async function runCommand(command, args, options = {}) {
 }
 
 function getFreePort() {
+  // 不能 listen(0)：系统随机分配的端口可能落在 **fetch 规范封禁**的那一批里
+  // （6000、6665-6669、6697、10080 …），拿去起服务后，再 fetch 这个地址会直接抛
+  // "bad port"，报错完全看不出是端口选得不对。这里显式挑 20000+ 的安全端口。
+  const MIN = 20_000;
+  const MAX = 45_000;
   return new Promise((resolvePromise, rejectPromise) => {
-    const server = net.createServer();
-    server.unref();
-    server.once('error', rejectPromise);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : 0;
-      server.close((error) => {
-        if (error) rejectPromise(error);
-        else if (!port) rejectPromise(new Error('Unable to allocate a free local port'));
-        else resolvePromise(port);
+    let attempt = 0;
+    const tryPort = () => {
+      const port = MIN + Math.floor(Math.random() * (MAX - MIN));
+      const server = net.createServer();
+      server.unref();
+      server.once('error', (error) => {
+        attempt += 1;
+        if (attempt >= 20 || !['EADDRINUSE', 'EACCES'].includes(error?.code)) {
+          rejectPromise(error);
+          return;
+        }
+        tryPort();
       });
-    });
+      server.listen(port, '127.0.0.1', () => {
+        server.close((error) => (error ? rejectPromise(error) : resolvePromise(port)));
+      });
+    };
+    tryPort();
   });
 }
 

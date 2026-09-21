@@ -73,13 +73,25 @@ const startEchoServer = async () => {
     }
   });
 
-  await new Promise((resolveListen, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolveListen);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return { server, baseUrl: `http://127.0.0.1:${address.port}` };
+  // 不能用 listen(0) 让系统随机分配：随机端口可能落在 **fetch 规范封禁**的那一批里
+  // （6000、6665-6669、6697、10080 …），撞上后 undici 直接抛 "bad port"，
+  // 表现为这个套件隔几轮随机失败一次、且报错信息完全看不出原因。
+  // 这里显式挑 20000+ 的安全端口（封禁列表最大只到 10080），冲突就换一个重试。
+  const SAFE_PORT_MIN = 20_000;
+  const SAFE_PORT_MAX = 45_000;
+  for (let attempt = 0; ; attempt += 1) {
+    const port = SAFE_PORT_MIN + Math.floor(Math.random() * (SAFE_PORT_MAX - SAFE_PORT_MIN));
+    try {
+      await new Promise((resolveListen, reject) => {
+        server.once('error', reject);
+        server.listen(port, '127.0.0.1', resolveListen);
+      });
+      return { server, baseUrl: `http://127.0.0.1:${port}` };
+    } catch (error) {
+      // 端口被占用 / 落在 Windows 保留段就换一个；其它错误不该被吞掉
+      if (attempt >= 20 || !['EADDRINUSE', 'EACCES'].includes(error?.code)) throw error;
+    }
+  }
 };
 
 const closeServer = (server) => new Promise((resolveClose, reject) => {

@@ -83,7 +83,7 @@ pnpm start
 pnpm run env:init
 ```
 
-从 `.env.example` 生成 `.env`（已存在则不覆盖），并**自动随机生成全部密钥**：两套 PostgreSQL 密码、`GATEWAY_JWT_SECRET`、`DIFY_KEY_ENCRYPTION_SECRET`、`DIFY_SECRET_KEY`、Dify 管理员密码等。你不需要手工编任何密钥。
+从 `.env.example` 生成 `.env`（已存在则不覆盖），并**自动随机生成全部密钥**：两套 PostgreSQL 密码、`GATEWAY_JWT_SECRET`、`DIFY_KEY_ENCRYPTION_SECRET`、`MEDIA_CREDENTIAL_ENCRYPTION_SECRET`（媒体凭据 / MCP 令牌 / 草稿沙箱凭据的独立主密钥）、`DIFY_SECRET_KEY`、Dify 管理员密码等。你不需要手工编任何密钥。
 
 **唯一必须手工填的是模型密钥**：
 
@@ -99,9 +99,11 @@ pnpm run env:init
 | `FRONTEND_PORT` | 3000 | 端口冲突时 |
 | `CORS_ORIGIN` | `http://localhost:3000` | 前端不在本机 3000 时 |
 | `POSTGRES_PORT` | 5432 | 被占用时（冲突会自动改用 5433-5450） |
-| `GATEWAY_HOST` | `127.0.0.1` | 需要跨主机访问时改 `0.0.0.0`，并同步收紧 `CORS_ORIGIN` 与防火墙 |
+| `GATEWAY_HOST` | `127.0.0.1` | 需要跨主机访问时改 `0.0.0.0`，并同步收紧 `CORS_ORIGIN` 与防火墙。注意：`/python/exec`（画布「Python 执行」节点）在**非回环监听下默认关闭**，且即使显式设 `PYTHON_EXEC_ENABLED=true` 也只对**管理员**开放——该端点会在网关宿主执行任意代码，注册又是自助的 |
 
 > **密钥只在首次生成。** 已有 `.env` 时 `env:init` 只补齐缺失项，不会轮换已有值。特别地，轮换 `DIFY_KEY_ENCRYPTION_SECRET` 会让已加密的 Dify 凭据无法解密——确需轮换请先备份并按迁移流程处理。
+>
+> `MEDIA_CREDENTIAL_ENCRYPTION_SECRET` 用于媒体凭据、MCP Bearer 令牌与草稿沙箱凭据。它是**密钥环**里的主密钥：新写入一律用它加密，读取时若解不开会回退尝试 `DIFY_KEY_ENCRYPTION_SECRET`（历史默认密钥）。因此**已有部署随时补上这个变量都不会让存量数据不可读**，也不需要先做迁移；补齐后新数据即与 Dify 凭据分离。
 
 生产模式下网关会拒绝不安全配置并直接启动失败：过短或仍是占位符的 JWT 密钥、示例数据库密码、通配符 CORS（`*`）、缺失的执行引擎配置、非正数的限流/超时参数。
 
@@ -293,6 +295,8 @@ LLM_DEFAULT_MODEL=deepseek-chat
 节点面板负责提前提示并禁用无权限能力，网关在发布和执行入口还会再次校验，已有草稿或直接调用接口不能绕过权限。网关的白名单定义在 `gateway/src/auth/auth.module.ts` 的 `VIP_NODE_PERMISSIONS`。
 
 > **Python 执行的边界**：该节点不在任何等级的 `VIP_NODE_PERMISSIONS` 白名单里，`dify-converter` 也拒绝把它转换到 Dify DSL。因此含该节点的工作流**本地试运行正常**（浏览器经网关 `/python/exec` 代理，在本机 Python 3 中真实执行），但「云端试运行」和「发布」都会被网关拒绝，并返回明确文案：「Python 执行节点暂不支持云端执行（发布与云端试运行均不可用），请在画布中使用本地试运行」。节点面板会在节点名旁显示「仅本地试运行」徽标（只提示、不置灰，本地试运行照常可用）。这是有意为之的功能边界，**不是权限问题，升级套餐也不会改变**。
+>
+> **该端点的暴露面**：`/python/exec` 等价于「在网关宿主执行任意代码」，因此按三层收敛——① 默认只在 `GATEWAY_HOST` 为回环时开放，跨机部署须显式 `PYTHON_EXEC_ENABLED=true`；② 非回环下**只有管理员**可以调用（注册是自助的，不区分角色就等同于对任何注册用户开放 RCE）；③ 每次执行按用户限流（`PYTHON_EXEC_MAX_PER_MINUTE`，默认 20）。子进程环境还做了白名单（剥掉 `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET`、`LLM_API_KEY`、各类加密密钥），但**白名单不是沙箱**：子进程与网关同用户同权限，仍能读到宿主机上的 `.env` 等文件——真正的控制是上面那三条准入，别再往「同用户但读不到文件」上做假设。
 
 ### 关键节点能力
 

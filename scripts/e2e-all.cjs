@@ -109,6 +109,38 @@ const SUITES = [
 
 // ───────────────────────── 前置检查 ─────────────────────────
 
+/**
+ * 失败套件的完整输出落盘。
+ *
+ * 屏幕上只留最后 4 行，而 GUI 套件动辄 20+ 条断言——挂了 3 条时尾部全是 PASS，
+ * 光看汇总根本不知道坏在哪。写到 `.workbuddy-ai/e2e-logs/`（已被 .gitignore 忽略）。
+ */
+function saveFailureLog(suiteId, outcome) {
+  const dir = join(ROOT, '.workbuddy-ai', 'e2e-logs');
+  try {
+    require('node:fs').mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${suiteId}.log`);
+    require('node:fs').writeFileSync(
+      file,
+      [
+        `suite: ${suiteId}`,
+        `exit:  ${outcome.status}`,
+        `time:  ${new Date().toISOString()}`,
+        '',
+        '── stdout ──',
+        outcome.stdout || '(空)',
+        '',
+        '── stderr ──',
+        outcome.stderr || '(空)',
+      ].join('\n'),
+      'utf8',
+    );
+    return `.workbuddy-ai/e2e-logs/${suiteId}.log`;
+  } catch {
+    return null;
+  }
+}
+
 async function reachable(url, timeoutMs = 4000) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
@@ -271,6 +303,10 @@ async function main() {
     console.log(`${outcome.ok ? 'PASS' : outcome.skipped ? 'SKIP(环境受限)' : `FAIL(status=${outcome.status})`}  ${(outcome.durationMs / 1000).toFixed(1)}s`);
     if (!outcome.ok) {
       for (const line of outcome.tail.split('\n')) console.log(`    | ${line}`);
+      // 失败套件把完整输出落盘：屏幕上只留最后 4 行，遇到「多条约 FAIL」的套件
+      // 根本看不出是哪几条挂了（GUI 套件尤其如此，27 条里挂 3 条时尾部全是 PASS）。
+      const logPath = saveFailureLog(suite.id, outcome);
+      if (logPath) console.log(`    | 完整输出：${logPath}`);
     }
   }
 
