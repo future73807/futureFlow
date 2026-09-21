@@ -15,19 +15,29 @@ import { WorkflowTriggerService } from '../src/triggers/workflow-trigger.service
  * 搭的桩。
  */
 function buildService(options: {
-  trigger?: { id: string; name: string; type: string; failureCount: number } | null;
+  trigger?: {
+    id: string;
+    name: string;
+    type: string;
+    failureCount: number;
+    status?: 'active' | 'paused';
+  } | null;
   alertThreshold?: string;
+  autoPauseFailures?: string;
 }) {
   const logs: Array<{ level: 'error' | 'warn'; message: string }> = [];
   const saved: any[] = [];
 
   const repo = {
-    findOne: async () => (options.trigger === null ? null : { ...(options.trigger ?? {
-      id: 't1',
-      name: '日报任务',
-      type: 'schedule',
-      failureCount: 0,
-    }) }),
+    findOne: async () => (options.trigger === null ? null : {
+      status: 'active',
+      ...(options.trigger ?? {
+        id: 't1',
+        name: '日报任务',
+        type: 'schedule',
+        failureCount: 0,
+      }),
+    }),
     save: async (entity: any) => {
       saved.push({ ...entity });
       return entity;
@@ -35,8 +45,11 @@ function buildService(options: {
   };
 
   const config = {
-    get: (key: string, fallback?: string) =>
-      (key === 'WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD' ? options.alertThreshold : undefined) ?? fallback,
+    get: (key: string, fallback?: string) => {
+      if (key === 'WORKFLOW_TRIGGER_FAILURE_ALERT_THRESHOLD') return options.alertThreshold ?? fallback;
+      if (key === 'WORKFLOW_TRIGGER_AUTO_PAUSE_FAILURES') return options.autoPauseFailures ?? fallback;
+      return fallback;
+    },
   };
 
   const service = new WorkflowTriggerService(
@@ -121,7 +134,75 @@ async function main() {
     assert.equal(h.logs.length, 0);
   }
 
-  console.log('trigger result alert tests passed: 计数累加 / 阈值告警 / 超阈值持续告警 / 成功清零 / webhook 覆盖 / 已删除安全返回');
+  // ── 自动暂停：达到阈值就停，不再继续烧额度与并发名额 ───────────────
+  // 一个「注定失败」的触发器会按周期永远跑下去。实测三个这样的触发器就吃满了
+  // 默认 3 个并发名额，让完全不相干的工作流报 concurrency_limit。
+  {
+    const h = buildService({
+      trigger: { id: 't1', name: '注定失败的任务', type: 'schedule', failureCount: 19 },
+      autoPauseFailures: '20',
+    });
+    await h.service.recordResult('t1', false);
+    const paused = h.saved[h.saved.length - 1];
+    assert.equal(paused.status, 'paused', '达到阈值应自动暂停');
+    assert.equal(paused.failureCount, 20, '暂停时计数应为阈值');
+    assert.ok(
+      h.logs.some((l) => l.level === 'error' && /自动暂停/.test(l.message)),
+      '自动暂停应留下 error 级日志，否则没人知道触发器为什么停了',
+    );
+    assert.match(
+      h.logs[h.logs.length - 1].message,
+      /手动恢复/,
+      '日志要告诉用户怎么恢复，否则只会看到「触发器不动了」',
+    );
+  }
+
+  // ── 未达阈值：保持 active ────────────────────────────────────────
+  {
+    const h = buildService({
+      trigger: { id: 't1', name: '偶发失败', type: 'schedule', failureCount: 3 },
+      autoPauseFailures: '20',
+    });
+    await h.service.recordResult('t1', false);
+    assert.equal(h.saved[h.saved.length - 1].status, 'active', '未达阈值不应暂停');
+  }
+
+  // ── 阈值 0 = 关闭自动暂停（有的部署就是要一直重试）─────────────────
+  {
+    const h = buildService({
+      trigger: { id: 't1', name: '永不放弃', type: 'schedule', failureCount: 999 },
+      autoPauseFailures: '0',
+    });
+    await h.service.recordResult('t1', false);
+    assert.equal(h.saved[h.saved.length - 1].status, 'active', '阈值 0 表示不自动暂停');
+  }
+
+  // ── 已暂停的不再重复写库 ─────────────────────────────────────────
+  {
+    const h = buildService({
+      trigger: { id: 't1', name: '已停', type: 'schedule', failureCount: 50, status: 'paused' },
+      autoPauseFailures: '20',
+    });
+    await h.service.recordResult('t1', false);
+    assert.equal(
+      h.saved.filter((row) => row.status === 'paused').length,
+      1,
+      '已暂停的触发器不应反复落库',
+    );
+  }
+
+  // ── 成功时不会误暂停 ─────────────────────────────────────────────
+  {
+    const h = buildService({
+      trigger: { id: 't1', name: '恢复', type: 'schedule', failureCount: 19 },
+      autoPauseFailures: '20',
+    });
+    await h.service.recordResult('t1', true);
+    assert.equal(h.saved[h.saved.length - 1].status, 'active', '成功不应触发暂停');
+    assert.equal(h.saved[h.saved.length - 1].failureCount, 0, '成功应清零计数');
+  }
+
+  console.log('trigger result alert tests passed: 计数累加 / 阈值告警 / 超阈值持续告警 / 成功清零 / webhook 覆盖 / 已删除安全返回 / 自动暂停达阈值 / 未达阈值不暂停 / 阈值0关闭 / 已暂停不重复写 / 成功不误暂停');
 }
 
 main().catch((error) => {

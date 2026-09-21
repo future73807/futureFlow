@@ -13,7 +13,11 @@ import { User } from '../database/entities/user.entity';
 import { Workflow } from '../database/entities/workflow.entity';
 import { WorkflowTrigger } from '../database/entities/workflow-trigger.entity';
 import { nextCronDate, parseCron, validateCron } from './cron.parser';
-import { describeConsecutiveFailure, resolveRetryPolicy } from './trigger-retry.policy';
+import {
+  describeConsecutiveFailure,
+  resolveAutoPauseFailures,
+  resolveRetryPolicy,
+} from './trigger-retry.policy';
 import { CreateWorkflowTriggerDto, UpdateWorkflowTriggerDto } from './dto/workflow-trigger.dto';
 
 export interface RunnableTrigger {
@@ -283,6 +287,22 @@ export class WorkflowTriggerService {
       });
       const alert = describeConsecutiveFailure(trigger.failureCount, trigger.name, policy);
       if (alert) this.logger.error(`${alert}（类型=${trigger.type}）`);
+
+      // 连续失败到阈值就自动暂停：一个「注定失败」的触发器会按周期一直跑下去，
+      // 既占用用户有限的并发名额（实测三个这样的触发器就吃满了默认 3 个名额，
+      // 让其它工作流报 concurrency_limit），又持续消耗 Dify/LLM 用量。
+      // 暂停而不是删除：用户修好工作流后可以自行恢复。
+      const threshold = resolveAutoPauseFailures(
+        this.config.get('WORKFLOW_TRIGGER_AUTO_PAUSE_FAILURES'),
+      );
+      if (threshold > 0 && trigger.status === 'active' && trigger.failureCount >= threshold) {
+        trigger.status = 'paused';
+        await this.triggerRepo.save(trigger);
+        this.logger.error(
+          `定时触发「${trigger.name}」连续失败 ${trigger.failureCount} 次，已自动暂停（阈值 ${threshold}）。`
+          + '修好工作流后请在触发器面板手动恢复；设 WORKFLOW_TRIGGER_AUTO_PAUSE_FAILURES=0 可关闭自动暂停。',
+        );
+      }
     }
   }
 

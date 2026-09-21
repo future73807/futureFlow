@@ -14,6 +14,21 @@ export const MAX_ALLOWED_ATTEMPTS = 10;
 /** 单次退避延迟的上限，避免配置失误导致调度器长时间挂住。 */
 export const MAX_DELAY_MS = 60_000;
 
+/** 自动暂停阈值的默认值；配置成 0 表示「永不自动暂停」。 */
+export const DEFAULT_AUTO_PAUSE_FAILURES = 20;
+
+/**
+ * 解析「连续失败多少次后自动暂停」（纯函数）。
+ *
+ * 0 表示关闭（有的部署就是要一直重试到修好为止）。非法值回落默认：这是保护性
+ * 配置，写错了按默认值继续跑，比让调度器起不来更合适。
+ */
+export function resolveAutoPauseFailures(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return DEFAULT_AUTO_PAUSE_FAILURES;
+  return parsed;
+}
+
 export interface RetryPolicy {
   /** 含首次在内的总尝试次数（>= 1）。 */
   maxAttempts: number;
