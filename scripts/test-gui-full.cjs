@@ -11,6 +11,7 @@
 'use strict';
 
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -18,6 +19,19 @@ const ADMIN = process.env.ADMIN_USERNAME || 'admin';
 const FRONT = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const HEADLESS = !process.argv.includes('--headless=false');
 const PW = process.argv.find((a) => !a.startsWith('-') && !a.endsWith('.cjs') && a !== process.argv[0] && a !== process.argv[1]);
+// 收尾清理要调网关 API（本脚本原为纯浏览器驱动，没有网关地址）。
+// 解析顺序与其它套件一致：显式环境变量 → .env 的 GATEWAY_PORT → 3001。
+function resolveGatewayBase() {
+  if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');
+  if (process.env.PUBLIC_GATEWAY_URL) return process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '');
+  try {
+    const env = require('node:fs').readFileSync(join(__dirname, '..', '.env'), 'utf8');
+    const port = env.match(/^GATEWAY_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+  } catch { /* fall through */ }
+  return 'http://localhost:3001';
+}
+const GATEWAY = resolveGatewayBase();
 const SHOT_DIR = process.env.GUI_SHOT_DIR
   ? join(process.cwd(), process.env.GUI_SHOT_DIR)
   : join(process.cwd(), 'gui-full-screenshots');
@@ -288,14 +302,40 @@ async function main() {
     record('T15 浏览器控制台无 error 级异常', realErrors.length === 0, `${realErrors.length} 条`);
   } finally {
     await browser.close();
+    // 本套件建过 '全流程验收-<时间戳>'，此前不清理——库里堆了上百个。
+    // 带时间戳的名字无法精确匹配，所以用**显式前缀**（见 lib 里为什么不做 contains）。
+    reportCleanup(
+      await cleanupTestWorkflows({
+        gateway: GATEWAY,
+        token: await apiLogin(),
+        prefixes: ['全流程验收-'],
+      }),
+      '本套件创建的工作流',
+    );
   }
 
   const passed = results.filter((r) => r.status === 'PASS').length;
   console.log(`\n===== GUI 全流程验收: ${passed}/${results.length} passed（截图见 ${SHOT_DIR}）=====`);
-  process.exit(passed === results.length ? 0 : 1);
+  process.exitCode = passed === results.length ? 0 : 1;
+}
+
+/** 取管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
 }
 
 main().catch((e) => {
   console.error('FATAL:', e.message);
-  process.exit(1);
+  process.exitCode = 1;
 });

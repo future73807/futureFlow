@@ -160,7 +160,22 @@ export const ProfilePage = () => {
     setLoadError(null);
     setLoading(true);
     try {
-      const profile = await fetchProfile();
+      // fetchProfile 走 gatewayFetch，每次会先探测 /healthz。这个探测是网络请求，
+      // 可能瞬时失败（网关刚重启、本机并发高）。此前只有一次尝试，任何一次抖动都会
+      // 让整页停在「加载失败 / Failed to fetch」——注意是**整页**：后面的文件管理、
+      // 知识库、MCP 区块全都渲染不出来，用户只能手动点「重新加载」。
+      // 这里对「网络类错误」自动重试一次；鉴权类失败不重试（重试也没用）。
+      let profile;
+      try {
+        profile = await fetchProfile();
+      } catch (error: any) {
+        const message = String(error?.message || '');
+        // fetch 抛的是 TypeError('Failed to fetch')；HTTP 错误带状态码，不该重试
+        const isNetworkish = !/\(\d{3}\)/.test(message) && /failed to fetch|network|load failed/i.test(message);
+        if (!isNetworkish) throw error;
+        await new Promise((resolve) => { setTimeout(resolve, 600); });
+        profile = await fetchProfile();
+      }
       if (!profile) {
         navigate('/login', { replace: true });
         return;

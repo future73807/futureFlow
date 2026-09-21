@@ -23,6 +23,7 @@
 'use strict';
 
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -38,6 +39,20 @@ function resolveFrontendBase() {
   return 'http://localhost:3000';
 }
 const FRONT = resolveFrontendBase();
+
+// 收尾清理需要走网关 API（本脚本原来是纯浏览器驱动，没有网关地址）。
+// 解析顺序与其它套件一致：显式环境变量 → .env 的 GATEWAY_PORT → 3001。
+function resolveGatewayBase() {
+  if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');
+  if (process.env.PUBLIC_GATEWAY_URL) return process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '');
+  try {
+    const env = require('node:fs').readFileSync(join(__dirname, '..', '.env'), 'utf8');
+    const port = env.match(/^GATEWAY_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+  } catch { /* fall through */ }
+  return 'http://localhost:3001';
+}
+const GATEWAY = resolveGatewayBase();
 const HEADLESS = !process.argv.includes('--headless=false');
 const PW = process.argv.find((a) => !a.startsWith('-') && !a.endsWith('.cjs') && a !== process.argv[0] && a !== process.argv[1]);
 const SHOT_DIR = process.env.GUI_SHOT_DIR
@@ -391,13 +406,38 @@ async function main() {
     await browser.close();
   }
 
+  // T4 通过画布建了一个名为「GUI 点击验收工作流」的工作流，此前从不清理——实测
+  // 库里堆了 58 个同名 active 工作流，全部显示在用户的工作流列表里。
+  // 这里用一个临时的 API 会话删除它（浏览器会话拿不到可直接用的令牌）。
+  const token = await apiLogin();
+  reportCleanup(
+    await cleanupTestWorkflows({ gateway: GATEWAY, token, names: ['GUI 点击验收工作流'] }),
+    '本套件创建的工作流',
+  );
+
   const passed = results.filter((r) => r.status === 'PASS').length;
   const total = results.length;
   console.log(`\n===== GUI 模拟点击验收: ${passed}/${total} passed（截图见 ${SHOT_DIR}）=====`);
-  process.exit(passed === total ? 0 : 1);
+  process.exitCode = passed === total ? 0 : 1;
+}
+
+/** 取一个管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: ADMIN, password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
 }
 
 main().catch((e) => {
   console.error('FATAL:', e.message);
-  process.exit(1);
+  process.exitCode = 1;
 });

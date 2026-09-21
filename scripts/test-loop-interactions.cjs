@@ -2,6 +2,7 @@
 'use strict';
 // 循环节点交互验证：展开/收缩、框随节点伸缩、整体拖动、选中面板
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -199,7 +200,30 @@ async function main() {
   }
 
   await browser.close();
+
+  // 清理本套件创建的固定名工作流（此前不清理，库里堆了 31 个「循环交互验证」）
+  reportCleanup(
+    await cleanupTestWorkflows({ gateway: GATEWAY, token: await apiLogin(), names: ['循环交互验证'] }),
+    '本套件创建的工作流',
+  );
+
   console.log('interaction shots written to', OUT);
 }
 
-main().catch((e) => { console.error('FATAL', e); process.exit(1); });
+/** 取管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
+}
+
+main().catch((e) => { console.error('FATAL:', e.message); process.exitCode = 1; });

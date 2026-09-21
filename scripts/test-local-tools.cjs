@@ -20,6 +20,7 @@
  * 验收；而「驱动是否随平台提供」本质是网关侧能力，直接验更准确也更稳定。
  */
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
@@ -271,6 +272,17 @@ const record = (name, ok, detail = '') => {
     dbText.slice(0, 170),
   );
 
+  // 清理本套件创建的工作流：'本地扩展节点验收'（API 建）与 '节点面板检查'（画布建）。
+  // 此前两者都留在库里，实测堆积了 33 个 '本地扩展节点验收'，全都在用户的工作流列表中。
+  reportCleanup(
+    await cleanupTestWorkflows({
+      gateway: GATEWAY,
+      token: tok,
+      names: ['本地扩展节点验收', '节点面板检查'],
+    }),
+    '本套件创建的工作流',
+  );
+
   const passed = results.filter(Boolean).length;  console.log(`\n===== 本地扩展节点验收: ${passed}/${results.length} passed =====`);
-  process.exit(passed === results.length ? 0 : 1);
-})().catch((e) => { console.error('FATAL', e.message); process.exit(1); });
+  process.exitCode = passed === results.length ? 0 : 1;
+})().catch((e) => { console.error('FATAL', e.message); process.exitCode = 1; });

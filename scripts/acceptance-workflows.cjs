@@ -15,6 +15,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
 const BASE = (() => {
@@ -510,6 +511,17 @@ async function main() {
   );
   console.log('\n工作流 id 已写入 .zcode-tmp/acceptance-workflows.json');
   console.log(JSON.stringify(created, null, 2));
+
+  // 清理本套件创建的三个工作流（含 验收C 子工作流目标）。名字带时间戳，
+  // 用显式前缀匹配。
+  reportCleanup(
+    await cleanupTestWorkflows({
+      gateway: BASE,
+      token,
+      prefixes: ['验收A-本地链路-', '验收B-云端链路-', '验收C-子工作流目标-'],
+    }),
+    '本套件创建的工作流',
+  );
 }
 
 main().catch((error) => {
