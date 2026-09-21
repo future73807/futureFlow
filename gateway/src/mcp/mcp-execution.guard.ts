@@ -5,6 +5,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../database/entities/user.entity';
 
 export interface McpExecutionScope {
   workflowId: string;
@@ -30,7 +33,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
  */
 @Injectable()
 export class McpExecutionGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    // 与 JwtAuthGuard / MediaExecutionGuard 保持一致：在守卫本地按 sub 查账号并
+    // 强制 active。**少了这一步，封禁/删除在令牌有效期内就不生效**——而 MCP 服务器
+    // 上存的是租户自己的 Bearer 令牌，一个被封的账号拿 15 分钟有效期的执行令牌
+    // 还能继续调用。另外两个守卫都有这个检查，这里不能是例外。
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<McpAuthenticatedRequest>();
@@ -75,7 +86,13 @@ export class McpExecutionGuard implements CanActivate {
       throw new UnauthorizedException('MCP 执行令牌未授权该服务器');
     }
 
-    request.user = { id: String(payload.sub) };
+    const userId = String(payload.sub);
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || user.status !== 'active') {
+      throw new UnauthorizedException('账号不存在或已被停用');
+    }
+
+    request.user = { id: userId };
     request.mcpExecution = {
       workflowId: String(payload.workflowId),
       runId: String(payload.runId),
