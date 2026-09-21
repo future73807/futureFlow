@@ -270,11 +270,18 @@ print('__FF_RESULT__' + json.dumps(result, ensure_ascii=False, default=str))
  * 浏览器试运行时没有 Python 运行时，由网关调用本机 Python 完成执行：
  * - 与 JS 代码节点一致的同步 main({params}) 契约
  * - 每次执行使用独立临时目录，15 秒超时后连进程树一起结束，目录随后清理
+ * 执行环境隔离的边界（这几点容易被误解，务必看准）：
+ * - 子进程环境是白名单（见 buildPythonExecEnv），但这**不是**沙箱：子进程与网关进程
+ *   同用户、同文件权限，照样能读到宿主机上的文件（例如项目根的 .env，里面就是数据库
+ *   密码、JWT 密钥与各类加密密钥）。白名单只是拿掉了「一行 os.environ 就读走」这条
+ *   最省事的通道。
+ * - 因此真正的控制是 ensureExecAllowed：非回环监听默认关闭；显式开启时也只放管理员。
  * - 已知边界：不做依赖白名单、资源配额与网络隔离，仅面向本机开发场景
  * - 已知边界：杀不掉**主动脱离**的后代进程（Windows DETACHED_PROCESS、POSIX
  *   start_new_session）；Windows 上脚本**正常跑完**时派生的后台进程也可能留下
  *   （父进程已退出，taskkill /T 找不到树）。真正的隔离需要 cgroup/Job Object，
- *   这里做不到，所以端点默认只在回环监听时开放，不要把它当沙箱用
+ *   这里做不到，所以端点默认只在回环监听时开放（非回环时另加一层：仅管理员），
+ *   不要把它当沙箱用
  */
 @UseGuards(JwtAuthGuard)
 @Controller('python')
@@ -297,13 +304,14 @@ export class PythonExecController {
   }
 
   /**
-   * 本机 Python 执行是否对本请求开放。
+   * 本机 Python 执行是否对本次请求开放。
    *
-   * 端点本身只要求登录（不区分管理员），所以它等价于「在网关宿主上执行任意
-   * 代码」。默认仅在本机监听时开放，跨机部署必须显式开启，避免把 RCE 面
-   * 暴露给所有账号。
+   * 端点在监听回环时等价于「本机开发者在自己的机器上执行代码」，只要求登录；
+   * 一旦对外监听，它等价于**对任何登录账号开放宿主任意代码执行**——而注册是
+   * 自助的（`POST /auth/register` 只按来源限流），所以此时必须再收一层：只允许
+   * 管理员。默认仍是非回环即关闭，`PYTHON_EXEC_ENABLED=true` 是部署方的显式裁决。
    */
-  private ensureExecAllowed(): void {
+  private ensureExecAllowed(user?: { role?: string }): void {
     // 归一化方式与 main.ts 里决定监听地址的那段完全一致，避免「main 绑了
     // 回环、这里却按空值判定」这种两处口径不一致导致的静默不可用。
     const host = this.config.get<string>('GATEWAY_HOST', '127.0.0.1').trim() || '127.0.0.1';
@@ -311,19 +319,28 @@ export class PythonExecController {
       explicit: this.config.get<string>('PYTHON_EXEC_ENABLED') ?? null,
       host,
     });
-    if (enabled) {
-      if (!isLoopbackHost(host) && !this.execEnabledWarned) {
-        this.execEnabledWarned = true;
-        this.logger.warn(
-          `Python 执行节点已在非回环地址（${host}）下启用：任何登录账号都可在网关宿主执行代码，请确认这是预期配置`,
-        );
-      }
-      return;
+    if (!enabled) {
+      throw new ForbiddenException(
+        `本机 Python 执行未启用（当前网关监听 ${host || '(未设置)'}）。` +
+        '该端点允许登录用户在网关宿主执行任意代码，跨机部署如需开启请显式设置 PYTHON_EXEC_ENABLED=true 并自行评估风险。',
+      );
     }
-    throw new ForbiddenException(
-      `本机 Python 执行未启用（当前网关监听 ${host || '(未设置)'}）。` +
-      '该端点允许登录用户在网关宿主执行任意代码，跨机部署如需开启请显式设置 PYTHON_EXEC_ENABLED=true 并自行评估风险。',
-    );
+    if (isLoopbackHost(host)) return;
+
+    // 非回环：只有管理员可以执行。注意这条判断必须在「已启用」之后——
+    // 关掉功能时不该顺带泄露「谁是不是管理员」。
+    if (user?.role !== 'admin') {
+      throw new ForbiddenException(
+        `本机 Python 执行在非回环监听（${host}）下仅对管理员开放。` +
+        '该端点会在网关宿主执行任意代码；跨机部署请使用管理员账号，或改用回环监听 + 本机画布试运行。',
+      );
+    }
+    if (!this.execEnabledWarned) {
+      this.execEnabledWarned = true;
+      this.logger.warn(
+        `Python 执行节点已在非回环地址（${host}）下启用：仅管理员可调用，请在反向代理与防火墙层再确认可达范围`,
+      );
+    }
   }
 
   private detectPython(): Promise<string | null> {
@@ -338,7 +355,13 @@ export class PythonExecController {
           return;
         }
         const candidate = candidates[index++];
-        const probe = spawn(candidate, ['-c', 'print(1)'], { timeout: 5_000 });
+        // 探测同样使用净化后的环境：一是与真实执行保持一致（否则会出现「探测通过、
+        // 真正执行时因环境缺键起不来」的错位），二是不给这个探测进程留一份完整凭据。
+        const probe = spawn(candidate, ['-c', 'print(1)'], {
+          timeout: 5_000,
+          windowsHide: true,
+          env: buildPythonExecEnv(buildPythonPathFromEnv(), process.env),
+        });
         probe.on('error', () => tryNext());
         probe.on('close', (code) => {
           if (code === 0) {
@@ -357,7 +380,7 @@ export class PythonExecController {
   @Post('exec')
   async exec(@Request() req: any, @Body() payload: PythonExecPayload) {
     if (!req?.user?.id) throw new BadRequestException('未认证');
-    this.ensureExecAllowed();
+    this.ensureExecAllowed(req.user);
     this.limiter.assertAllowed(String(req.user.id), 'Python 执行');
     const code = payload.code || '';
     if (!code.trim()) throw new BadRequestException('Python 代码不能为空');

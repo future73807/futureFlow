@@ -20,9 +20,10 @@ function controllerWith(values: Record<string, string | undefined>): PythonExecC
 }
 
 /** 调用私有的 ensureExecAllowed：放行返回 true，拦截返回 false。 */
-function execAllowed(controller: PythonExecController): boolean {
+function execAllowed(controller: PythonExecController, user?: { role?: string }): boolean {
   try {
-    (controller as unknown as { ensureExecAllowed(): void }).ensureExecAllowed();
+    (controller as unknown as { ensureExecAllowed(user?: { role?: string }): void })
+      .ensureExecAllowed(user);
     return true;
   } catch (error) {
     assert.match(
@@ -60,7 +61,7 @@ const GATEWAY_SECRETS = {
   DIFY_KEY_ENCRYPTION_SECRET: 'dify-key-super-secret',
 };
 
-function main() {
+async function main() {
   // ── 1. 服务凭据一个都不应进入子进程环境 ──────────────────────────
   {
     const env = buildPythonExecEnv(undefined, { ...GATEWAY_SECRETS, PATH: '/usr/bin' }, 'linux');
@@ -227,9 +228,9 @@ function main() {
       '对外监听时应拦截',
     );
     assert.equal(
-      execAllowed(controllerWith({ GATEWAY_HOST: '0.0.0.0', PYTHON_EXEC_ENABLED: 'true' })),
+      execAllowed(controllerWith({ GATEWAY_HOST: '0.0.0.0', PYTHON_EXEC_ENABLED: 'true' }), { role: 'admin' }),
       true,
-      '显式开启后应放行',
+      '显式开启后应放行（管理员）',
     );
     assert.equal(
       execAllowed(controllerWith({ GATEWAY_HOST: '127.0.0.1', PYTHON_EXEC_ENABLED: 'false' })),
@@ -250,10 +251,71 @@ function main() {
     );
   }
 
+  // ── 12. 非回环启用时再收一层：只放管理员 ──────────────────────────
+  // 注册是自助的（POST /auth/register 仅按来源限流），所以「跨机 + 已启用」
+  // 若不额外收紧，等于对任何注册用户开放宿主任意代码执行。
+  {
+    const remote = { GATEWAY_HOST: '0.0.0.0', PYTHON_EXEC_ENABLED: 'true' };
+    assert.equal(
+      execAllowed(controllerWith(remote), { role: 'user' }),
+      false,
+      '对外监听下普通用户必须被拦住（这是本轮真正的收口）',
+    );
+    assert.equal(
+      execAllowed(controllerWith(remote)),
+      false,
+      '拿不到用户信息时也必须 fail-closed，而不是当成管理员',
+    );
+    assert.equal(
+      execAllowed(controllerWith({ ...remote, GATEWAY_HOST: '192.168.1.10' }), { role: 'admin' }),
+      true,
+      '内网地址同样属于非回环，管理员可用',
+    );
+    // 本机场景不受影响：本地试运行是「本机开发者自己的机器」，无需管理员
+    assert.equal(
+      execAllowed(controllerWith({ GATEWAY_HOST: '127.0.0.1' }), { role: 'user' }),
+      true,
+      '回环监听下普通用户仍可用（否则本地画布试运行会被打断）',
+    );
+    // 关闭优先于管理员：功能关掉时不该顺带泄露「谁是不是管理员」
+    assert.equal(
+      execAllowed(
+        controllerWith({ GATEWAY_HOST: '0.0.0.0', PYTHON_EXEC_ENABLED: 'false' }),
+        { role: 'admin' },
+      ),
+      false,
+      '显式关闭时管理员也不能用',
+    );
+  }
+
+  // ── 13. 探测进程也走净化环境，且仍能探测到本机 Python ─────────────
+  // 若白名单漏了启动必需键，表现是「未检测到本机 Python」——又是一条静默
+  // 不可用型故障：功能看着是关的，实际是环境键漏了。
+  {
+    const detectPython = (controller: PythonExecController) => (
+      controller as unknown as { detectPython(): Promise<string | null> }
+    ).detectPython();
+    const localPython = ['python', 'python3', 'py'].some((candidate) => (
+      spawnSync(candidate, ['-c', 'print(1)'], { encoding: 'utf8', windowsHide: true }).status === 0
+    ));
+    if (!localPython) {
+      console.log('  跳过探测一致性检查：本机无 python');
+    } else {
+      assert.ok(
+        await detectPython(controllerWith({ GATEWAY_HOST: '127.0.0.1' })),
+        '净化后的环境应仍能启动并探测到 Python',
+      );
+    }
+  }
+
   console.log(
     'python-exec 隔离测试通过: 凭据剥离 / 未知键剥离 / 必需键保留 / 空值省略 / 编码锁定 / '
-    + 'PYTHONPATH 保留 / 无副作用 / 回环判定 / 开关优先与 fail-closed / 真实子进程 / 端点闸门',
+    + 'PYTHONPATH 保留 / 无副作用 / 回环判定 / 开关优先与 fail-closed / 真实子进程 / 端点闸门 / '
+    + '非回环仅管理员 / 探测环境一致',
   );
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
