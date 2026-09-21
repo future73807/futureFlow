@@ -24,7 +24,7 @@ import { WorkflowRuntimeClient } from '../client';
 import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
 import { WorkflowNodeType } from '../../../nodes';
 import { prepareContentNodesForRuntime } from '../../../nodes/content/runtime';
-import { prepareLLMNodesForRuntime } from '../../../nodes/llm/runtime';
+import { ensureLlmProxyTicket, prepareLLMNodesForRuntime } from '../../../nodes/llm/runtime';
 import { preparePythonNodesForRuntime } from '../../../nodes/python/runtime';
 import { prepareHttpNodesForRuntime } from '../../../nodes/http/runtime';
 import { prepareVariableNodesForRuntime } from '../../../nodes/variable/runtime';
@@ -131,6 +131,9 @@ export class WorkflowRuntimeService {
     }
     let schema: ReturnType<WorkflowDocument['toJSON']> & { globalVariable: unknown };
     try {
+      // LLM 节点需要一张短期票据才能调网关的 /llm 代理（该端点现在要求凭证）。
+      // 放在这里预取而不是在 prepare 内部：prepareLLMNodesForRuntime 是同步函数。
+      await ensureLlmProxyTicket();
       schema = prepareConditionNodesForRuntime(
         prepareCodeNodesForRuntime(
           prepareAggregatorNodesForRuntime(
