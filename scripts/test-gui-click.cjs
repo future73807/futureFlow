@@ -410,8 +410,20 @@ async function main() {
   // 库里堆了 58 个同名 active 工作流，全部显示在用户的工作流列表里。
   // 这里用一个临时的 API 会话删除它（浏览器会话拿不到可直接用的令牌）。
   const token = await apiLogin();
+  // T4i 会点「添加到我的工作流」，从而创建**以插件名为名字**的工作流（实测
+  // 「大语言模型」堆了 53 个，占全库 active 工作流的四分之一）。名字与插件目录
+  // 一一对应，所以直接按插件清单精确匹配，不做模糊匹配。
+  const PLUGIN_NAMES = [
+    '大语言模型', '文本处理', '图片处理', '视频处理', 'API 请求', '代码执行',
+    '知识检索', '子工作流', 'MCP 工具', 'Python 执行', '条件分支', '变量聚合',
+    '多条件分支', '循环', '变量赋值',
+  ];
   reportCleanup(
-    await cleanupTestWorkflows({ gateway: GATEWAY, token, names: ['GUI 点击验收工作流'] }),
+    await cleanupTestWorkflows({
+      gateway: GATEWAY,
+      token,
+      names: ['GUI 点击验收工作流', ...PLUGIN_NAMES],
+    }),
     '本套件创建的工作流',
   );
 

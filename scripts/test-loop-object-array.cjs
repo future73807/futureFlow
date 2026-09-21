@@ -2,6 +2,7 @@
 'use strict';
 // 端到端验证：带循环节点的工作流在画布保存后能通过网关试运行跑通
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync } = require('node:fs');
 
 const FRONT = 'http://localhost:3000';
@@ -197,5 +198,27 @@ async function main() {
     console.log('WARN: 未取到运行结果，请手动核对');
   }
   await browser.close();
+  // 清理本套件创建的固定名工作流（此前不清理，库里堆了 6 个）
+
+  reportCleanup(
+    await cleanupTestWorkflows({ gateway: GATEWAY, token: await apiLogin(), names: ['循环对象数组试运行'] }),
+    '本套件创建的工作流',
+  );
 }
-main().catch((e) => { console.error('FATAL', e.message); process.exit(1); });
+main().catch((e) => { console.error('FATAL:', e.message); process.exitCode = 1; });
+
+/** 取管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
+}

@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 'use strict';
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
 const FRONT = process.env.FRONTEND_URL || 'http://localhost:3000';
 const PW = process.argv[2] || 'futureFlow@';
+// 收尾清理要调网关 API（本脚本原为纯浏览器驱动，没有网关地址）
+const GATEWAY = (() => {
+  if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');
+  try {
+    const env = require('node:fs').readFileSync(join(__dirname, '..', '.env'), 'utf8');
+    const port = env.match(/^GATEWAY_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+  } catch { /* fall through */ }
+  return 'http://localhost:3001';
+})();
 const OUT = process.env.SHOT_DIR || join(process.cwd(), 'gui-test-screenshots');
 
 function findBrowser() {
@@ -69,7 +80,30 @@ async function main() {
   }
 
   await browser.close();
+
+  // 清理本套件创建的工作流（'画布视觉核对'）。它与其它截图脚本一样是纯浏览器
+  // 驱动，此前完全不清理，库里堆了 3 个同名 active 工作流。
+  reportCleanup(
+    await cleanupTestWorkflows({ gateway: GATEWAY, token: await apiLogin(), names: ['画布视觉核对'] }),
+    '本套件创建的工作流',
+  );
   console.log('screenshots written to', OUT);
 }
 
-main().catch((e) => { console.error('FATAL', e); process.exit(1); });
+main().catch((e) => { console.error('FATAL:', e.message); process.exitCode = 1; });
+
+/** 取管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
+}
