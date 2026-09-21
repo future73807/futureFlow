@@ -86,6 +86,7 @@ const SUITES = [
   { id: 'batch-loop-runtime', script: 'test-batch-loop-runtime.cjs', group: 'local', desc: '数组批处理本地运行时' },
   { id: 'aggregator-runtime', script: 'test-aggregator-runtime.cjs', group: 'local', desc: '变量聚合本地运行时' },
   { id: 'loop-types-runtime', script: 'test-loop-types-runtime.cjs', group: 'local', desc: '循环三种类型 + 中间变量' },
+  { id: 'llm-runtime', script: 'test-llm-runtime.cjs', group: 'local', desc: 'LLM 节点试运行票据注入（前端契约）' },
 
   // ── 需要网关 + Dify ──
   { id: 'new-modules-api', script: 'test-new-modules-api.cjs', group: 'api', desc: '知识库 / 文件上传 / MCP 注册' },

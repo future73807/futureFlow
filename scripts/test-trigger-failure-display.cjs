@@ -96,20 +96,41 @@ async function api(path, options = {}, token) {
   if (!triggerId) { console.error('创建触发器失败', JSON.stringify(trg).slice(0, 200)); process.exit(1); }
   console.log('已挂定时触发器，等待真实调度失败…');
 
-  // 等真实调度把它跑失败（tick=5s，intervalMinutes=1，至少一个周期）
+  // 等真实调度把它跑失败。
+  //
+  // 预算必须明显大于「一个 interval + 一个调度 tick」：新建触发器的 nextRunAt 是
+  // now + intervalMinutes（1 分钟），调度器再按 WORKFLOW_SCHEDULE_TICK_SECONDS
+  // （默认 30 秒）去捞到期行，所以首次执行最早落在 60 秒、最晚 90 秒，跑完并记录
+  // 失败还要几秒。原来只等 30×3s=90s，正好卡在这个边界上——同一份代码有时会
+  // 超时失败（实测：三次里挂一次），属于验收体系的假失败，不是产品缺陷。
+  // 这里放宽到 50×3s=150s，并在仍超时时打印调度字段便于定位。
+  const MAX_POLLS = 50;
   let failureCount = 0;
-  for (let i = 0; i < 30; i++) {
+  let snapshot = null;
+  for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     const tl = await api(`/workflows/${workflowId}/triggers`, {}, tok);
     const t = (tl.data.triggers || tl.data)[0];
+    snapshot = t;
     failureCount = t.failureCount || 0;
     if (failureCount >= 1) {
-      console.log(`真实调度已失败 ${failureCount} 次（lastRunStatus=${t.lastRunStatus}）`);
+      console.log(`真实调度已失败 ${failureCount} 次（lastRunStatus=${t.lastRunStatus}，第 ${i + 1} 次轮询）`);
       break;
     }
   }
   record('前置：真实调度已产生失败计数', failureCount >= 1, `failureCount=${failureCount}`);
-  if (failureCount < 1) { console.error('调度未产生失败，无法验证界面'); process.exit(1); }
+  if (failureCount < 1) {
+    console.error('调度未产生失败，无法验证界面');
+    console.error('触发器快照:', JSON.stringify({
+      status: snapshot?.status,
+      nextRunAt: snapshot?.nextRunAt,
+      lastRunAt: snapshot?.lastRunAt,
+      lastRunStatus: snapshot?.lastRunStatus,
+      intervalMinutes: snapshot?.intervalMinutes,
+    }));
+    console.error(`已等待 ${MAX_POLLS * 3}s；若 nextRunAt 仍在未来，说明等待预算或调度 tick 配置需要调整`);
+    process.exit(1);
+  }
 
   // ── 真实浏览器验证界面 ──
   const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });

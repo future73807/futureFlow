@@ -46,7 +46,7 @@ pnpm start
 > **先澄清本文的「云端」指什么**：本文把两种执行方式分别叫**「本地试运行」**和**「云端试运行 / 发布后执行」**——前者是浏览器画布上点「试运行」直接跑（本地扩展节点如 Python 执行只能这样跑），后者是把工作流导入 Docker 里的 Dify 容器、由 Dify 执行。**这里的「云端」与「是否部署在云服务器」无关**：即使你把整套服务部署在一台物理服务器上，只要工作流是交给 Dify 容器执行的，本文就称之为「云端执行」。之所以区分，是因为两条链路的可用节点范围不同（见「关键节点能力」）。
 
 - **Dify 是必需依赖**：知识库、MCP、发布后云端执行、草稿云端试运行都走本地 Dify 容器栈。Dify 未启动时相关接口会**直接报错**（不做静默降级）。
-- `.env` 中填写 `LLM_API_KEY` / `LLM_API_HOST` / `LLM_DEFAULT_MODEL`（OpenAI 兼容，如 `https://matchfit.top/v1` + `glm-5.3-flash`）：画布「试运行」的大语言模型节点经网关代理 `POST /llm/chat/completions` 真实调用，密钥只保存在服务端。
+- `.env` 中填写 `LLM_API_KEY` / `LLM_API_HOST` / `LLM_DEFAULT_MODEL`（OpenAI 兼容，如 `https://matchfit.top/v1` + `glm-5.3-flash`）：画布「试运行」的大语言模型节点经网关代理 `POST /llm/chat/completions` 真实调用，密钥只保存在服务端。该代理要求调用方持有登录票据（`POST /llm/ticket`，默认 10 分钟有效），否则任何人只要能连到网关端口就能消耗平台的 LLM 额度。
 - `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET` 必须至少 32 个字符（网关启动校验），`env:init` 会自动生成。
 
 ### 访问地址

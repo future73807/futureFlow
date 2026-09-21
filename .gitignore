@@ -63,3 +63,7 @@ gateway-run.log.err
 
 # WorkBuddy AI 工作区数据（记忆、技能等本地状态，不随仓库分发）
 .workbuddy-ai/
+
+# Python 执行节点运行时生成的字节码缓存（gateway/vendor/python 下）
+__pycache__/
+*.py[cod]
