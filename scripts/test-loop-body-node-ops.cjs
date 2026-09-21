@@ -16,6 +16,7 @@
 'use strict';
 
 const { chromium } = require('playwright-core');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -353,6 +354,23 @@ async function main() {
     }
   } finally {
     await browser.close();
+    // 本套件用 prepareCanvas 建了 4 个固定名画布（循环体删除/移出/副本/锚点保护验收），
+    // 外加一个 'GUI-主画布副本验收'，此前一个都不删——库里实测堆了「GUI-移出循环体验收」
+    // 等 9/18 的遗留。名字固定，按精确匹配清理。
+    reportCleanup(
+      await cleanupTestWorkflows({
+        gateway: GATEWAY,
+        token: await apiLogin(),
+        names: [
+          'GUI-循环体删除验收',
+          'GUI-移出循环体验收',
+          'GUI-循环体副本验收',
+          'GUI-循环锚点保护验收',
+          'GUI-主画布副本验收',
+        ],
+      }),
+      '本套件创建的工作流',
+    );
   }
 
   const failed = results.filter((r) => !r.ok);
@@ -364,3 +382,19 @@ void main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+/** 取管理员令牌用于收尾清理；失败返回空串（清理是收尾动作，不该让套件挂掉）。 */
+async function apiLogin() {
+  try {
+    const response = await fetch(`${GATEWAY}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.accessToken || data.data?.accessToken || '';
+  } catch {
+    return '';
+  }
+}
