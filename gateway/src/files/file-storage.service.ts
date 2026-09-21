@@ -11,6 +11,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { Repository } from 'typeorm';
+import { isPathInside } from '../common/path-safety';
 import { FileUpload } from '../database/entities/file-upload.entity';
 
 /** 允许上传的扩展名白名单：文档、表格、配置与常见图片。 */
@@ -101,7 +102,8 @@ export class FileStorageService {
     }
     const absolutePath = isAbsolute(record.localPath) ? record.localPath : join(this.root, record.localPath);
     const checked = resolve(absolutePath);
-    if (!checked.startsWith(this.root)) {
+    // 不能用 startsWith：根目录的同级目录（如 uploads-evil）会以同样前缀通过
+    if (!isPathInside(this.root, checked)) {
       throw new ForbiddenException('文件路径无效');
     }
     return { record, absolutePath: checked };
@@ -127,7 +129,7 @@ export class FileStorageService {
     for (const row of rows) {
       const absolutePath = isAbsolute(row.localPath) ? row.localPath : join(this.root, row.localPath);
       const checked = resolve(absolutePath);
-      if (!checked.startsWith(this.root)) continue;
+      if (!isPathInside(this.root, checked)) continue;
       await unlink(checked).catch(() => undefined);
       removed += 1;
     }

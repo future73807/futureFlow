@@ -21,6 +21,7 @@ import {
 import { request as httpsRequest, RequestOptions } from 'node:https';
 import { BlockList, isIP } from 'node:net';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isPathInside } from '../common/path-safety';
 import type { IncomingMessage } from 'node:http';
 import { Repository } from 'typeorm';
 import { MediaAsset } from '../database/entities/media-asset.entity';
@@ -228,7 +229,8 @@ export class MediaAssetService {
     let removed = 0;
     for (const row of rows) {
       const absolutePath = resolve(this.root, row.localPath);
-      if (!absolutePath.startsWith(this.root)) continue;
+      // 同 file-storage：前缀比较会把根目录的同级目录放进来
+      if (!isPathInside(this.root, absolutePath)) continue;
       await unlink(absolutePath).catch(() => undefined);
       removed += 1;
     }
@@ -404,9 +406,9 @@ export class MediaAssetService {
   }
 
   private assertWithinRoot(path: string): void {
-    const rel = relative(this.root, path);
-    if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
-      if (resolve(path) === this.root) return;
+    // 复用公共件：原先这里的 relative 判法是对的，但与 file-storage 的
+    // startsWith 判法并存，容易在后续改动中被"统一"成错的那一种。
+    if (!isPathInside(this.root, path)) {
       throw new Error('unsafe media asset path');
     }
   }
