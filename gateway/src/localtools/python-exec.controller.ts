@@ -1,7 +1,17 @@
-import { BadRequestException, Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { FixedWindowRateLimiter, resolveRateLimit } from '../common/fixed-window-rate-limit';
 import { Logger } from '@nestjs/common';
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,6 +71,160 @@ export function buildPythonPathFromEnv(): string | undefined {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// 子进程环境变量白名单
+// ─────────────────────────────────────────────────────────────
+//
+// 用户代码在本机 Python 里执行，而网关进程的 process.env 里装着整套服务
+// 凭据（POSTGRES_PASSWORD、GATEWAY_JWT_SECRET、LLM_API_KEY、Dify 与媒体
+// 的加密密钥……）。若原样继承，任何能登录的账号都能用一行
+// `os.environ` 把它们读走——这不是「理论上」，容器化部署里这些值本来
+// 就是真正的环境变量。
+//
+// 因此这里改成显式白名单：只放运行 Python 真正需要的键。
+//
+// 有意**不放行** HTTP_PROXY/HTTPS_PROXY/NO_PROXY：代理地址常写成
+// http://user:pass@host 的形式，放行等于把凭据又送回子进程。需要的场景
+// 请改用 PYTHON_EXTRA_CA 之类不含凭据的配置。
+
+/** POSIX 下 Python 运行所需的最小环境。 */
+const POSIX_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'TMPDIR',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'SSL_CERT_FILE',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+  'TERM',
+];
+
+/**
+ * Windows 下还需要一组系统变量：缺少 SystemRoot / COMSPEC 时 CPython 可能
+ * 起不来或加载 DLL 失败，TEMP/TMP 是 tempfile 的前提。
+ */
+const WINDOWS_ENV_ALLOWLIST = [
+  'PATH',
+  'SystemRoot',
+  'SystemDrive',
+  'COMSPEC',
+  'PATHEXT',
+  'TEMP',
+  'TMP',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'NUMBER_OF_PROCESSORS',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_LEVEL',
+  'SSL_CERT_FILE',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+];
+
+/**
+ * 组装子进程环境（纯函数，只看入参，便于测试）。
+ *
+ * 只保留白名单内的键，并锁定 Python 的 UTF-8 输出编码——白名单剥离了
+ * LANG/LC_ALL 之后，Windows 上 Python 会退回系统代码页，结果里的中文
+ * 会让网关这侧的 JSON 解析失败或产生乱码。
+ */
+export function buildPythonExecEnv(
+  pythonPath: string | undefined,
+  processEnv: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  const allowlist = platform === 'win32' ? WINDOWS_ENV_ALLOWLIST : POSIX_ENV_ALLOWLIST;
+  const env: NodeJS.ProcessEnv = {};
+  for (const name of allowlist) {
+    const value = processEnv[name];
+    if (value !== undefined && value !== '') env[name] = value;
+  }
+  env.PYTHONIOENCODING = 'utf-8';
+  env.PYTHONUTF8 = '1';
+  if (pythonPath) env.PYTHONPATH = pythonPath;
+  return env;
+}
+
+/**
+ * 结束整棵进程树（而不只是直接子进程）。
+ *
+ * `child.kill()` 只杀直接子进程：用户代码里 `subprocess.Popen(...)` 出来的孙进程
+ * 会活下来，而且不是理论问题——实测父进程退出后，孙进程 20 秒后照样写入了文件。
+ * 那样一来「15 秒超时强杀」就成了空话：任何登录用户都能在网关宿主上留下常驻进程。
+ *
+ * - POSIX：spawn 时带 detached，子进程自成进程组，负 pid 表示整组。整组在父进程
+ *   退出后依然存在，所以**正常结束**的路径也能收掉后代。
+ * - Windows：Node 没有进程组等价物，用 `taskkill /T` 递归结束子进程树。
+ *
+ * ⚠️ Windows 上的**已知缺口**：`taskkill /T` 只能顺着「活着的」父进程找后代。脚本
+ * 正常跑完时父进程已经退出，此时再杀就只是对着一个死 pid 空转，它派生的后台进程
+ * 会留下来（实测确认）。要堵住这个缺口需要 Job Object，纯 Node 做不到。
+ *
+ * 因此这里的保证是：**超时**路径一定会连同后代一起结束（父进程此时还活着）；
+ * 正常结束路径在 POSIX 上也能收干净，在 Windows 上收不干净。加上主动脱离的后代
+ * （DETACHED_PROCESS / start_new_session）本来就杀不掉——所以端点默认只在回环
+ * 监听时开放（见 ensureExecAllowed），不要把它当沙箱用。
+ */
+export function killProcessTree(
+  child: ChildProcess | null,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  const pid = child?.pid;
+  if (!pid) return;
+  try {
+    if (platform === 'win32') {
+      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      }).on('error', () => undefined);
+      return;
+    }
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    // 进程已退出：属正常路径，无需处理
+  }
+}
+
+const LOOPBACK_HOSTS = new Set([
+  '127.0.0.1',
+  'localhost',
+  '::1',
+  '[::1]',
+  '::ffff:127.0.0.1',
+]);
+
+/** 判断网关是否只监听本机（纯函数）。 */
+export function isLoopbackHost(host?: string | null): boolean {
+  const value = (host ?? '').trim().toLowerCase();
+  if (!value) return false;
+  if (LOOPBACK_HOSTS.has(value)) return true;
+  // 整个 127.0.0.0/8 都是回环，而不只是 127.0.0.1
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value);
+}
+
+/**
+ * 决定本机 Python 执行是否可用（纯函数）。
+ *
+ * 默认值跟随网关监听地址：只监听回环时开（对应「本机开发试运行」这一设计
+ * 前提），一旦对外监听（0.0.0.0 或具体内网地址）就默认关闭——此时任何能
+ * 登录的人都能在网关宿主上执行任意代码，不再是单机场景。
+ * 显式设置 PYTHON_EXEC_ENABLED 时以显式值为准，便于部署方自行裁决。
+ */
+export function resolvePythonExecEnabled(options: {
+  explicit?: string | null;
+  host?: string | null;
+}): boolean {
+  const explicit = (options.explicit ?? '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(explicit)) return true;
+  if (['0', 'false', 'no', 'off'].includes(explicit)) return false;
+  return isLoopbackHost(options.host);
+}
+
 /**
  * 本机 Python 的运行器脚本。
  *
@@ -105,8 +269,12 @@ print('__FF_RESULT__' + json.dumps(result, ensure_ascii=False, default=str))
  *
  * 浏览器试运行时没有 Python 运行时，由网关调用本机 Python 完成执行：
  * - 与 JS 代码节点一致的同步 main({params}) 契约
- * - 每次执行使用独立临时目录，15 秒超时强杀，进程结束后清理
+ * - 每次执行使用独立临时目录，15 秒超时后连进程树一起结束，目录随后清理
  * - 已知边界：不做依赖白名单、资源配额与网络隔离，仅面向本机开发场景
+ * - 已知边界：杀不掉**主动脱离**的后代进程（Windows DETACHED_PROCESS、POSIX
+ *   start_new_session）；Windows 上脚本**正常跑完**时派生的后台进程也可能留下
+ *   （父进程已退出，taskkill /T 找不到树）。真正的隔离需要 cgroup/Job Object，
+ *   这里做不到，所以端点默认只在回环监听时开放，不要把它当沙箱用
  */
 @UseGuards(JwtAuthGuard)
 @Controller('python')
@@ -114,6 +282,49 @@ export class PythonExecController {
   private readonly logger = new Logger(PythonExecController.name);
   private pythonCommand: string | null = null;
   private pythonCheck: Promise<string | null> | null = null;
+  private execEnabledWarned = false;
+
+  /**
+   * 每次调用都会在网关宿主起一个 Python 进程。按用户限流（默认每分钟 20 次），
+   * 避免单个账号把宿主机进程/CPU 打满——15 秒超时只保证单次不失控，不保证并发量。
+   */
+  private readonly limiter: FixedWindowRateLimiter;
+
+  constructor(private readonly config: ConfigService) {
+    this.limiter = new FixedWindowRateLimiter({
+      limit: resolveRateLimit(this.config.get<string>('PYTHON_EXEC_MAX_PER_MINUTE'), 20),
+    });
+  }
+
+  /**
+   * 本机 Python 执行是否对本请求开放。
+   *
+   * 端点本身只要求登录（不区分管理员），所以它等价于「在网关宿主上执行任意
+   * 代码」。默认仅在本机监听时开放，跨机部署必须显式开启，避免把 RCE 面
+   * 暴露给所有账号。
+   */
+  private ensureExecAllowed(): void {
+    // 归一化方式与 main.ts 里决定监听地址的那段完全一致，避免「main 绑了
+    // 回环、这里却按空值判定」这种两处口径不一致导致的静默不可用。
+    const host = this.config.get<string>('GATEWAY_HOST', '127.0.0.1').trim() || '127.0.0.1';
+    const enabled = resolvePythonExecEnabled({
+      explicit: this.config.get<string>('PYTHON_EXEC_ENABLED') ?? null,
+      host,
+    });
+    if (enabled) {
+      if (!isLoopbackHost(host) && !this.execEnabledWarned) {
+        this.execEnabledWarned = true;
+        this.logger.warn(
+          `Python 执行节点已在非回环地址（${host}）下启用：任何登录账号都可在网关宿主执行代码，请确认这是预期配置`,
+        );
+      }
+      return;
+    }
+    throw new ForbiddenException(
+      `本机 Python 执行未启用（当前网关监听 ${host || '(未设置)'}）。` +
+      '该端点允许登录用户在网关宿主执行任意代码，跨机部署如需开启请显式设置 PYTHON_EXEC_ENABLED=true 并自行评估风险。',
+    );
+  }
 
   private detectPython(): Promise<string | null> {
     if (this.pythonCommand) return Promise.resolve(this.pythonCommand);
@@ -146,6 +357,8 @@ export class PythonExecController {
   @Post('exec')
   async exec(@Request() req: any, @Body() payload: PythonExecPayload) {
     if (!req?.user?.id) throw new BadRequestException('未认证');
+    this.ensureExecAllowed();
+    this.limiter.assertAllowed(String(req.user.id), 'Python 执行');
     const code = payload.code || '';
     if (!code.trim()) throw new BadRequestException('Python 代码不能为空');
     if (code.length > MAX_CODE_LENGTH) {
@@ -161,6 +374,9 @@ export class PythonExecController {
     const userFile = join(dir, 'main.py');
     const runnerFile = join(dir, 'runner.py');
     const paramsFile = join(dir, 'params.json');
+    // 超时由这里自己管：Node 的 spawn timeout 只杀直接子进程，杀不掉孙进程
+    let child: ChildProcess | null = null;
+    let timedOut = false;
     try {
       await writeFile(userFile, code, 'utf8');
       await writeFile(runnerFile, RUNNER_SOURCE, 'utf8');
@@ -168,20 +384,30 @@ export class PythonExecController {
 
       const stdout = await new Promise<string>((resolve, reject) => {
         const pythonPath = buildPythonPathFromEnv();
-        const child = spawn(python, [runnerFile, paramsFile, userFile], {
+        const spawned = spawn(python, [runnerFile, paramsFile, userFile], {
           cwd: dir,
-          timeout: EXEC_TIMEOUT_MS,
           windowsHide: true,
-          env: pythonPath ? { ...process.env, PYTHONPATH: pythonPath } : process.env,
+          // POSIX 下自成进程组，配合 killProcessTree 连孙进程一起结束
+          detached: process.platform !== 'win32',
+          // 不继承 process.env：里面是整套服务凭据，用户代码一行 os.environ 就能读走
+          env: buildPythonExecEnv(pythonPath, process.env),
         });
+        child = spawned;
         let out = '';
         let err = '';
-        child.stdout.on('data', (d) => { out += String(d); });
-        child.stderr.on('data', (d) => { err += String(d); });
-        child.on('error', (e) => reject(new BadRequestException(`无法启动 Python: ${e.message}`)));
-        child.on('close', (exitCode, signal) => {
-          if (signal === 'SIGTERM') {
-            reject(new BadRequestException('Python 执行超时（15 秒上限）'));
+        spawned.stdout.on('data', (d) => { out += String(d); });
+        spawned.stderr.on('data', (d) => { err += String(d); });
+        spawned.on('error', (e) => reject(new BadRequestException(`无法启动 Python: ${e.message}`)));
+
+        const timer = setTimeout(() => {
+          timedOut = true;
+          killProcessTree(spawned);
+        }, EXEC_TIMEOUT_MS);
+
+        spawned.on('close', (exitCode) => {
+          clearTimeout(timer);
+          if (timedOut) {
+            reject(new BadRequestException(`Python 执行超时（${EXEC_TIMEOUT_MS / 1000} 秒上限）`));
             return;
           }
           if (exitCode !== 0) {
@@ -209,6 +435,10 @@ export class PythonExecController {
       }
       return { result };
     } finally {
+      // 收一遍进程树。注意：POSIX 上这对正常结束也有效（整组还在），Windows 上只在
+      // 父进程尚未退出（即超时被杀）时有效——正常结束时这里是对着死 pid 空转。
+      // 详细边界见 killProcessTree 的注释，别把它当成沙箱保证。
+      killProcessTree(child);
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
