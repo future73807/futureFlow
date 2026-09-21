@@ -11,6 +11,12 @@ const envDisplayName = configuredEnvPath ? envPath : '.env';
 const secretNames = [
   'GATEWAY_JWT_SECRET',
   'DIFY_KEY_ENCRYPTION_SECRET',
+  // 媒体凭据 / MCP 令牌 / 草稿沙箱凭据的独立主密钥。以前不生成它，导致这三类
+  // 密文与 Dify 凭据共用 DIFY_KEY_ENCRYPTION_SECRET——一把泄露等于全解。
+  // 现在生成独立值；存量密文仍由 DIFY_KEY_ENCRYPTION_SECRET 作只读回退解开
+  // （见 gateway/src/common/encryption-key-ring.ts），因此换上新密钥不会让
+  // 已有数据变得不可读，也不需要先做数据迁移。
+  'MEDIA_CREDENTIAL_ENCRYPTION_SECRET',
   'DIFY_SANDBOX_API_KEY',
   'DIFY_ADMIN_PASSWORD',
   'DIFY_SECRET_KEY',

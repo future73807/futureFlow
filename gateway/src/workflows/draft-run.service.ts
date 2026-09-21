@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { decryptWithKeyRing, encryptAesGcm, parseAesGcmPayload, resolveEncryptionKeyRing } from '../common/encryption-key-ring';
 import { Repository } from 'typeorm';
 import { DifyConsoleAuthorization, DifyConsoleAuthorizationError, DifyIntegrationService } from '../dify/dify-integration.service';
 import { DifyConverterService } from '../converter/dify-converter.service';
@@ -243,43 +244,27 @@ export class DraftRunService {
   }
 
   private encrypt(plaintext: string, userId: string): string {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), iv);
-    cipher.setAAD(Buffer.from(`draft-sandbox:${userId}`, 'utf8'));
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    return [
-      'v1',
-      iv.toString('base64url'),
-      cipher.getAuthTag().toString('base64url'),
-      encrypted.toString('base64url'),
-    ].join(':');
+    // 加密恒用密钥环第一把（primary），回退密钥只负责解开存量密文。
+    return encryptAesGcm(this.keyRing()[0], plaintext, Buffer.from(`draft-sandbox:${userId}`, 'utf8'));
   }
 
   private decrypt(payload: string, userId: string): string {
-    const [version, ivRaw, tagRaw, ciphertextRaw, extra] = payload.split(':');
-    if (version !== 'v1' || !ivRaw || !tagRaw || !ciphertextRaw || extra) {
+    const parts = parseAesGcmPayload(payload);
+    if (!parts) {
       throw new ServiceUnavailableException('草稿沙箱凭据不可用，请重新执行云端试运行');
     }
     try {
-      const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey(), Buffer.from(ivRaw, 'base64url'));
-      decipher.setAAD(Buffer.from(`draft-sandbox:${userId}`, 'utf8'));
-      decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
-      return Buffer.concat([
-        decipher.update(Buffer.from(ciphertextRaw, 'base64url')),
-        decipher.final(),
-      ]).toString('utf8');
+      return decryptWithKeyRing(this.keyRing(), parts, Buffer.from(`draft-sandbox:${userId}`, 'utf8'));
     } catch {
       throw new ServiceUnavailableException('无法解密草稿沙箱凭据，请重新执行云端试运行');
     }
   }
 
-  private encryptionKey(): Buffer {
-    const secret = this.config.get<string>('MEDIA_CREDENTIAL_ENCRYPTION_SECRET')
-      || this.config.get<string>('DIFY_KEY_ENCRYPTION_SECRET')
-      || '';
-    if (secret.length < 32) {
-      throw new ServiceUnavailableException('草稿沙箱凭据加密未配置');
-    }
-    return createHash('sha256').update(secret).digest();
+  private keyRing(): Buffer[] {
+    return resolveEncryptionKeyRing(this.config, {
+      primary: 'MEDIA_CREDENTIAL_ENCRYPTION_SECRET',
+      legacy: ['DIFY_KEY_ENCRYPTION_SECRET'],
+      purpose: '草稿沙箱凭据',
+    });
   }
 }

@@ -1,11 +1,12 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from 'node:crypto';
+  decryptWithKeyRing,
+  encryptAesGcm,
+  parseAesGcmPayload,
+  resolveEncryptionKeyRing,
+} from '../common/encryption-key-ring';
 import type { MediaProvider } from '../database/entities/media-credential.entity';
 
 @Injectable()
@@ -16,36 +17,18 @@ export class MediaCredentialCrypto {
     plaintext: string,
     context: { userId: string; provider: MediaProvider; credentialId: string },
   ): string {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.key(), iv);
-    cipher.setAAD(this.aad(context));
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return ['v1', iv, tag, encrypted]
-      .map((part) => typeof part === 'string' ? part : part.toString('base64url'))
-      .join(':');
+    // 加密恒用密钥环第一把（primary），回退密钥只负责解开存量密文。
+    return encryptAesGcm(this.keyRing()[0], plaintext, this.aad(context));
   }
 
   decrypt(
     payload: string,
     context: { userId: string; provider: MediaProvider; credentialId: string },
   ): string {
-    const [version, ivRaw, tagRaw, ciphertextRaw, extra] = payload.split(':');
-    if (version !== 'v1' || !ivRaw || !tagRaw || !ciphertextRaw || extra) {
-      throw new ServiceUnavailableException('媒体凭据不可用');
-    }
+    const parts = parseAesGcmPayload(payload);
+    if (!parts) throw new ServiceUnavailableException('媒体凭据不可用');
     try {
-      const decipher = createDecipheriv(
-        'aes-256-gcm',
-        this.key(),
-        Buffer.from(ivRaw, 'base64url'),
-      );
-      decipher.setAAD(this.aad(context));
-      decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
-      return Buffer.concat([
-        decipher.update(Buffer.from(ciphertextRaw, 'base64url')),
-        decipher.final(),
-      ]).toString('utf8');
+      return decryptWithKeyRing(this.keyRing(), parts, this.aad(context));
     } catch {
       throw new ServiceUnavailableException('媒体凭据不可用');
     }
@@ -55,17 +38,17 @@ export class MediaCredentialCrypto {
     return `sha256:${createHash('sha256').update(apiKey).digest('hex').slice(0, 16)}`;
   }
 
-  private key(): Buffer {
-    const secret = this.config.get<string>('MEDIA_CREDENTIAL_ENCRYPTION_SECRET')
-      || this.config.get<string>('DIFY_KEY_ENCRYPTION_SECRET')
-      || '';
-    if (
-      secret.length < 32
-      || /change-me|replace-with|your[-_ ]?(key|secret)|x{6,}/i.test(secret)
-    ) {
-      throw new ServiceUnavailableException('媒体凭据加密未配置');
-    }
-    return createHash('sha256').update(secret, 'utf8').digest();
+  /**
+   * 密钥环：`MEDIA_CREDENTIAL_ENCRYPTION_SECRET` 为主，`DIFY_KEY_ENCRYPTION_SECRET`
+   * 仅作**只读回退**——后者是历史默认（`env:init` 以前不生成前者），删掉它会让存量
+   * 密文立刻不可解密。详见 common/encryption-key-ring.ts。
+   */
+  private keyRing(): Buffer[] {
+    return resolveEncryptionKeyRing(this.config, {
+      primary: 'MEDIA_CREDENTIAL_ENCRYPTION_SECRET',
+      legacy: ['DIFY_KEY_ENCRYPTION_SECRET'],
+      purpose: '媒体凭据',
+    });
   }
 
   private aad(context: {
