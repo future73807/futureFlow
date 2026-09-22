@@ -142,6 +142,56 @@ async function testGatewaySecurityDefaults() {
     /无效的 Token 或 API Key/,
   );
 
+  // 已经处置过的账号不得被反复写库。
+  // 少了这个短路，每次网关启动都会重新 save 一次并打一条「账号已暂停并降权」的
+  // warn —— 而账号其实早在某次启动时就被锁了，反复出现的告警会被读成
+  // 「刚刚又被锁了一次」，把排查方向带偏。
+  const alreadyHandledUser = {
+    username: 'demo',
+    passwordHash: await bcrypt.hash(['demo', '123456'].join(''), 4),
+    role: 'user',
+    status: 'suspended',
+  };
+  let alreadyHandledSaveCount = 0;
+  const alreadyHandledSeed = new SeedService(
+    {
+      findOne: async () => alreadyHandledUser,
+      save: async () => {
+        alreadyHandledSaveCount += 1;
+      },
+    } as any,
+    bootstrapDisabledConfig,
+  );
+  await alreadyHandledSeed.onModuleInit();
+  assert.equal(
+    alreadyHandledSaveCount, 0,
+    '已处于 suspended + user 的旧账号不应被再次写库（否则每次启动都会重复告警）',
+  );
+  assert.equal(alreadyHandledUser.status, 'suspended');
+  assert.equal(alreadyHandledUser.role, 'user');
+
+  // 反向：只降权但没暂停（或反之）的中间状态仍应被补齐处置，
+  // 否则「暂停」这一步会被短路漏掉、旧 JWT 继续可用。
+  const halfHandledUser = {
+    username: 'demo',
+    passwordHash: await bcrypt.hash(['demo', '123456'].join(''), 4),
+    role: 'user',
+    status: 'active',
+  };
+  let halfHandledSaveCount = 0;
+  const halfHandledSeed = new SeedService(
+    {
+      findOne: async () => halfHandledUser,
+      save: async () => {
+        halfHandledSaveCount += 1;
+      },
+    } as any,
+    bootstrapDisabledConfig,
+  );
+  await halfHandledSeed.onModuleInit();
+  assert.equal(halfHandledSaveCount, 1, '只降权未暂停的账号仍必须被处置');
+  assert.equal(halfHandledUser.status, 'suspended', '状态必须被补成 suspended');
+
   const changedPasswordUser = {
     username: 'demo',
     passwordHash: await bcrypt.hash(fx('a', 'new', 'private', 'password'), 4),

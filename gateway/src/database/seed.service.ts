@@ -61,6 +61,11 @@ export class SeedService implements OnModuleInit {
     }
     if (!stillUsesPublicPassword) return;
 
+    // 已经处置过就直接返回。少了这一步，每次启动都会重新写库并打一条
+    // 「账号已暂停并降权」的 warn —— 而账号其实早在某次启动时就被锁了，
+    // 反复出现的告警会被读成「刚刚又被锁了一次」，把排查方向带偏。
+    if (legacyUser.status === 'suspended' && legacyUser.role === 'user') return;
+
     legacyUser.status = 'suspended';
     legacyUser.role = 'user';
     await this.userRepo.save(legacyUser);
