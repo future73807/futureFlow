@@ -26,6 +26,14 @@ interface ConsoleJsonInit {
   method?: 'GET' | 'POST' | 'DELETE';
   body?: Record<string, unknown>;
   timeoutMs?: number;
+  /**
+   * 目标资源在 Dify 侧已不存在（404）时不抛错，按「目的已达成」返回 undefined。
+   *
+   * 只给**删除**这类幂等操作使用：资源被外部删掉（或上一次删除在清本地行之前中断）
+   * 时，调用方的意图其实已经实现，此时再抛错会让调用方无法继续收尾 ——
+   * 本地所有权行就永远清不掉，之后连重试删除都清不掉（每次都在这里抛错）。
+   */
+  tolerateMissing?: boolean;
 }
 
 /**
@@ -121,7 +129,14 @@ export class KnowledgeService {
 
   async deleteDataset(userId: string, datasetId: string, requireAdmin = false): Promise<void> {
     await this.assertOwned(userId, datasetId, requireAdmin);
-    await this.consoleJson(`/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' });
+    // 404 视为「已经不在」而不是失败：Dify 侧的知识库可能被外部删掉，
+    // 或上一次删除在清本地行之前中断。此时调用方的意图已经达成，必须继续往下走
+    // 把本地所有权行清掉 —— 否则它会永远留在库里，而且之后**连重试删除都清不掉**
+    // （每次都在这里抛错，永远走不到下面的 delete）。
+    await this.consoleJson(`/datasets/${encodeURIComponent(datasetId)}`, {
+      method: 'DELETE',
+      tolerateMissing: true,
+    });
     await this.ownerRepo.delete({ datasetId });
   }
 
@@ -340,6 +355,9 @@ export class KnowledgeService {
         return this.consoleJson<T>(path, init, false);
       }
       throw new ServiceUnavailableException('Dify Console 授权已过期，请重新保存 Dify 授权');
+    }
+    if (init.tolerateMissing && response.status === 404) {
+      return undefined as T;
     }
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
