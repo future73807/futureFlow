@@ -12,8 +12,9 @@ import { JwtAuthGuard } from '../auth/jwt.guard';
 import { FixedWindowRateLimiter, resolveRateLimit } from '../common/fixed-window-rate-limit';
 import { Logger } from '@nestjs/common';
 import { ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
@@ -225,6 +226,127 @@ export function resolvePythonExecEnabled(options: {
   return isLoopbackHost(options.host);
 }
 
+// ─────────────────────────────────────────────────────────────
+// 执行模式：本机 Python ／ 容器沙箱
+// ─────────────────────────────────────────────────────────────
+//
+// `local` 模式下子进程与网关同用户、同文件权限，**能直接读宿主上的 .env**
+// （里面有数据库密码、JWT 密钥、各类加密密钥）。环境变量白名单只堵住了
+// 「一行 os.environ 就读走」这条最省事的通道，堵不住读文件。
+//
+// `docker` 模式把用户代码放进一次性容器里跑，换来四项本机模式给不了的保证：
+//   - 读不到宿主文件系统（只挂载本次的临时工作目录，且只读）
+//   - 默认无网络（`--network=none`）
+//   - 根文件系统只读，只有 /tmp 是可写 tmpfs
+//   - 内存/CPU/进程数有硬上限，容器随进程结束一起消失
+//
+// 默认仍是 `local`：现有部署里 Python 节点可能要靠网络连数据库
+// （见 scripts/test-local-tools.cjs），默认切到 docker 会直接打断这类用法。
+// 需要隔离的部署显式设 `PYTHON_EXEC_MODE=docker`。
+
+export type PythonExecMode = 'local' | 'docker';
+
+/** 解析执行模式（纯函数）。只认 `docker`，其余一律回落到 `local`。 */
+export function resolvePythonExecMode(explicit?: string | null): PythonExecMode {
+  return (explicit ?? '').trim().toLowerCase() === 'docker' ? 'docker' : 'local';
+}
+
+/**
+ * 容器内挂载宿主路径时的写法。
+ *
+ * Windows 上 `tmpdir()` 给的是 `C:\Users\...`，反斜杠在 `-v` 里会被 Docker 当成
+ * 转义符，统一转成正斜杠；POSIX 上原样返回。
+ */
+export function toDockerMountPath(hostPath: string): string {
+  return hostPath.replace(/\\/g, '/');
+}
+
+export interface PythonDockerRunOptions {
+  image: string;
+  containerName: string;
+  /** 宿主上的本次工作目录（内含 runner.py / params.json / main.py）。 */
+  workDir: string;
+  /** 随仓库携带的纯 Python 依赖目录；为 null 或不存在时不挂。 */
+  vendoredModulesDir?: string | null;
+  /** Docker 网络模式，默认 none。需要连库的部署可改成 bridge。 */
+  network?: string;
+  /** 额外要挂进容器并加入 PYTHONPATH 的宿主目录。 */
+  extraModulesPath?: string | null;
+}
+
+/** 容器内的工作目录与依赖挂载点。 */
+export const DOCKER_WORK_DIR = '/work';
+export const DOCKER_VENDOR_DIR = '/vendor';
+
+/**
+ * 组装 `docker run` 的参数（纯函数，便于测试）。
+ *
+ * 加固项逐条说明：
+ * - `--network=none`  默认无网络。用户代码里的 requests/socket 全部失败，
+ *                     不能把宿主当跳板去探测内网。
+ * - `--read-only`     根文件系统只读，写文件只能落到 /tmp 的 tmpfs 上，
+ *                     进程结束即消失，不会在镜像层里留下东西。
+ * - `--tmpfs /tmp`    挂 noexec/nosuid，避免把可执行文件写进 tmpfs 再跑。
+ * - `--pids-limit`    挡住 fork 炸弹（否则一个 while True: fork() 就能把宿主拖垮）。
+ * - `--memory-swap`   与 --memory 相等，禁止用 swap 绕过内存上限。
+ * - `--cap-drop=ALL`  丢掉全部 Linux capabilities。
+ * - `no-new-privileges` 禁止 setuid 提权。
+ * - `--user 65534`    以 nobody 身份运行，不是 root。
+ * - 挂载一律 `readonly` 用户代码改不了自己的源码与参数文件。
+ *
+ * 挂载用 `--mount type=bind,...` 而不是 `-v host:container:opts`：后者用冒号分隔，
+ * 而 Windows 盘符自带冒号（`D:\mods`），拼出来的串要靠 Docker 特判才能正确解析。
+ * `--mount` 用 `key=value` 逗号分隔，路径里的冒号不参与分隔，语义无歧义。
+ */
+export function buildPythonDockerArgs(options: PythonDockerRunOptions): string[] {
+  const bindMount = (source: string, target: string): string[] => [
+    '--mount', `type=bind,source=${toDockerMountPath(source)},target=${target},readonly`,
+  ];
+
+  const args: string[] = [
+    'run',
+    '--rm',
+    '--name', options.containerName,
+    '--network', options.network || 'none',
+    '--memory', '256m',
+    '--memory-swap', '256m',
+    '--cpus', '1',
+    '--pids-limit', '128',
+    '--read-only',
+    '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m',
+    '--cap-drop', 'ALL',
+    '--security-opt', 'no-new-privileges',
+    '--user', '65534:65534',
+    ...bindMount(options.workDir, DOCKER_WORK_DIR),
+    '-w', DOCKER_WORK_DIR,
+    // 锁定 UTF-8：容器内同样不继承宿主 locale，否则中文结果会变乱码
+    '-e', 'PYTHONIOENCODING=utf-8',
+    '-e', 'PYTHONUTF8=1',
+  ];
+
+  const pythonPath: string[] = [];
+  if (options.vendoredModulesDir) {
+    args.push(...bindMount(options.vendoredModulesDir, DOCKER_VENDOR_DIR));
+    pythonPath.push(DOCKER_VENDOR_DIR);
+  }
+  for (const extra of (options.extraModulesPath ?? '').split(delimiter).filter(Boolean)) {
+    // 额外目录逐个挂载：容器里看不到宿主其余部分，只能显式放行
+    const mountPoint = `/extra/${pythonPath.length}`;
+    args.push(...bindMount(extra, mountPoint));
+    pythonPath.push(mountPoint);
+  }
+  if (pythonPath.length) args.push('-e', `PYTHONPATH=${pythonPath.join(':')}`);
+
+  args.push(
+    options.image,
+    'python',
+    `${DOCKER_WORK_DIR}/runner.py`,
+    `${DOCKER_WORK_DIR}/params.json`,
+    `${DOCKER_WORK_DIR}/main.py`,
+  );
+  return args;
+}
+
 /**
  * 本机 Python 的运行器脚本。
  *
@@ -270,18 +392,23 @@ print('__FF_RESULT__' + json.dumps(result, ensure_ascii=False, default=str))
  * 浏览器试运行时没有 Python 运行时，由网关调用本机 Python 完成执行：
  * - 与 JS 代码节点一致的同步 main({params}) 契约
  * - 每次执行使用独立临时目录，15 秒超时后连进程树一起结束，目录随后清理
- * 执行环境隔离的边界（这几点容易被误解，务必看准）：
- * - 子进程环境是白名单（见 buildPythonExecEnv），但这**不是**沙箱：子进程与网关进程
- *   同用户、同文件权限，照样能读到宿主机上的文件（例如项目根的 .env，里面就是数据库
- *   密码、JWT 密钥与各类加密密钥）。白名单只是拿掉了「一行 os.environ 就读走」这条
- *   最省事的通道。
- * - 因此真正的控制是 ensureExecAllowed：非回环监听默认关闭；显式开启时也只放管理员。
+ * 两种执行模式（`PYTHON_EXEC_MODE`）：
+ *
+ * **`local`（默认）** —— 直接跑宿主 Python。子进程环境是白名单
+ * （见 buildPythonExecEnv），但这**不是**沙箱：子进程与网关进程同用户、同文件权限，
+ * 照样能读到宿主机上的文件（例如项目根的 .env，里面就是数据库密码、JWT 密钥与各类
+ * 加密密钥）。白名单只是拿掉了「一行 os.environ 就读走」这条最省事的通道。
  * - 已知边界：不做依赖白名单、资源配额与网络隔离，仅面向本机开发场景
  * - 已知边界：杀不掉**主动脱离**的后代进程（Windows DETACHED_PROCESS、POSIX
  *   start_new_session）；Windows 上脚本**正常跑完**时派生的后台进程也可能留下
  *   （父进程已退出，taskkill /T 找不到树）。真正的隔离需要 cgroup/Job Object，
  *   这里做不到，所以端点默认只在回环监听时开放（非回环时另加一层：仅管理员），
  *   不要把它当沙箱用
+ *
+ * **`docker`** —— 把用户代码放进一次性容器里跑（参数见 buildPythonDockerArgs）。
+ * 这一模式补上了 local 模式读宿主文件这个缺口：只挂载本次的临时工作目录（只读），
+ * 默认 `--network=none`，根文件系统只读，内存/CPU/进程数有硬上限，容器随执行结束消失。
+ * 默认仍是 local（现有部署可能靠网络连库，默认切换会打断），需要隔离的部署显式开启。
  */
 @UseGuards(JwtAuthGuard)
 @Controller('python')
@@ -289,7 +416,10 @@ export class PythonExecController {
   private readonly logger = new Logger(PythonExecController.name);
   private pythonCommand: string | null = null;
   private pythonCheck: Promise<string | null> | null = null;
+  private dockerCommand: string | null = null;
+  private dockerCheck: Promise<string | null> | null = null;
   private execEnabledWarned = false;
+  private dockerModeWarned = false;
 
   /**
    * 每次调用都会在网关宿主起一个 Python 进程。按用户限流（默认每分钟 20 次），
@@ -377,6 +507,60 @@ export class PythonExecController {
     return this.pythonCheck;
   }
 
+  /**
+   * 探测 docker 是否可用（`docker version` 会同时校验客户端与守护进程）。
+   * 结果缓存：执行路径上每次调用都探测会白白多花几百毫秒。
+   */
+  private detectDocker(): Promise<string | null> {
+    if (this.dockerCommand) return Promise.resolve(this.dockerCommand);
+    if (this.dockerCheck) return this.dockerCheck;
+    this.dockerCheck = new Promise((resolve) => {
+      const probe = spawn('docker', ['version', '--format', '{{.Server.Version}}'], {
+        timeout: 10_000,
+        windowsHide: true,
+        // 探测进程不需要任何宿主凭据
+        env: buildPythonExecEnv(undefined, process.env),
+      });
+      let out = '';
+      probe.stdout?.on('data', (d) => { out += String(d); });
+      probe.on('error', () => resolve(null));
+      probe.on('close', (code) => {
+        if (code === 0) {
+          this.dockerCommand = 'docker';
+          this.logger.log(`Python 执行将走容器沙箱（Docker ${out.trim()}）`);
+          resolve('docker');
+          return;
+        }
+        resolve(null);
+      });
+    });
+    return this.dockerCheck;
+  }
+
+  /**
+   * 确认沙箱镜像已在本地。
+   *
+   * 不预检的话，镜像缺失时 `docker run` 会先去 pull：既可能因为网络不可达而卡到超时，
+   * 也会把一个「镜像没拉」的问题伪装成「Python 执行超时」，排查方向被彻底带偏。
+   */
+  private async ensureDockerImage(docker: string, image: string): Promise<void> {
+    const available = await new Promise<boolean>((resolve) => {
+      const probe = spawn(docker, ['image', 'inspect', image], {
+        timeout: 10_000,
+        windowsHide: true,
+        env: buildPythonExecEnv(undefined, process.env),
+      });
+      probe.on('error', () => resolve(false));
+      probe.on('close', (code) => resolve(code === 0));
+    });
+    if (!available) {
+      throw new BadRequestException(
+        `容器沙箱镜像 ${image} 不在本地，请先执行 docker pull ${image}`
+        + '（网关不会自动拉取：拉取耗时会让执行超时，问题也被伪装成「执行超时」）。',
+      );
+    }
+  }
+
   @Post('exec')
   async exec(@Request() req: any, @Body() payload: PythonExecPayload) {
     if (!req?.user?.id) throw new BadRequestException('未认证');
@@ -388,9 +572,37 @@ export class PythonExecController {
       throw new BadRequestException(`Python 代码长度不能超过 ${MAX_CODE_LENGTH} 个字符`);
     }
 
-    const python = await this.detectPython();
-    if (!python) {
-      throw new BadRequestException('未检测到本机 Python，请安装 Python 3 后重试');
+    const mode = resolvePythonExecMode(this.config.get<string>('PYTHON_EXEC_MODE'));
+
+    // 两种模式各自准备执行命令。local 需要宿主 Python，docker 需要可用的 docker 与镜像。
+    let command: string;
+    let commandArgs: string[];
+    let dockerImage = '';
+    let containerName = '';
+    if (mode === 'docker') {
+      const docker = await this.detectDocker();
+      if (!docker) {
+        throw new BadRequestException(
+          'PYTHON_EXEC_MODE=docker 但未检测到可用的 Docker（docker version 失败）。'
+          + '请确认 Docker 已安装且守护进程在运行，或改用 PYTHON_EXEC_MODE=local。',
+        );
+      }
+      dockerImage = (this.config.get<string>('PYTHON_EXEC_DOCKER_IMAGE') || 'python:3.11-slim').trim();
+      await this.ensureDockerImage(docker, dockerImage);
+      if (!this.dockerModeWarned) {
+        this.dockerModeWarned = true;
+        this.logger.log(`Python 执行使用容器沙箱：镜像 ${dockerImage}，工作目录只读挂载`);
+      }
+      command = docker;
+      commandArgs = [];
+      containerName = `ff-py-${randomUUID().slice(0, 8)}`;
+    } else {
+      const python = await this.detectPython();
+      if (!python) {
+        throw new BadRequestException('未检测到本机 Python，请安装 Python 3 后重试');
+      }
+      command = python;
+      commandArgs = [];
     }
 
     const dir = await mkdtemp(join(tmpdir(), 'ff-py-'));
@@ -400,14 +612,33 @@ export class PythonExecController {
     // 超时由这里自己管：Node 的 spawn timeout 只杀直接子进程，杀不掉孙进程
     let child: ChildProcess | null = null;
     let timedOut = false;
+    // 容器是否已自行退出。`--rm` 只在容器退出时清理，所以没退出就必须显式 rm。
+    let containerExited = false;
     try {
       await writeFile(userFile, code, 'utf8');
       await writeFile(runnerFile, RUNNER_SOURCE, 'utf8');
       await writeFile(paramsFile, JSON.stringify(payload.params ?? {}), 'utf8');
 
+      if (mode === 'docker') {
+        // 容器以 nobody(65534) 运行，而 mkdtemp 建出来的是 0700 —— 不放开就读不到
+        // 自己的工作文件。只加 o+rx，不写权限（挂载本身也是 :ro）。
+        await chmod(dir, 0o755);
+        const vendored = existsSync(VENDORED_MODULES_DIR) ? VENDORED_MODULES_DIR : null;
+        commandArgs = buildPythonDockerArgs({
+          image: dockerImage,
+          containerName,
+          workDir: dir,
+          vendoredModulesDir: vendored,
+          network: this.config.get<string>('PYTHON_EXEC_DOCKER_NETWORK') || 'none',
+          extraModulesPath: process.env.PYTHON_EXTRA_MODULES_PATH ?? null,
+        });
+      } else {
+        commandArgs = [runnerFile, paramsFile, userFile];
+      }
+
       const stdout = await new Promise<string>((resolve, reject) => {
         const pythonPath = buildPythonPathFromEnv();
-        const spawned = spawn(python, [runnerFile, paramsFile, userFile], {
+        const spawned = spawn(command, commandArgs, {
           cwd: dir,
           windowsHide: true,
           // POSIX 下自成进程组，配合 killProcessTree 连孙进程一起结束
@@ -420,17 +651,34 @@ export class PythonExecController {
         let err = '';
         spawned.stdout.on('data', (d) => { out += String(d); });
         spawned.stderr.on('data', (d) => { err += String(d); });
-        spawned.on('error', (e) => reject(new BadRequestException(`无法启动 Python: ${e.message}`)));
+        spawned.on('error', (e) => reject(new BadRequestException(
+          mode === 'docker'
+            ? `无法启动容器沙箱: ${e.message}`
+            : `无法启动 Python: ${e.message}`,
+        )));
 
         const timer = setTimeout(() => {
           timedOut = true;
+          // docker run 客户端被杀**不会**带走容器（容器已与客户端脱离），
+          // 必须显式 kill；否则「15 秒超时」对容器内的代码是空话，它会继续跑。
+          if (mode === 'docker' && containerName) {
+            spawn(command, ['kill', containerName], {
+              windowsHide: true,
+              stdio: 'ignore',
+            }).on('error', () => undefined);
+          }
           killProcessTree(spawned);
         }, EXEC_TIMEOUT_MS);
 
         spawned.on('close', (exitCode) => {
           clearTimeout(timer);
+          containerExited = true;
           if (timedOut) {
-            reject(new BadRequestException(`Python 执行超时（${EXEC_TIMEOUT_MS / 1000} 秒上限）`));
+            reject(new BadRequestException(
+              mode === 'docker'
+                ? `容器沙箱执行超时（${EXEC_TIMEOUT_MS / 1000} 秒上限）`
+                : `Python 执行超时（${EXEC_TIMEOUT_MS / 1000} 秒上限）`,
+            ));
             return;
           }
           if (exitCode !== 0) {
@@ -462,6 +710,17 @@ export class PythonExecController {
       // 父进程尚未退出（即超时被杀）时有效——正常结束时这里是对着死 pid 空转。
       // 详细边界见 killProcessTree 的注释，别把它当成沙箱保证。
       killProcessTree(child);
+      // 容器没自行退出就补一刀。正常路径上 `--rm` 已经收走了，这里只在
+      // 「客户端异常/被杀但容器还活着」时兜底，避免容器名与资源无限堆积。
+      if (mode === 'docker' && containerName && !containerExited) {
+        await new Promise<void>((resolve) => {
+          spawn(command, ['rm', '-f', containerName], {
+            windowsHide: true,
+            stdio: 'ignore',
+            timeout: 10_000,
+          }).on('error', () => resolve()).on('close', () => resolve());
+        }).catch(() => undefined);
+      }
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
