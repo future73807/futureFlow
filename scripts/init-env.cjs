@@ -1,6 +1,7 @@
 const { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } = require('node:fs');
 const { dirname, resolve } = require('node:path');
 const { randomBytes } = require('node:crypto');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 
 const root = process.cwd();
 const configuredEnvPath = process.env.FUTUREFLOW_ENV_FILE?.trim();
@@ -24,6 +25,9 @@ const secretNames = [
 const databaseSecretNames = [
   'POSTGRES_PASSWORD',
   'DIFY_DB_PASSWORD',
+  // 应用运行账号的密码（非超级用户）。存量卷不会自动轮换，需要时跑
+  // `node scripts/db-grant-app-user.cjs`。
+  'POSTGRES_APP_PASSWORD',
 ];
 const rotateDatabaseSecrets = process.argv.includes('--rotate-database-secrets');
 const currentEnvSchemaVersion = 2;
@@ -32,7 +36,9 @@ const settingDefaults = {
   GATEWAY_BOOTSTRAP_ADMIN_ENABLED: 'true',
   GATEWAY_BOOTSTRAP_ADMIN_USERNAME: 'admin',
   GATEWAY_BOOTSTRAP_ADMIN_EMAIL: 'admin@futureflow.local',
-  GATEWAY_BOOTSTRAP_ADMIN_PASSWORD: 'futureFlow@',
+  POSTGRES_APP_USER: 'futureflow_app',
+  // 开发期 synchronize 需要建表权限；生产部署请改成 false。
+  POSTGRES_APP_ALLOW_DDL: 'true',
   DIFY_AUTO_BOOTSTRAP: 'true',
   DIFY_MANAGED_BRIDGE: 'true',
   DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS: '.invalid',
@@ -122,19 +128,29 @@ for (const secretName of secretNames) {
   content = result.content;
   if (result.changed) repaired.push(secretName);
 }
-// The futureFlow admin password is a fixed local default so users only need to
-// fill in the model key. A real password already present in .env is preserved;
-// only the old example placeholder is replaced.
+// 管理员初始密码必须每次安装随机生成。.env 里为空、仍是占位符、或仍是历史
+// 公开默认值的，统一替换为随机值并只在终端打印一次（不写日志）。已有管理员
+// 账号不会被覆盖——轮换存量账号请用 `node scripts/rotate-admin-password.cjs`。
+const legacyPublicAdminPassword = ['futureFlow', '@'].join('');
 const adminPasswordPattern = /^(GATEWAY_BOOTSTRAP_ADMIN_PASSWORD=)([^\r\n]*)$/m;
 const adminPasswordMatch = content.match(adminPasswordPattern);
+const currentAdminPassword = adminPasswordMatch?.[2].trim() || '';
+let generatedAdminPassword = '';
 if (
-  adminPasswordMatch &&
-  (!adminPasswordMatch[2].trim() || placeholderPattern.test(adminPasswordMatch[2]))
+  !currentAdminPassword ||
+  placeholderPattern.test(currentAdminPassword) ||
+  currentAdminPassword === legacyPublicAdminPassword
 ) {
-  content = content.replace(
-    adminPasswordPattern,
-    'GATEWAY_BOOTSTRAP_ADMIN_PASSWORD=futureFlow@',
-  );
+  generatedAdminPassword = makeAdminPassword();
+  const passwordResult = adminPasswordMatch
+    ? {
+      content: content.replace(
+        adminPasswordPattern,
+        `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD=${generatedAdminPassword}`,
+      ),
+    }
+    : ensureSetting(content, 'GATEWAY_BOOTSTRAP_ADMIN_PASSWORD', generatedAdminPassword);
+  content = passwordResult.content;
   repaired.push('GATEWAY_BOOTSTRAP_ADMIN_PASSWORD');
 }
 const databaseSecretsNeedingMigration = [];
@@ -194,6 +210,13 @@ if (created) {
   console.log(`${envDisplayName} settings or secrets added/repaired: ${repaired.join(', ')}`);
 } else {
   console.log(`${envDisplayName} already has valid gateway and Dify settings`);
+}
+
+if (generatedAdminPassword) {
+  console.log(
+    `管理员初始密码已随机生成并写入 ${envDisplayName}: ${generatedAdminPassword}`,
+  );
+  console.log('请妥善保存；这是唯一一次显示。' + '已有管理员账号不会被覆盖。');
 }
 
 if (databaseSecretsNeedingMigration.length > 0) {

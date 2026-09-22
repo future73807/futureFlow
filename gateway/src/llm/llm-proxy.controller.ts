@@ -15,6 +15,7 @@ import { Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { FixedWindowRateLimiter, resolveRateLimit } from '../common/fixed-window-rate-limit';
 import { describeError, describeErrorBrief } from '../common/describe-error';
+import { Public } from '../common/decorators/public.decorator';
 import {
   LLM_PROXY_TOKEN_TYPE,
   clampLlmCostFields,
@@ -85,6 +86,7 @@ export class LlmProxyController {
     };
   }
 
+  @Public()
   @Post('chat/completions')
   async chatCompletions(
     @Body() body: Record<string, any>,

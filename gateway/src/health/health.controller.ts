@@ -2,6 +2,7 @@ import { Controller, Get, Query, ServiceUnavailableException } from '@nestjs/com
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { DifyClientService } from '../dify/dify-client.service';
+import { Public } from '../common/decorators/public.decorator';
 
 /** Liveness and readiness endpoint for reverse proxies and deployment checks. */
 @Controller('healthz')
@@ -12,6 +13,7 @@ export class HealthController {
     private readonly difyClient: DifyClientService,
   ) {}
 
+  @Public()
   @Get()
   async readiness(@Query('detailed') detailed = '') {
     try {

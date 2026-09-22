@@ -4,6 +4,7 @@
 // 变量聚合（策略/分组）、类型系统（8 种类型 + Array/File 子菜单）、
 // 卡片视觉（无多余文字、连线、圆点大小）
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 
 const FRONT = 'http://localhost:3000';
@@ -105,7 +106,7 @@ async function main() {
   await page.evaluate(async () => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);

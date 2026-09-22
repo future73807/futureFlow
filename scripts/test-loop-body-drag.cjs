@@ -2,6 +2,7 @@
 'use strict';
 // 验证：拖循环体空白区 = 整体拖动；点/拖体内节点 = 只动节点
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 function findBrowser() {
   return [
@@ -16,7 +17,7 @@ async function main() {
   await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
   await page.locator('#account').fill('admin');
-  await page.locator('#password').fill('futureFlow@');
+  await page.locator('#password').fill(adminPassword());
   await page.locator('button[type="submit"]').first().click();
   await page.waitForTimeout(2000);
   await page.goto(`http://localhost:3000/canvas/${wf}`, { waitUntil: 'domcontentloaded' });

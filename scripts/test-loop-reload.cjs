@@ -2,6 +2,7 @@
 'use strict';
 // 重新打开已保存的循环工作流，验证加载后渲染一致（持久化往返）
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 const OUT = process.env.SHOT_DIR || 'D:/Desktop/futureFlow/gui-test-screenshots';
 function findBrowser() {
@@ -18,7 +19,7 @@ async function main() {
   await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
   await page.locator('#account').fill('admin');
-  await page.locator('#password').fill('futureFlow@');
+  await page.locator('#password').fill(adminPassword());
   await page.locator('button[type="submit"]').first().click();
   await page.waitForTimeout(2000);
   const list = await page.evaluate(async () => {

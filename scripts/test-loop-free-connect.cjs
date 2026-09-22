@@ -2,6 +2,7 @@
 'use strict';
 // 验证：空循环体 → 从面板加节点到循环体内 → 自由连线（左圆点→节点→右圆点）
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 
 const FRONT = 'http://localhost:3000';
@@ -46,7 +47,7 @@ async function main() {
   await page.evaluate(async () => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);

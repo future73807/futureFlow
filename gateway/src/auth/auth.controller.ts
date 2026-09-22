@@ -16,6 +16,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './jwt.guard';
 import { VIP_NODE_PERMISSIONS } from './auth.module';
+import { Public } from '../common/decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -38,11 +39,13 @@ export class AuthController {
     return req.ip || 'unknown';
   }
 
+  @Public()
   @Post('register')
   async register(@Body() dto: RegisterDto, @Request() req: ExpressRequest) {
     return this.authService.register(dto, this.clientAddress(req));
   }
 
+  @Public()
   @Post('login')
   async login(@Body() dto: LoginDto, @Request() req: ExpressRequest) {
     const clientKey = `${this.clientAddress(req)}|${String(dto.account || '').toLowerCase()}`;

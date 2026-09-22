@@ -7,6 +7,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { join } = require('node:path');
 
 // 默认网关地址从仓库根目录 .env 读取，避免端口调整后脚本失联。
@@ -23,7 +24,7 @@ function resolveGatewayBase() {
 }
 const BASE = resolveGatewayBase();
 const ADMIN = process.env.ADMIN_USERNAME || 'admin';
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
 
 const results = [];
 function record(name, ok, detail = '') {

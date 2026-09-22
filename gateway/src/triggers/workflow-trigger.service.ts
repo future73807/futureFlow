@@ -117,12 +117,7 @@ export class WorkflowTriggerService {
     const saved = await this.triggerRepo.save(trigger);
     return {
       trigger: this.serialize(saved),
-      ...(plaintext
-        ? {
-            secret: plaintext,
-            webhookUrl: `${this.config.get<string>('PUBLIC_GATEWAY_URL', 'http://localhost:3001').replace(/\/$/, '')}/webhooks/${plaintext}`,
-          }
-        : {}),
+      ...(plaintext ? { secret: plaintext, ...this.webhookEndpoints(plaintext) } : {}),
     };
   }
 
@@ -206,7 +201,23 @@ export class WorkflowTriggerService {
     return {
       trigger: this.serialize(trigger),
       secret,
-      webhookUrl: `${this.config.get<string>('PUBLIC_GATEWAY_URL', 'http://localhost:3001').replace(/\/$/, '')}/webhooks/${secret}`,
+      ...this.webhookEndpoints(secret),
+    };
+  }
+
+  /**
+   * 同时给出两种调用方式。推荐用 `webhookUrl` 之外的方式：把 secret 放进
+   * `X-Webhook-Secret` 头打向 `webhookEndpoint`——路径里的密钥会被反向代理和
+   * 浏览器历史记进日志。旧的 `webhookUrl` 继续保留以免打断已发出的地址。
+   */
+  private webhookEndpoints(secret: string) {
+    const base = this.config
+      .get<string>('PUBLIC_GATEWAY_URL', 'http://localhost:3001')
+      .replace(/\/$/, '');
+    return {
+      webhookUrl: `${base}/webhooks/${secret}`,
+      webhookEndpoint: `${base}/webhooks`,
+      webhookSecretHeader: 'X-Webhook-Secret',
     };
   }
 

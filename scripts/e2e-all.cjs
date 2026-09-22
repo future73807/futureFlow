@@ -24,6 +24,7 @@
 'use strict';
 
 const { spawnSync } = require('node:child_process');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync, readFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 
@@ -64,7 +65,7 @@ const FRONTEND_URL = trimSlash(
 );
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
   || process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD
-  || 'futureFlow@';
+  || adminPassword();
 
 // ───────────────────────── 套件清单 ─────────────────────────
 //

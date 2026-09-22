@@ -53,6 +53,8 @@ loadEnvFile(resolve(process.cwd(), '..', '.futureflow.runtime.env'));
 loadEnvFile(resolve(process.cwd(), '.env'));
 loadEnvFile(resolve(process.cwd(), '..', '.env'));
 
+// 迁移要建表改列，必须用 POSTGRES_USER（镜像建出来的超级用户）。
+// 应用运行时用的是权限受限的 POSTGRES_APP_USER，两者刻意分开。
 const postgresPassword = process.env.POSTGRES_PASSWORD;
 if (!postgresPassword) {
   throw new Error('POSTGRES_PASSWORD is required; run pnpm env:init first');

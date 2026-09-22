@@ -21,6 +21,7 @@ import { WorkflowCrudService } from './workflow-crud.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { describeError } from '../common/describe-error';
 import { WORKFLOW_ID_PIPE } from '../security/uuid-param.pipe';
+import { Public } from '../common/decorators/public.decorator';
 
 /**
  * 工作流控制器
@@ -50,6 +51,7 @@ export class WorkflowsController {
    * 旧入口把任意客户端 FlowGram 与一个固定 legacy Dify 应用混用，执行语义
    * 与提交的图不一致，因此明确停用，避免校验/计费对象与实际工作流错位。
    */
+  @Public()
   @Post('run')
   runWorkflow() {
     throw new BadRequestException(
@@ -61,6 +63,7 @@ export class WorkflowsController {
    * 执行已发布的工作流快照。
    * 认证支持 JWT 和平台 API Key，客户端只能传入 Start 节点定义的 inputs。
    */
+  @Public()
   @Post(':id/execute')
   @HttpCode(200)
   async executePublishedWorkflow(
@@ -102,6 +105,7 @@ export class WorkflowsController {
    * 草稿云端试运行：把当前草稿转换为 Dify DSL，导入并发布到该用户专属的
    * 沙箱应用后真实执行（SSE）。DSL 摘要一致时复用上次导入，不重复发布。
    */
+  @Public()
   @Post(':id/draft-run')
   @HttpCode(200)
   async draftRun(
@@ -239,6 +243,7 @@ export class WorkflowsController {
    * GET /workflows/health
    * 网关健康检查
    */
+  @Public()
   @Get('health')
   health() {
     return {

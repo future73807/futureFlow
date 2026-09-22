@@ -2,6 +2,7 @@
 'use strict';
 // 验证：把画布上的节点拖进循环体（flowgram NodeIntoContainer 原生路径）
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 
 function findBrowser() {
@@ -53,7 +54,7 @@ async function main() {
   const wfid = await page.evaluate(async (body) => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);

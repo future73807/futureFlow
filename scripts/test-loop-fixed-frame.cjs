@@ -8,6 +8,7 @@
 //  4) 拖框空白：框+节点整体动、卡片不动
 //  5) 拖卡片：卡片动、框/节点不动
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 
 function findBrowser() {
@@ -28,7 +29,7 @@ async function main() {
   await page.evaluate(async () => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { GlobalAuthGuard } from './common/guards/global-auth.guard';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from './database/database.module';
@@ -42,8 +44,15 @@ import { TasksModule } from './tasks/tasks.module';
       type: 'postgres',
       host: config.get<string>('POSTGRES_HOST', 'localhost'),
       port: Number.parseInt(config.get<string>('POSTGRES_PORT', '5432'), 10),
-      username: config.get<string>('POSTGRES_USER', 'futureflow'),
-      password: config.getOrThrow<string>('POSTGRES_PASSWORD'),
+      // 运行时优先用权限受限的应用账号。POSTGRES_USER 是镜像建出来的超级用户，
+      // 只应由迁移脚本使用（见 database/data-source.ts）；注入或配置泄露时，
+      // 用它能直接控制整个 Postgres 实例，用应用账号只能碰到 futureflow 库。
+      username:
+        config.get<string>('POSTGRES_APP_USER') ||
+        config.get<string>('POSTGRES_USER', 'futureflow'),
+      password:
+        config.get<string>('POSTGRES_APP_PASSWORD') ||
+        config.getOrThrow<string>('POSTGRES_PASSWORD'),
       database: config.get<string>('POSTGRES_DB', 'futureflow'),
       autoLoadEntities: true,
       // 开发环境自动同步表结构,生产环境关闭
@@ -81,6 +90,11 @@ import { TasksModule } from './tasks/tasks.module';
     LocalToolsModule,
     PluginsModule,
     TasksModule,
+  ],
+  providers: [
+    // 全局鉴权：默认要登录，只有显式 @Public() 或自带守卫的路由才放行。
+    // 之前「某控制器要不要鉴权」全靠开发者记得写 @UseGuards，出过两次事故。
+    { provide: APP_GUARD, useClass: GlobalAuthGuard },
   ],
 })
 export class AppModule {}

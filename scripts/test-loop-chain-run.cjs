@@ -2,11 +2,12 @@
 'use strict';
 // 端到端验证：循环体内多节点链（块开始 → 代码1 → 代码2 → 块结束）可试运行
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { existsSync } = require('node:fs');
 
 const FRONT = 'http://localhost:3000';
 const GATEWAY = 'http://localhost:3001';
-const PW = process.argv[2] || 'futureFlow@';
+const PW = process.argv[2] || adminPassword();
 
 function findBrowser() {
   return [
@@ -138,7 +139,7 @@ async function main() {
   await page.evaluate(async () => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: 'futureFlow@' }),
+      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);

@@ -57,6 +57,16 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
     throw new Error('POSTGRES_PASSWORD must be at least 32 characters and not a placeholder');
   }
 
+  // 应用运行账号（可选）。给了密码就必须配用户名，且强度不能低于超级用户账号。
+  const appUser = environment.POSTGRES_APP_USER;
+  const appPassword = environment.POSTGRES_APP_PASSWORD;
+  if (appPassword && (isPlaceholder(appPassword) || appPassword.length < 32)) {
+    throw new Error('POSTGRES_APP_PASSWORD must be at least 32 characters and not a placeholder');
+  }
+  if (appPassword && !appUser) {
+    throw new Error('POSTGRES_APP_USER is required when POSTGRES_APP_PASSWORD is set');
+  }
+
   const mediaEncryptionSecret = environment.MEDIA_CREDENTIAL_ENCRYPTION_SECRET;
   if (mediaEncryptionSecret && (
     isPlaceholder(mediaEncryptionSecret)

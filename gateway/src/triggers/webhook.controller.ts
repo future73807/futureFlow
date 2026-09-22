@@ -1,8 +1,9 @@
-import { Body, Controller, Headers, Param, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Headers, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { WorkflowTriggerService } from './workflow-trigger.service';
 import { WebhookRateLimitService } from './webhook-rate-limit.service';
+import { Public } from '../common/decorators/public.decorator';
 
 /** Public token URL. The high-entropy token is hashed at rest and can rotate. */
 @Controller('webhooks')
@@ -13,9 +14,16 @@ export class WebhookController {
     private readonly rateLimit: WebhookRateLimitService,
   ) {}
 
-  @Post(':secret')
+  /**
+   * 密钥可以放在 `X-Webhook-Secret` 头里，也可以（旧方式，已不推荐）放在路径里。
+   * 路径里的密钥会被反向代理、网关和浏览器历史原样记进日志，所以新调用方一律
+   * 走头；旧的 `/webhooks/:secret` 仍可用，避免打断已经发出去的地址。
+   */
+  @Public()
+  @Post(['', ':secret'])
   async invoke(
-    @Param('secret') secret: string,
+    @Param('secret') pathSecret: string | undefined,
+    @Headers('x-webhook-secret') headerSecret: string | undefined,
     @Body() body: Record<string, any>,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Res() res: Response,
@@ -23,6 +31,16 @@ export class WebhookController {
     let triggerId: string | undefined;
     let succeeded = false;
     try {
+      const secret = (headerSecret || pathSecret || '').trim();
+      if (!secret) {
+        throw new BadRequestException({
+          message: '缺少 webhook 密钥：请用 X-Webhook-Secret 请求头传递',
+          code: 'webhook_secret_missing',
+        });
+      }
+      if (!headerSecret && pathSecret) {
+        res.setHeader('X-Webhook-Secret-Source', 'path-deprecated');
+      }
       const runnable = await this.triggers.resolveWebhook(secret);
       triggerId = runnable.trigger.id;
       // 无需认证的公网入口：按触发器限流兜底，防泄漏地址被无限刷调用消耗计费。

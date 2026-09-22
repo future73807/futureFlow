@@ -99,7 +99,7 @@ function bodyText(page) {
 async function main() {
   if (!PW) {
     console.error('用法: node scripts/test-gui-click.cjs <admin-password>');
-    console.error('密码默认见 .env 的 GATEWAY_BOOTSTRAP_ADMIN_PASSWORD（默认 futureFlow@）');
+    console.error('密码取自 .env 的 GATEWAY_BOOTSTRAP_ADMIN_PASSWORD（或用 argv[2] 覆盖）');
     process.exit(2);
   }
   const executablePath = findBrowserExecutable();
