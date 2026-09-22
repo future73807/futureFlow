@@ -149,12 +149,22 @@ pnpm start
 需要分步执行时：
 
 ```bash
-docker compose up -d                              # 1. 容器栈
+pnpm run compose:up                               # 1. 容器栈
 pnpm --filter futureflow-gateway migration:run    # 2. 数据库迁移
 pnpm --filter futureflow-gateway start:prod       # 3. 网关
 pnpm --filter futureflow-frontend start           # 4. 前端
 curl http://localhost:3001/healthz                # 健康检查
 ```
+
+> **`pnpm run db:up` / `compose:up` / `db:down` / `db:logs` 会自动适配本机的 Compose 形式**：
+> 优先 `docker compose`（v2 插件，Docker Desktop 默认自带），插件缺失时回退到
+> `docker-compose` 独立二进制。两种形式的参数完全一致，探测逻辑见
+> `scripts/lib/docker-compose.cjs`。
+>
+> 直接敲 `docker compose ...` 在**只装了独立二进制**的机器上会报
+> `docker: unknown command: docker compose` —— 这不是命令敲错了，是缺插件；
+> 用 `docker info --format '{{json .ClientInfo.Plugins}}'` 可确认。
+> 需要手工执行 compose 时，用 `node scripts/compose.cjs <参数>` 同样会自动适配。
 
 默认端口：前端 3000、网关 3001、Dify 控制台 8080、Dify API 5001、PostgreSQL 5432。网关与 Dify 均只绑定 `127.0.0.1`。
 

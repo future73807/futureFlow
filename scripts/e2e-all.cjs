@@ -88,6 +88,7 @@ const SUITES = [
   { id: 'aggregator-runtime', script: 'test-aggregator-runtime.cjs', group: 'local', desc: '变量聚合本地运行时' },
   { id: 'loop-types-runtime', script: 'test-loop-types-runtime.cjs', group: 'local', desc: '循环三种类型 + 中间变量' },
   { id: 'llm-runtime', script: 'test-llm-runtime.cjs', group: 'local', desc: 'LLM 节点试运行票据注入（前端契约）' },
+  { id: 'docker-compose', script: 'test-docker-compose.cjs', group: 'local', desc: 'compose 调用形式探测 + 禁止写死 `docker compose` 的防回归检查' },
 
   // ── 需要网关 + Dify ──
   { id: 'new-modules-api', script: 'test-new-modules-api.cjs', group: 'api', desc: '知识库 / 文件上传 / MCP 注册' },

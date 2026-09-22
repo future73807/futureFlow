@@ -16,6 +16,19 @@ const {
 const net = require('node:net');
 const { basename, delimiter, dirname, join, resolve } = require('node:path');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
+const { composeInvocation, describeCompose } = require('./lib/docker-compose.cjs');
+
+/**
+ * 把 compose 参数解析成可直接展开给 runCommand 的 [command, args]。
+ *
+ * 不写死 `docker compose`：插件缺失的机器上会报
+ * `docker: unknown command: docker compose`，看起来像命令敲错、实际是环境缺插件
+ * （本机就是这样）。探测与回退见 scripts/lib/docker-compose.cjs。
+ */
+function composeCommand(args) {
+  const { command, args: resolved } = composeInvocation(args);
+  return [command, resolved];
+}
 
 const ROOT = resolve(__dirname, '..');
 const BASE_COMPOSE = join(ROOT, 'docker-compose.yml');
@@ -270,8 +283,7 @@ function findPublishedPort(serviceConfig, target) {
 
 async function verifyResolvedCompose(composeArgs, env, project, initWorkspace, ports) {
   const { stdout } = await runCommand(
-    'docker',
-    [...composeArgs, 'config', '--format', 'json'],
+    ...composeCommand([...composeArgs, 'config', '--format', 'json']),
     { env, echo: false, timeoutMs: 60_000 },
   );
   const config = JSON.parse(stdout.replace(/^\uFEFF/, ''));
@@ -767,13 +779,13 @@ function assertMigratedEnvironment(isolatedEnvPath, expectedSecrets) {
 async function collectDiagnostics(composeArgs, env, gatewayLogs) {
   console.error('\n=== isolated fresh-volume diagnostics ===');
   try {
-    await runCommand('docker', [...composeArgs, 'ps', '--all'], {
+    await runCommand(...composeCommand([...composeArgs, 'ps', '--all']), {
       env,
       timeoutMs: 30_000,
     });
   } catch {}
   try {
-    await runCommand('docker', [...composeArgs, 'logs', '--no-color', '--tail', '200'], {
+    await runCommand(...composeCommand([...composeArgs, 'logs', '--no-color', '--tail', '200']), {
       env,
       timeoutMs: 60_000,
     });
@@ -906,7 +918,8 @@ async function main() {
       `${name} must be absent from the starter process environment`,
     );
   }
-  const composeArgs = ['compose', '--profile', 'bootstrap'];
+  // 不含 'compose' 前缀 —— 前缀由 composeCommand() 按本机可用的形式补上
+  const composeArgs = ['--profile', 'bootstrap'];
   const rootEnvPath = join(ROOT, '.env');
   const runtimeEnvPath = join(ROOT, '.futureflow.runtime.env');
   const rootEnvBefore = fileSnapshot(rootEnvPath);
@@ -943,13 +956,11 @@ async function main() {
         assertSafeProjectName(project);
         try {
           await runCommand(
-            'docker',
-            [...composeArgs, 'down', '--volumes', '--remove-orphans'],
+            ...composeCommand([...composeArgs, 'down', '--volumes', '--remove-orphans']),
             { env: starterEnv, timeoutMs: 3 * 60_000 },
           );
           const { stdout } = await runCommand(
-            'docker',
-            [...composeArgs, 'ps', '--all', '--quiet'],
+            ...composeCommand([...composeArgs, 'ps', '--all', '--quiet']),
             { env: starterEnv, echo: false, timeoutMs: 30_000 },
           );
           assert.equal(
@@ -1075,7 +1086,7 @@ async function main() {
     await stopOneClickGateway(starter, gatewayPort);
     starter = null;
     assert.equal(await isPortOpen(gatewayPort), false, 'Gateway port remained open after stopping the starter');
-    await runCommand('docker', [...composeArgs, 'down', '--remove-orphans'], {
+    await runCommand(...composeCommand([...composeArgs, 'down', '--remove-orphans']), {
       env: starterEnv,
       timeoutMs: 3 * 60_000,
     });

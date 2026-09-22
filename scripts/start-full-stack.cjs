@@ -2,8 +2,23 @@ const { spawn, spawnSync } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const { dirname, resolve } = require('node:path');
 const net = require('node:net');
+const { composeInvocation, describeCompose } = require('./lib/docker-compose.cjs');
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+
+/**
+ * 把 compose 参数解析成本机可用的调用形式。
+ *
+ * 不能写死 `docker compose`：插件缺失的机器上会报
+ * `docker: unknown command: docker compose`，看起来像命令敲错，实际是环境缺插件
+ * （本机就是这样，`docker info` 的插件列表里只有 dhi）。探测与回退见
+ * scripts/lib/docker-compose.cjs。
+ */
+function resolveDockerArgs(args) {
+  return args[0] === 'compose'
+    ? composeInvocation(args.slice(1))
+    : { command: 'docker', args };
+}
 
 function run(command, args, env) {
   const result = spawnSync(command, args, {
@@ -19,6 +34,18 @@ function run(command, args, env) {
       : `exit code ${result.status}`;
     throw new Error(`${command} ${args.join(' ')} failed with ${outcome}`);
   }
+}
+
+/**
+ * 跑一条 compose 命令，前缀按本机情况解析（`docker compose` 或 `docker-compose`）。
+ *
+ * 刻意**不**写成 `run('docker', ['compose', ...])`：那样在源码里看起来仍是写死的
+ * 插件形式，scripts/test-docker-compose.cjs 的静态防回归检查无法与真正的写死区分，
+ * 只能放行整类写法、失去意义。
+ */
+function runCompose(args, env) {
+  const { command, args: resolved } = composeInvocation(args);
+  run(command, resolved, env);
 }
 
 function resolveConfiguredPath(environment, name, fallback) {
@@ -74,7 +101,12 @@ function buildChildEnvironment(explicitEnvironment, envFilePath, overrides = {})
 }
 
 function captureDocker(args, env) {
-  return spawnSync('docker', args, {
+  const resolved = resolveDockerArgs(args);
+  // 刻意**不加** shell：Windows 上 shell 模式会把参数拼成一条命令行交给 cmd，
+  // Node 不会替我们加引号，于是 `--format '{{json .State}}'` 里的空格被拆成两个
+  // 参数，docker 报 `template parsing error: unclosed action` —— 健康检查会因此
+  // 永远读不到 Health 字段、一直等到超时。实测确认过。
+  return spawnSync(resolved.command, resolved.args, {
     cwd: process.cwd(),
     env,
     encoding: 'utf8',
@@ -238,7 +270,10 @@ async function main(args = process.argv.slice(2)) {
   }
 
   console.log('Starting the full futureFlow stack: PostgreSQL, Dify API/Worker/Web, Sandbox, SSRF Proxy, Redis, Weaviate, gateway, and canvas.');
-  run('docker', ['compose', 'up', '-d'], env);
+  // 说明实际用的是哪一种 compose：插件缺失时静默回退到独立二进制，
+  // 不打印的话排查「为什么用的不是我装的那个版本」会很费劲。
+  console.log(`Using ${describeCompose()}`);
+  runCompose(['up', '-d'], env);
   await waitForHealth('postgres', env, 90_000);
   await waitForHealth('ssrf_proxy', env, 90_000);
   await waitForHealth('sandbox', env, 90_000);
@@ -248,8 +283,8 @@ async function main(args = process.argv.slice(2)) {
   // until the container exits successfully, so Gateway can never read .env
   // while the Dify app/key update is still in flight.
   console.log('Running Dify auto-initialization...');
-  run('docker', [
-    'compose', '--profile', 'bootstrap', 'run', '--rm', '--no-TTY',
+  runCompose([
+    '--profile', 'bootstrap', 'run', '--rm', '--no-TTY',
     '--interactive=false', '--no-deps', 'dify-init',
   ], env);
   console.log('Dify initialization completed successfully.');
@@ -306,12 +341,19 @@ module.exports = {
   childProcessExitCode,
   choosePostgresPort,
   composeContainerIds,
+  // 导出给 scripts/test-docker-compose.cjs：`--format '{{json .State}}'` 这类
+  // 带空格的模板参数一旦被 shell 模式拆开，健康检查会永远读不到 Health 字段、
+  // 一路等到超时（实测踩过），需要真实探测把它挡住。
+  containerState,
   loadEnvFile,
   main,
   parseEnvContent,
   parseEnvValue,
   persistRuntimePostgresPort,
   resolveConfiguredPath,
+  // 导出给 scripts/test-docker-compose.cjs：验证 compose 前缀确实按本机情况解析，
+  // 而不是写死 `docker compose`。
+  resolveDockerArgs,
   runningPostgresPort,
   waitForHealth,
 };
