@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Post,
   Request,
@@ -15,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { FILE_ID_PIPE } from '../security/uuid-param.pipe';
 import { FileStorageService } from './file-storage.service';
@@ -68,13 +70,37 @@ export class FilesController {
       fileId,
       this.isAdmin(req),
     );
+
+    // 先确认物理文件真的在盘上，再发响应头。
+    //
+    // 少了这一步，文件缺失时 createReadStream 会发出一个**没人处理**的 'error'，
+    // 在 Node 里等同于 uncaughtException —— 网关进程直接退出（本项目没有全局
+    // uncaughtException 兜底）。而且那时响应头已经发出去，客户端只会拿到一个
+    // 半截的 200，看不到任何有用信息。DB 行在、文件不在并不罕见：手工清盘、
+    // 或从备份恢复时媒体目录不完整，都会造成这种状态。
+    try {
+      await stat(absolutePath);
+    } catch {
+      throw new NotFoundException('文件内容已丢失，请重新上传');
+    }
+
     res.setHeader('Content-Type', record.mimeType || 'application/octet-stream');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(record.originalName)}"`,
     );
     res.setHeader('Content-Length', String(record.sizeBytes));
-    createReadStream(absolutePath).pipe(res);
+
+    // 再给流挂一个 error 处理作为兜底：stat 通过之后、读取之前文件仍可能被删掉
+    // （TOCTOU）。没有它，同一个未处理错误依旧会掀掉进程。
+    // 写法与 media.controller.ts 的 Range 下载保持一致。
+    const stream = createReadStream(absolutePath);
+    await new Promise<void>((resolve, reject) => {
+      stream.once('error', reject);
+      res.once('finish', resolve);
+      res.once('close', resolve);
+      stream.pipe(res);
+    });
   }
 
   @Delete(':fileId')

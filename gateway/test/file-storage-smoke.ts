@@ -5,15 +5,22 @@
  * 扩展名白名单、空文件拒绝、大小上限、用户隔离、路径不回显、删除清理。
  */
 import assert from 'node:assert/strict';
+import { Writable } from 'node:stream';
 
 import { ConfigService } from '@nestjs/config';
-import { ForbiddenException, PayloadTooLargeException, UnsupportedMediaTypeException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  PayloadTooLargeException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 
 import { FileUpload } from '../src/database/entities/file-upload.entity';
 import { FileStorageService } from '../src/files/file-storage.service';
+import { FilesController } from '../src/files/files.controller';
 
 interface Row {
   id: string;
@@ -69,6 +76,78 @@ async function makeService() {
   return { service: new FileStorageService(makeRepo(), config), root };
 }
 
+/** 最小的 Express Response 替身：只要能接住 pipe 过来的字节即可。 */
+function makeDownloadResponse() {
+  const chunks: Buffer[] = [];
+  const res = new Writable({
+    write(chunk, _enc, cb) {
+      chunks.push(Buffer.from(chunk));
+      cb();
+    },
+  }) as any;
+  res.headers = {} as Record<string, string>;
+  res.setHeader = (name: string, value: string) => { res.headers[name] = value; };
+  res.status = () => res;
+  return { res, body: () => Buffer.concat(chunks).toString('utf8') };
+}
+
+/**
+ * 下载路径：DB 行在、物理文件不在时**必须返回 404，而不是让进程退出**。
+ *
+ * 修复前的写法是 `createReadStream(path).pipe(res)` —— 没有 error 处理。
+ * 文件缺失时流会发出一个没人处理的 'error'，在 Node 里等同于
+ * uncaughtException，而本项目**没有全局 uncaughtException 兜底**，
+ * 结果是网关进程直接退出（实测确认）。DB 行在、文件不在并不罕见：
+ * 手工清盘、或从备份恢复时媒体目录不完整，都会造成这种状态。
+ */
+async function testDownloadWithMissingFile() {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-dl-'));
+  const presentFile = path.join(tmpRoot, 'present.txt');
+  fs.writeFileSync(presentFile, 'download-body', 'utf8');
+  const missingFile = path.join(tmpRoot, 'gone.txt');
+
+  const record = {
+    id: 'f1', userId: 'u1', originalName: 'a.txt',
+    mimeType: 'text/plain', sizeBytes: 13, localPath: presentFile, createdAt: new Date(),
+  };
+  const controller = new FilesController({
+    open: async () => ({ record, absolutePath: presentFile }),
+  } as any);
+  const req = { user: { id: 'u1', role: 'user' } };
+
+  try {
+    // 1. 文件缺失先测：这是本用例的核心。
+    //    放第一个是为了让「修复被摘掉」时立刻在这里暴露 —— 未修复的写法不会
+    //    抛错（流错误是异步发出的），断言会直接失败；严重时未处理的 ENOENT
+    //    还会把整个测试进程掀掉。放在后面的话，前面那条断言会先失败，
+    //    掩盖掉真正要守的行为。
+    {
+      const missingController = new FilesController({
+        open: async () => ({
+          record: { ...record, localPath: missingFile },
+          absolutePath: missingFile,
+        }),
+      } as any);
+      const { res } = makeDownloadResponse();
+      await assert.rejects(
+        () => missingController.download(req, 'f1', res),
+        (error: unknown) => error instanceof NotFoundException,
+        '物理文件缺失必须返回 404；修复前这里会因未处理的流错误让进程退出',
+      );
+    }
+
+    // 2. 文件存在：正常流式返回，确认修复没有破坏正常路径
+    {
+      const { res, body } = makeDownloadResponse();
+      await controller.download(req, 'f1', res);
+      assert.equal(body(), 'download-body', '正常下载应返回文件内容');
+      assert.equal(res.headers['Content-Length'], '13');
+    }
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const { service, root } = await makeService();
   const userId = '11111111-1111-4111-8111-111111111111';
@@ -114,6 +193,8 @@ async function main() {
     await service.remove(userId, stored.id);
     assert.equal((await service.list(userId)).length, 0);
     await assert.rejects(() => service.open(userId, stored.id));
+
+    await testDownloadWithMissingFile();
 
     console.log('file-storage smoke passed');
   } finally {
