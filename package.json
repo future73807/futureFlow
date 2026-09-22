@@ -6,6 +6,8 @@
   "scripts": {
     "install:all": "pnpm install",
     "db:up": "docker compose up -d postgres",
+    "db:grant-app-user": "node scripts/db-grant-app-user.cjs",
+    "admin:rotate-password": "node scripts/rotate-admin-password.cjs",
     "compose:up": "docker compose up -d",
     "infra:up": "node scripts/start-full-stack.cjs --infrastructure-only",
     "db:down": "docker compose down",
@@ -17,6 +19,9 @@
     "start": "node scripts/start-full-stack.cjs",
     "start:gateway:prod": "pnpm --filter futureflow-gateway run migration:run:prod && pnpm --filter futureflow-gateway start:prod",
     "env:init": "node scripts/init-env.cjs",
+    "audit:deps": "pnpm audit --prod",
+    "backup": "node scripts/backup.cjs",
+    "restore": "node scripts/restore.cjs",
     "quickstart": "pnpm run env:init && pnpm install --prod=false && pnpm run start",
     "build:gateway": "pnpm --filter futureflow-gateway build",
     "build:frontend": "pnpm --filter @futureflow/frontend build:prod",

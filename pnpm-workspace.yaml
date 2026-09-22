@@ -11,3 +11,24 @@ allowBuilds:
 
 patchedDependencies:
   '@flowgram.ai/runtime-js@1.0.12': patches/@flowgram.ai__runtime-js@1.0.12.patch
+
+# 依赖漏洞补丁级收敛（见 docs/dependency-audit.md）。
+# pnpm 11 起 overrides 只认这里，写在 package.json 的 pnpm.overrides 会被忽略。
+# 只放同大版本内的补丁/小版本：body-parser 1.x、qs 6.x、js-yaml 4.x、multer 2.x、
+# lodash 4.x。uuid 顶到 11（有 CJS 入口，网关用 tsc 编成 CJS 可直接 require）。
+# 未列：langsmith（要连带升 @langchain）、react-router v7、@tiptap/core——都要大版本。
+overrides:
+  'body-parser': ^1.20.6
+  'qs': ^6.16.0
+  'js-yaml': ^4.3.2
+  'multer': ^2.4.0
+  'lodash': ^4.18.1
+  'uuid': ^11.1.1
+  # react-router v7：修复 <Link>/useNavigate 反斜杠开放重定向与 SSR 水合构造函数注入。
+  # v7 保留了 v6 的 RouterProvider/Routes/Route/BrowserRouter 等 API，前端未用 unstable_*。
+  'react-router': ^7.18.4
+  'react-router-dom': ^7.18.4
+  'langsmith': ^0.6.0
+  # @tiptap/core 3.30.5+：修复 mergeAttributes() 的 __proto__ 原型污染（high）。
+  # semi-ui 本身就声明 ^3.10.7，仍在同大版本内。
+  '@tiptap/core': ^3.30.5
