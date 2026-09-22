@@ -10,6 +10,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
 // 默认网关地址从仓库根目录 .env 读取，避免端口调整后脚本失联。
@@ -24,8 +26,36 @@ function resolveGatewayBase() {
 }
 const BASE = resolveGatewayBase();
 const ADMIN = process.env.ADMIN_USERNAME || 'admin';
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
 const POLL_TIMEOUT_MS = Number(process.env.TASK_CENTER_TIMEOUT_MS || 240000);
+
+/**
+ * 本套件建的工作流名字是 `任务中心验收-<6 位时间戳>`，只能靠前缀匹配。
+ * 前缀用在这里是安全的：批量任务名 `任务中心验收批量任务`/`任务中心验收-取消用例`
+ * 属于任务实体而不是工作流，不会被匹配到。
+ */
+const WORKFLOW_PREFIX = '任务中心验收-';
+
+/** 登录后记下来，好让异常退出路径也能清理（脚本用 process.exit，finally 不保证执行）。 */
+let activeToken = '';
+
+/**
+ * 收尾清理：按前缀扫描并删除本套件（含此前中断残留）的工作流。
+ * 清理失败只警告、不判定套件失败——它是收尾动作，不是验收项本身。
+ */
+async function cleanupArtifacts() {
+  if (!activeToken) return null;
+  try {
+    return await cleanupTestWorkflows({
+      gateway: BASE,
+      token: activeToken,
+      prefixes: [WORKFLOW_PREFIX],
+    });
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+    return null;
+  }
+}
 
 const results = [];
 function record(name, ok, detail = '') {
@@ -63,6 +93,7 @@ async function main() {
   // 1) 登录
   const login = await json('POST', '/auth/login', null, { account: ADMIN, password: PASSWORD });
   const token = login.data?.accessToken;
+  activeToken = token || '';
   record('登录获取管理员 JWT', login.status === 200 || login.status === 201, `HTTP ${login.status}`);
   if (!token) throw new Error('登录失败，无法继续');
 
@@ -244,17 +275,26 @@ async function main() {
     `total=${async.data?.total}`,
   );
 
-  // 11) 清理：删掉验收专用工作流，避免污染资源列表
-  const cleanup = await json('DELETE', `/workflows/${target.id}`, token);
-  record('清理验收专用工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
+  // 11) 清理：按前缀删掉验收专用工作流，避免污染资源列表。
+  //     用共享清理件而不是单删 target.id —— 单删只能收拾「跑到这一行」的那一次，
+  //     套件中途崩掉留下的残留会一直堆在用户的工作流列表里。
+  const cleanup = await cleanupArtifacts();
+  if (cleanup) reportCleanup(cleanup, '任务中心验收工作流');
+  record(
+    '清理验收专用工作流',
+    !!cleanup && cleanup.failed.length === 0 && cleanup.matched >= 1,
+    cleanup ? `匹配 ${cleanup.matched} 个，删除 ${cleanup.deleted} 个` : '清理未执行',
+  );
 
   const failed = results.filter((item) => !item.ok).length;
   console.log(`\n===== 任务中心验收: ${results.length - failed}/${results.length} passed =====`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(`[FAIL] 任务中心验收中断 :: ${error.message}`);
+  // 中断也要清：否则这张验收工作流会留在用户列表里
+  await cleanupArtifacts();
   const failed = results.filter((item) => !item.ok).length + 1;
   console.log(`\n===== 任务中心验收: ${results.length - failed + 1}/${results.length + 1} passed =====`);
   process.exit(1);

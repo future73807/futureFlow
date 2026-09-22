@@ -16,6 +16,7 @@
 'use strict';
 
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
@@ -25,7 +26,7 @@ const HEADLESS = !process.argv.includes('--headless=false');
 const FRONT = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const GATEWAY = (process.env.GATEWAY_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '');
 const SHOT_DIR = join(process.cwd(), process.env.GUI_SHOT_DIR || 'gui-test-screenshots');
-const PASSWORD = PW || 'futureFlow@';
+const PASSWORD = PW || adminPassword();
 
 function findBrowserExecutable() {
   if (process.env.PLAYWRIGHT_EXECUTABLE_PATH) return process.env.PLAYWRIGHT_EXECUTABLE_PATH;

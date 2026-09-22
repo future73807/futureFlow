@@ -43,6 +43,12 @@ gateway/.futureflow-files/
 dify/volumes/
 postgres-data/
 
+# 备份产物（scripts/backup.cjs 生成，含数据库转储，切勿提交）
+.futureflow-backups/
+
+# pnpm 安装被中断时留在仓库根目录的临时文件
+_tmp_*
+
 # FlowGram demo
 demo-free-layout/node_modules/
 

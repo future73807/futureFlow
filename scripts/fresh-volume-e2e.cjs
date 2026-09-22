@@ -15,6 +15,7 @@ const {
 } = require('node:fs');
 const net = require('node:net');
 const { basename, delimiter, dirname, join, resolve } = require('node:path');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const BASE_COMPOSE = join(ROOT, 'docker-compose.yml');
@@ -803,6 +804,12 @@ async function main() {
   ]);
   assert.equal(new Set([postgresPort, difyApiPort, difyWebPort, gatewayPort]).size, 4);
   const ports = { postgres: postgresPort, difyApi: difyApiPort, difyWeb: difyWebPort, gateway: gatewayPort };
+  const gatewayBase = `http://127.0.0.1:${gatewayPort}`;
+  // 本套件建的工作流前缀。正常情况下整个隔离卷会被删除，产物随之消失；但
+  // --keep-resources / --keep-on-failure 会留下这个库和这两条测试工作流，
+  // 所以仍按共享件统一收尾，避免与其它套件的清理逻辑分叉。
+  const WORKFLOW_PREFIX = 'Fresh Volume E2E ';
+  let cleanupToken = null;
 
   const isolatedEnvPath = join(tempDir, '.env');
   const isolatedExamplePath = join(tempDir, '.env.example');
@@ -988,7 +995,6 @@ async function main() {
       return;
     }
 
-    const gatewayBase = `http://127.0.0.1:${gatewayPort}`;
     resourcesStarted = true;
     starter = startOneClickGateway(starterEnv, gatewayLogs);
     await waitForGateway(gatewayBase, starter);
@@ -1033,6 +1039,7 @@ async function main() {
       0,
       'Fresh Gateway unexpectedly returned a managed workflow binding',
     );
+    cleanupToken = login.accessToken;
     console.log('Gateway administrator login and automatic Dify authorization passed.');
 
     const published = [
@@ -1130,6 +1137,21 @@ async function main() {
   } finally {
     process.removeListener('SIGINT', signalHandler);
     process.removeListener('SIGTERM', signalHandler);
+    // 清理必须在停网关之前：它要调网关 API。清理失败不能盖掉真正的失败原因。
+    if (cleanupToken) {
+      try {
+        reportCleanup(
+          await cleanupTestWorkflows({
+            gateway: gatewayBase,
+            token: cleanupToken,
+            prefixes: [WORKFLOW_PREFIX],
+          }),
+          '本套件创建的工作流',
+        );
+      } catch (error) {
+        console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+      }
+    }
     await cleanup();
   }
 }

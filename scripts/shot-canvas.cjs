@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
 const FRONT = process.env.FRONTEND_URL || 'http://localhost:3000';
-const PW = process.argv[2] || 'futureFlow@';
+const PW = process.argv[2] || adminPassword();
 // 收尾清理要调网关 API（本脚本原为纯浏览器驱动，没有网关地址）
 const GATEWAY = (() => {
   if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');

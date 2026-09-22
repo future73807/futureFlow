@@ -9,6 +9,8 @@
 'use strict';
 
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync, readFileSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -20,6 +22,17 @@ function frontendBase() {
     if (port) return `http://localhost:${port}`;
   } catch { /* ignore */ }
   return 'http://localhost:3000';
+}
+
+/** 清理要走网关 API，所以还需要网关地址（不是前端地址）。 */
+function gatewayBase() {
+  if (process.env.GATEWAY_URL) return process.env.GATEWAY_URL.replace(/\/+$/, '');
+  try {
+    const env = readFileSync(join(process.cwd(), '.env'), 'utf8');
+    const port = env.match(/^GATEWAY_PORT=(.*)$/m)?.[1]?.trim();
+    if (port) return `http://localhost:${port}`;
+  } catch { /* ignore */ }
+  return 'http://localhost:3001';
 }
 function findBrowser() {
   if (process.env.PLAYWRIGHT_EXECUTABLE_PATH) return process.env.PLAYWRIGHT_EXECUTABLE_PATH;
@@ -35,13 +48,47 @@ function findBrowser() {
 }
 
 const FRONT = frontendBase();
-const PW = process.argv[2] || 'futureFlow@';
+const PW = process.argv[2] || adminPassword();
 const SHOT_DIR = join(process.cwd(), 'gui-test-screenshots');
+
+/**
+ * 画布页那一步会真的建一张工作流（名字 `按钮枚举核查-<5 位>`），只能前缀匹配。
+ * 本套件原来**完全没有清理**——每跑一次就在用户的工作流列表里留一张，
+ * 实测已经堆了两张。
+ */
+const WORKFLOW_PREFIX = '按钮枚举核查-';
+
 const results = [];
 const record = (name, ok, detail = '') => {
   results.push({ ok });
   console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ' :: ' + detail : ''}`);
 };
+
+/**
+ * 收尾清理：登录后按前缀扫描并删除本套件（含此前中断残留）的工作流。
+ * 清理失败只警告、不判定套件失败——它是收尾动作，不是验收项本身。
+ */
+async function cleanupArtifacts() {
+  const base = gatewayBase();
+  try {
+    const res = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: process.env.ADMIN_USERNAME || 'admin', password: PW }),
+    });
+    const token = (await res.json().catch(() => ({}))).accessToken;
+    if (!token) {
+      console.warn('工作流清理未完成（不判定失败）：登录未拿到 token');
+      return;
+    }
+    reportCleanup(
+      await cleanupTestWorkflows({ gateway: base, token, prefixes: [WORKFLOW_PREFIX] }),
+      '按钮枚举核查工作流',
+    );
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+  }
+}
 
 const PAGES = [
   { path: '/', name: '工作流', expect: ['创建画布', '导入', 'Dify 引擎'] },
@@ -210,6 +257,8 @@ async function main() {
   } finally {
     await page.close().catch(() => {});
     await browser.close().catch(() => {});
+    // 先关浏览器再清理：清理走的是网关 HTTP，不依赖浏览器句柄。
+    await cleanupArtifacts();
   }
 
   const failed = results.filter((r) => !r.ok).length;
@@ -217,7 +266,9 @@ async function main() {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(`[FAIL] 按钮枚举中断 :: ${error.message}`);
+  // 中断也要清：否则这张画布会留在用户的工作流列表里
+  await cleanupArtifacts();
   process.exit(1);
 });

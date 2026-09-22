@@ -9,6 +9,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
 // 默认网关地址从仓库根目录 .env 读取，避免端口调整后脚本失联。
@@ -24,7 +26,44 @@ function resolveGatewayBase() {
   return 'http://localhost:3001';
 }
 const BASE = resolveGatewayBase();
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
+
+/** 本套件的工作流名固定，用精确匹配（最安全，不会误伤用户数据）。 */
+const WORKFLOW_NAME = '云端试运行验收';
+
+/**
+ * 登录后记下凭据与知识库 id，好让异常退出路径也能清理。
+ * 脚本用 process.exit，finally 不保证执行，所以只能靠 catch 里再调一次。
+ */
+let activeToken = '';
+let activeDatasetId = '';
+
+/**
+ * 收尾清理。工作流走共享清理件（按名字扫描，连此前中断残留的一起收拾）；
+ * 知识库是另一类资源、共享件不管，仍用显式 DELETE。
+ * 清理失败只警告、不判定套件失败——它是收尾动作，不是验收项本身。
+ */
+async function cleanupArtifacts() {
+  if (!activeToken) return null;
+  let workflows = null;
+  try {
+    workflows = await cleanupTestWorkflows({
+      gateway: BASE,
+      token: activeToken,
+      names: [WORKFLOW_NAME],
+    });
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+  }
+  if (activeDatasetId) {
+    try {
+      await json('DELETE', `/knowledge/datasets/${activeDatasetId}`, activeToken);
+    } catch (error) {
+      console.warn(`知识库清理未完成（不判定失败）：${error?.message || error}`);
+    }
+  }
+  return workflows;
+}
 
 const results = [];
 function record(name, ok, detail = '') {
@@ -133,6 +172,7 @@ async function drainSse(res) {
 async function main() {
   const login = await json('POST', '/auth/login', null, { account: 'admin', password: PASSWORD });
   const token = login.data.accessToken;
+  activeToken = token || '';
   record('登录', Boolean(token));
   if (!token) process.exit(1);
 
@@ -140,6 +180,7 @@ async function main() {
   // 唯一后缀：Dify dataset 名称全局唯一，历史残留（如网关中断导致清理未执行）会引发 409。
   const uniqueSuffix = Date.now().toString(36);
   const ds = await json('POST', '/knowledge/datasets', token, { name: `试运行验收库-${uniqueSuffix}`, description: 'draft-run e2e' });
+  activeDatasetId = ds.data.id || '';
   record('创建知识库', ds.status === 201 && Boolean(ds.data.id), JSON.stringify(ds.data).slice(0, 100));
   const doc = await json('POST', `/knowledge/datasets/${ds.data.id}/documents`, token, {
     name: '说明.txt',
@@ -218,17 +259,24 @@ async function main() {
   record('运行记录包含 draft-run 来源', items.some((r) => r.source === 'draft-run'),
     `keys=${Object.keys(runs.data || {})} sources=${items.map((r) => r.source).join(',')}`);
 
-  // 7. 清理。
-  await json('DELETE', `/workflows/${workflowId}`, token);
-  await json('DELETE', `/knowledge/datasets/${ds.data.id}`, token);
-  record('清理验收资源', true);
+  // 7. 清理：工作流走共享清理件（按名字扫描，连此前中断残留的一起收拾），
+  //    知识库仍是显式 DELETE（共享件只覆盖工作流）。
+  const cleaned = await cleanupArtifacts();
+  if (cleaned) reportCleanup(cleaned, '云端试运行验收工作流');
+  record(
+    '清理验收资源',
+    !!cleaned && cleaned.failed.length === 0 && cleaned.matched >= 1,
+    cleaned ? `工作流匹配 ${cleaned.matched} 个，删除 ${cleaned.deleted} 个` : '清理未执行',
+  );
 
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n===== 草稿云端试运行端到端验收: ${passed}/${results.length} passed =====`);
   process.exit(passed === results.length ? 0 : 1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('FATAL:', error.message);
+  // 中断也要清：否则这张验收工作流和知识库会留在用户列表里
+  await cleanupArtifacts();
   process.exit(1);
 });

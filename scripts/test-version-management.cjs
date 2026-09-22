@@ -10,6 +10,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
 function resolveGatewayBase() {
@@ -23,7 +25,36 @@ function resolveGatewayBase() {
 }
 const BASE = resolveGatewayBase();
 const ADMIN = process.env.ADMIN_USERNAME || 'admin';
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
+
+/**
+ * 本套件建两张工作流：主流程那张带时间戳（前缀匹配），导入那张名字固定（精确匹配）。
+ * 后者原本只在「导入成功且 id 存在」时才顺手删，脚本崩在这两步之间就会一直留在库里。
+ */
+const WORKFLOW_PREFIXES = ['版本验收-'];
+const WORKFLOW_NAMES = ['导入验收工作流'];
+
+/** 登录后记下来，好让异常退出路径也能清理（脚本用 process.exit，finally 不保证执行）。 */
+let activeToken = '';
+
+/**
+ * 收尾清理：按前缀/名字扫描并删除本套件（含此前中断残留）的工作流。
+ * 清理失败只警告、不判定套件失败——它是收尾动作，不是验收项本身。
+ */
+async function cleanupArtifacts() {
+  if (!activeToken) return null;
+  try {
+    return await cleanupTestWorkflows({
+      gateway: BASE,
+      token: activeToken,
+      prefixes: WORKFLOW_PREFIXES,
+      names: WORKFLOW_NAMES,
+    });
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+    return null;
+  }
+}
 
 const results = [];
 function record(name, ok, detail = '') {
@@ -102,6 +133,7 @@ const graph = (promptText) => ({
 async function main() {
   const login = await json('POST', '/auth/login', null, { account: ADMIN, password: PASSWORD });
   const token = login.data?.accessToken;
+  activeToken = token || '';
   record('登录获取管理员 JWT', !!token, `HTTP ${login.status}`);
   if (!token) throw new Error('登录失败');
 
@@ -224,8 +256,14 @@ async function main() {
     });
     record('导入悬空边被拒(400)', badEdge.status === 400, String(badEdge.data?.message || ''));
   } finally {
-    const cleanup = await json('DELETE', `/workflows/${workflowId}`, token);
-    record('清理验收工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
+    // 走共享清理件：按前缀/名字扫描，连导入用例和此前中断残留的一起收拾。
+    const cleanup = await cleanupArtifacts();
+    if (cleanup) reportCleanup(cleanup, '版本管理验收工作流');
+    record(
+      '清理验收工作流',
+      !!cleanup && cleanup.failed.length === 0 && cleanup.matched >= 1,
+      cleanup ? `匹配 ${cleanup.matched} 个，删除 ${cleanup.deleted} 个` : '清理未执行',
+    );
   }
 
   const failed = results.filter((item) => !item.ok).length;
@@ -233,7 +271,9 @@ async function main() {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(`[FAIL] 版本管理验收中断 :: ${error.message}`);
+  // 中断也要清：否则这几张验收工作流会留在用户列表里
+  await cleanupArtifacts();
   process.exit(1);
 });

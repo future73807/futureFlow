@@ -20,6 +20,7 @@
  * 验收；而「驱动是否随平台提供」本质是网关侧能力，直接验更准确也更稳定。
  */
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
@@ -59,7 +60,7 @@ const GATEWAY = resolveBase('GATEWAY_URL', 'PUBLIC_GATEWAY_URL', 3001);
 const FRONTEND = resolveBase('FRONTEND_URL', 'FRONTEND_PORT', 3000);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
   || process.env.GATEWAY_BOOTSTRAP_ADMIN_PASSWORD
-  || 'futureFlow@';
+  || adminPassword();
 
 const dbConnection = {
   host: process.env.POSTGRES_HOST || '127.0.0.1',

@@ -20,6 +20,7 @@ const { resolve } = require('node:path');
 const http = require('node:http');
 const { randomBytes } = require('node:crypto');
 const net = require('node:net');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 
 const randomSecret = () => randomBytes(32).toString('hex');
 // 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
@@ -422,6 +423,37 @@ async function step4_startGateway() {
   throw new Error('Gateway did not start');
 }
 
+/**
+ * 本套件建的验收工作流名是 `E2E Workflow <时间戳>`，只能前缀匹配。
+ *
+ * 注意：step5 里那条 `DELETE /workflows/:id` 是**端点测试**，不是清理，
+ * 不能拿共享清理件替掉它——那会把一个真实测试项删掉。这里只在每轮收尾时补一次
+ * 兜底清理，让失败重试或中途崩掉留下的工作流也能被带走。
+ */
+const E2E_WORKFLOW_PREFIX = 'E2E Workflow';
+
+/** step5 内部才知道 token，这里记一份给收尾清理用。 */
+let cleanupToken = '';
+
+/**
+ * 兜底清理。必须在网关进程被 kill **之前**调用，否则没有服务可以连。
+ */
+async function cleanupE2eWorkflows() {
+  if (!cleanupToken) return;
+  try {
+    reportCleanup(
+      await cleanupTestWorkflows({
+        gateway: CONFIG.GATEWAY_URL,
+        token: cleanupToken,
+        prefixes: [E2E_WORKFLOW_PREFIX],
+      }),
+      'E2E 验收工作流',
+    );
+  } catch (error) {
+    log('warn', `工作流清理未完成（不判定失败）：${error?.message || error}`);
+  }
+}
+
 // ==================== 步骤 5: API 测试 ====================
 async function step5_apiTests() {
   log('info', 'Step 5: Running API tests...');
@@ -448,6 +480,7 @@ async function step5_apiTests() {
     if (res.status !== 201) throw new Error(`Status: ${res.status}`);
     if (res.data.user?.role !== 'admin') throw new Error('Not admin');
     adminToken = res.data.accessToken;
+    cleanupToken = adminToken || '';
     return { role: res.data.user.role };
   }, results);
   
@@ -775,6 +808,9 @@ async function main() {
         await sleep(CONFIG.RETRY_DELAY);
       }
     } finally {
+      // 先清工作流再 kill 网关：顺序反了就没有服务可以连，清理会静默失败。
+      // 放在每轮（而不是整体）的 finally 里：失败重试时上一轮的残留也要带走。
+      await cleanupE2eWorkflows();
       if (gatewayProcess && gatewayProcess.exitCode === null) {
         gatewayProcess.kill();
         await sleep(500);

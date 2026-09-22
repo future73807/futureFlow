@@ -2,12 +2,13 @@
 'use strict';
 // 端到端验证：带循环节点的工作流在画布保存后能通过网关试运行跑通
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync } = require('node:fs');
 
 const FRONT = 'http://localhost:3000';
 const GATEWAY = 'http://localhost:3001';
-const PW = process.argv[2] || 'futureFlow@';
+const PW = process.argv[2] || adminPassword();
 
 function findBrowser() {
   return [

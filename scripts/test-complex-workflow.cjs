@@ -8,6 +8,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
 function gatewayBase() {
@@ -20,7 +22,34 @@ function gatewayBase() {
   return 'http://localhost:3001';
 }
 const BASE = gatewayBase();
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
+
+/**
+ * 本套件建两张工作流，名字都带时间戳后缀，只能前缀匹配。
+ * 两个前缀都足够独特，不会撞上用户自己起的名字。
+ */
+const WORKFLOW_PREFIXES = ['诗词 API 验收-', '复杂工作流验收-'];
+
+/** 登录后记下来，好让异常退出路径也能清理（脚本用 process.exit，finally 不保证执行）。 */
+let activeToken = '';
+
+/**
+ * 收尾清理：按前缀扫描并删除本套件（含此前中断残留）的工作流。
+ * 清理失败只警告、不判定套件失败——它是收尾动作，不是验收项本身。
+ */
+async function cleanupArtifacts() {
+  if (!activeToken) return null;
+  try {
+    return await cleanupTestWorkflows({
+      gateway: BASE,
+      token: activeToken,
+      prefixes: WORKFLOW_PREFIXES,
+    });
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+    return null;
+  }
+}
 
 const results = [];
 const record = (name, ok, detail = '') => {
@@ -278,14 +307,22 @@ async function runPoetryCase(token) {
       nodeFinished.map((e) => `${e.data?.title}:${e.data?.status}`).join(' | '),
     );
   } finally {
-    const cleanup = await json('DELETE', `/workflows/${workflowId}`, token);
-    record('清理诗词验收工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
+    // 走共享清理件：按前缀扫描，连此前中断残留的一起收拾（单删 workflowId 只能
+    // 收拾「跑到这一行」的那一次，套件崩掉留下的残留会一直堆在用户列表里）。
+    const cleanup = await cleanupArtifacts();
+    if (cleanup) reportCleanup(cleanup, '诗词/复杂工作流验收');
+    record(
+      '清理诗词验收工作流',
+      !!cleanup && cleanup.failed.length === 0 && cleanup.matched >= 1,
+      cleanup ? `匹配 ${cleanup.matched} 个，删除 ${cleanup.deleted} 个` : '清理未执行',
+    );
   }
 }
 
 async function main() {
   const login = await json('POST', '/auth/login', null, { account: 'admin', password: PASSWORD });
   const token = login.data?.accessToken;
+  activeToken = token || '';
   record('登录', !!token, `HTTP ${login.status}`);
   if (!token) throw new Error('登录失败');
 
@@ -352,8 +389,14 @@ async function main() {
       `tokens=${finished?.data?.total_tokens}`,
     );
   } finally {
-    const cleanup = await json('DELETE', `/workflows/${workflowId}`, token);
-    record('清理验收工作流', cleanup.status === 200 || cleanup.status === 204, `HTTP ${cleanup.status}`);
+    // 见 runPoetryCase 里的同款说明：按前缀扫描，连残留一起清。
+    const cleanup = await cleanupArtifacts();
+    if (cleanup) reportCleanup(cleanup, '诗词/复杂工作流验收');
+    record(
+      '清理验收工作流',
+      !!cleanup && cleanup.failed.length === 0 && cleanup.matched >= 1,
+      cleanup ? `匹配 ${cleanup.matched} 个，删除 ${cleanup.deleted} 个` : '清理未执行',
+    );
   }
 
   await runPoetryCase(token);
@@ -363,7 +406,9 @@ async function main() {
   process.exit(failedCount === 0 ? 0 : 1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(`[FAIL] 复杂工作流验收中断 :: ${error.message}`);
+  // 中断也要清：否则这两张验收工作流会留在用户列表里
+  await cleanupArtifacts();
   process.exit(1);
 });

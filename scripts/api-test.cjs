@@ -6,6 +6,7 @@
 const http = require('node:http');
 const { existsSync, readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 
 function loadExistingEnv() {
   const envPath = resolve(__dirname, '..', '.env');
@@ -105,6 +106,31 @@ async function runTest(name, testFn, results) {
   }
 }
 
+/**
+ * 本套件建的工作流名是 `E2E Test Workflow <时间戳>`，只能前缀匹配。
+ * 注意：套件里那条 `DELETE /workflows/:id` 是**端点测试**（Test 14），不是清理，
+ * 不能拿共享清理件替掉它——那会把一个真实测试项删掉。这里只在收尾时补一次兜底清理。
+ */
+const WORKFLOW_PREFIX = 'E2E Test Workflow';
+
+/** 登录后记下来，好让异常退出路径也能清理。 */
+let activeToken = '';
+
+/** 兜底清理：套件中断时也能把验收工作流带走，不让它堆在用户列表里。 */
+async function cleanupArtifacts() {
+  if (!activeToken) return null;
+  try {
+    return await cleanupTestWorkflows({
+      gateway: BASE_URL,
+      token: activeToken,
+      prefixes: [WORKFLOW_PREFIX],
+    });
+  } catch (error) {
+    console.warn(`工作流清理未完成（不判定失败）：${error?.message || error}`);
+    return null;
+  }
+}
+
 async function main() {
   if (!ADMIN_ACCOUNT || !ADMIN_PASSWORD) {
     throw new Error(
@@ -139,6 +165,7 @@ async function main() {
     if (!res.data.accessToken) throw new Error('No access token');
     if (res.data.user?.role !== 'admin') throw new Error('Not admin');
     adminToken = res.data.accessToken;
+    activeToken = adminToken || '';
     return { authenticated: true, role: res.data.user.role };
   }, results);
   
@@ -344,6 +371,11 @@ async function main() {
     return { total: res.data.total };
   }, results);
   
+  // 收尾兜底清理：Test 14 只在「跑到那一行」时才会删掉工作流，
+  // 中途失败或早期 return 都会留下残留，所以再按前缀扫一遍。
+  const leftover = await cleanupArtifacts();
+  if (leftover) reportCleanup(leftover, 'API 套件工作流');
+  
   // Summary
   const passed = results.filter(r => r.status === 'PASS').length;
   const total = results.length;
@@ -361,7 +393,8 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error('Fatal error:', err);
+  await cleanupArtifacts();
   process.exit(1);
 });

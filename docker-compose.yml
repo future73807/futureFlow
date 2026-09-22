@@ -24,8 +24,18 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-futureflow}
       POSTGRES_USER: ${POSTGRES_USER:-futureflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请先运行 pnpm env:init 生成 POSTGRES_PASSWORD}
+      # 应用运行账号：非超级用户，只在 futureflow 库内有增删改查权限。
+      # 仅在**全新数据卷**的 initdb 阶段创建；已有卷请跑
+      # `node scripts/db-grant-app-user.cjs`。留空则应用回退到 POSTGRES_USER。
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-futureflow_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+      # 开发期 TypeORM synchronize 需要建表权限；生产设为 false，
+      # 表结构只由 `migration:run`（用 POSTGRES_USER 超级用户）变更。
+      POSTGRES_APP_ALLOW_DDL: ${POSTGRES_APP_ALLOW_DDL:-true}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/initdb/10-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
+      - ./infra/postgres/app-user.sql:/opt/futureflow/app-user.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-futureflow}"]
       interval: 5s

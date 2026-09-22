@@ -18,6 +18,7 @@ const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs'
 const { resolve } = require('node:path');
 const { randomBytes } = require('node:crypto');
 const net = require('node:net');
+const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 
 const randomSecret = () => randomBytes(32).toString('hex');
 // 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
@@ -546,11 +547,43 @@ async function startFrontendForUi() {
   }
 }
 
+/**
+ * 本套件建的验收工作流名固定为 `E2E Test Workflow`，用精确匹配最安全。
+ *
+ * 注意：step4 里那条 `DELETE /workflows/:id` 是**端点测试**，不是清理，
+ * 不能拿共享清理件替掉它——那会把一个真实测试项删掉。这里只在收尾时补一次兜底清理，
+ * 让套件中途崩掉留下的工作流也能被带走。
+ */
+const E2E_WORKFLOW_NAME = 'E2E Test Workflow';
+
+/** step4 内部才知道网关地址与 token，这里记一份给收尾清理用。 */
+const cleanupContext = { gateway: '', token: '' };
+
+/**
+ * 兜底清理。必须在网关进程被停掉**之前**调用，否则没有服务可以连。
+ */
+async function cleanupE2eWorkflows() {
+  if (!cleanupContext.gateway || !cleanupContext.token) return;
+  try {
+    reportCleanup(
+      await cleanupTestWorkflows({
+        gateway: cleanupContext.gateway,
+        token: cleanupContext.token,
+        names: [E2E_WORKFLOW_NAME],
+      }),
+      'E2E 验收工作流',
+    );
+  } catch (error) {
+    log('warn', `工作流清理未完成（不判定失败）：${error?.message || error}`);
+  }
+}
+
 // ==================== 步骤 4: API 接口测试 ====================
 async function step4_apiTests() {
   log('info', 'Step 4: Running API endpoint tests...');
   
   const BASE_URL = `http://localhost:${CONFIG.GATEWAY_PORT}`;
+  cleanupContext.gateway = BASE_URL;
   const results = [];
   
   // 测试 1: 健康检查
@@ -576,6 +609,7 @@ async function step4_apiTests() {
     if (!data.accessToken) throw new Error('No access token returned');
     if (data.user?.role !== 'admin') throw new Error('User is not admin');
     adminToken = data.accessToken;
+    cleanupContext.token = adminToken || '';
     return data;
   }, results);
   
@@ -1004,7 +1038,8 @@ async function main() {
     console.error(err.stack);
     return 1;
   } finally {
-    // 清理
+    // 清理：先清工作流，再停进程——顺序反了就没有服务可以连，清理会静默失败。
+    await cleanupE2eWorkflows();
     if (frontendProcess) stopOwnedProcess(frontendProcess, 'Frontend');
     if (gatewayProcess) {
       stopOwnedProcess(gatewayProcess, 'Gateway');

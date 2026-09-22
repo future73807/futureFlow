@@ -37,7 +37,7 @@ pnpm start
 4. 等待数据库、SSRF Proxy、Sandbox 与 Dify API 健康，并等待 Dify 初始化任务成功退出
 5. 自动创建 Dify 管理员和 futureFlow 管理员，将 Dify Console 会话加密保存到 PostgreSQL
 6. 发布工作流时自动创建独立 Dify 应用、导入 DSL、发布并生成独立执行 Key
-7. 为 PostgreSQL、网关 JWT、Dify 等生成本机随机密钥（futureFlow 管理员默认密码为固定值 `futureFlow@`，可在 `.env` 中覆盖）
+7. 为 PostgreSQL、网关 JWT、Dify、futureFlow 管理员初始密码等生成本机随机密钥（管理员密码首次生成时会在终端打印一次）
 
 首次使用只需在 `.env` 填写模型供应商的 `LLM_API_KEY`（以及需要时调整模型地址/名称）；Dify Console 授权、应用和执行 Key 不需要手工配置。
 
@@ -64,10 +64,10 @@ pnpm start
 | -------- | ------------------------------- |
 | 登录地址 | http://localhost:3000/login     |
 | 用户名   | `admin`                         |
-| 密码     | `futureFlow@`                   |
+| 密码     | `pnpm run env:init` 随机生成，见本机 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD` |
 | 角色     | 管理员（可访问「平台管理」后台） |
 
-> 密码里的 `@` 必须是半角；中文输入法打成全角 `＠` 会认证失败，登录页会实时提示。
+> 本机初始密码只在生成时打印一次。忘记或需要轮换，执行 `node scripts/rotate-admin-password.cjs`（会同步更新数据库里的管理员账号）。
 
 - 管理员后台：http://localhost:3000/admin，提供仪表盘（用户/Key/工作流/运行数/Token/费用/7 天趋势）、用户管理（调整余额/修改 VIP/封禁/删除）、全站 API Key 吊销，以及工作流、运行记录与余额流水。
 - 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_*`；账号已存在时不会重复创建或覆盖，应用日志不会输出密码；设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 可关闭后续初始化。
@@ -106,6 +106,34 @@ pnpm run env:init
 > `MEDIA_CREDENTIAL_ENCRYPTION_SECRET` 用于媒体凭据、MCP Bearer 令牌与草稿沙箱凭据。它是**密钥环**里的主密钥：新写入一律用它加密，读取时若解不开会回退尝试 `DIFY_KEY_ENCRYPTION_SECRET`（历史默认密钥）。因此**已有部署随时补上这个变量都不会让存量数据不可读**，也不需要先做迁移；补齐后新数据即与 Dify 凭据分离。
 
 生产模式下网关会拒绝不安全配置并直接启动失败：过短或仍是占位符的 JWT 密钥、示例数据库密码、通配符 CORS（`*`）、缺失的执行引擎配置、非正数的限流/超时参数。
+
+### 1.1 数据库账号：应用与迁移分开
+
+官方 postgres 镜像会把 `POSTGRES_USER` 建成**超级用户**（`rolsuper`/`rolcreatedb`/`rolcreaterole` 全开）。应用运行时不该用它——一旦出现 SQL 注入或配置泄露，后果会从「读写本库」放大成「控制整个实例」。
+
+| 用途 | 账号 | 权限 |
+| --- | --- | --- |
+| 应用运行时 | `POSTGRES_APP_USER`（默认 `futureflow_app`） | 非超级用户；只能连 `futureflow` 库，只有本库表的增删改查 |
+| 数据库迁移 | `POSTGRES_USER` | 超级用户；只由 `migration:run` 使用 |
+
+全新数据卷会在 initdb 阶段自动创建应用账号；**已有数据卷**需要手动执行一次：
+
+```bash
+pnpm run db:grant-app-user                 # 缺密码时自动生成并写入 .env
+pnpm run db:grant-app-user -- --ddl=false  # 生产：连建表权限也不给
+```
+
+生产请把 `POSTGRES_APP_ALLOW_DDL` 设为 `false`，表结构只由 `pnpm --filter futureflow-gateway migration:run:prod`（用 `POSTGRES_USER`）变更。开发期 TypeORM 走 `synchronize=true`，必须能建表，所以默认是 `true`。
+
+### 1.2 管理员密码
+
+管理员初始密码由 `pnpm run env:init` **随机生成**并只在终端打印一次，仓库里没有任何固定默认值。轮换：
+
+```bash
+pnpm run admin:rotate-password
+```
+
+`SeedService` 只在「库里还没有管理员」时建号，所以只改 `.env` 对已有库**无效**。这个脚本会同时更新 `.env` 与数据库里的管理员账号，并把 `tokenVersion` 自增，让此前签发的 JWT 立即失效。所有测试脚本都从 `.env` 读取管理员密码（`scripts/lib/admin-credentials.cjs`）。
 
 ### 2. 启动
 
@@ -296,7 +324,21 @@ LLM_DEFAULT_MODEL=deepseek-chat
 
 > **Python 执行的边界**：该节点不在任何等级的 `VIP_NODE_PERMISSIONS` 白名单里，`dify-converter` 也拒绝把它转换到 Dify DSL。因此含该节点的工作流**本地试运行正常**（浏览器经网关 `/python/exec` 代理，在本机 Python 3 中真实执行），但「云端试运行」和「发布」都会被网关拒绝，并返回明确文案：「Python 执行节点暂不支持云端执行（发布与云端试运行均不可用），请在画布中使用本地试运行」。节点面板会在节点名旁显示「仅本地试运行」徽标（只提示、不置灰，本地试运行照常可用）。这是有意为之的功能边界，**不是权限问题，升级套餐也不会改变**。
 >
-> **该端点的暴露面**：`/python/exec` 等价于「在网关宿主执行任意代码」，因此按三层收敛——① 默认只在 `GATEWAY_HOST` 为回环时开放，跨机部署须显式 `PYTHON_EXEC_ENABLED=true`；② 非回环下**只有管理员**可以调用（注册是自助的，不区分角色就等同于对任何注册用户开放 RCE）；③ 每次执行按用户限流（`PYTHON_EXEC_MAX_PER_MINUTE`，默认 20）。子进程环境还做了白名单（剥掉 `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET`、`LLM_API_KEY`、各类加密密钥），但**白名单不是沙箱**：子进程与网关同用户同权限，仍能读到宿主机上的 `.env` 等文件——真正的控制是上面那三条准入，别再往「同用户但读不到文件」上做假设。
+> **该端点的暴露面**：`/python/exec` 等价于「在网关宿主执行任意代码」，因此按三层收敛——① 默认只在 `GATEWAY_HOST` 为回环时开放，跨机部署须显式 `PYTHON_EXEC_ENABLED=true`；② 非回环下**只有管理员**可以调用（注册是自助的，不区分角色就等同于对任何注册用户开放 RCE）；③ 每次执行按用户限流（`PYTHON_EXEC_MAX_PER_MINUTE`，默认 20）。子进程环境还做了白名单（剥掉 `POSTGRES_PASSWORD`、`GATEWAY_JWT_SECRET`、`LLM_API_KEY`、各类加密密钥）。
+>
+> **执行模式（`PYTHON_EXEC_MODE`）** —— 上一条白名单只堵住了「一行 `os.environ` 就读走凭据」，堵不住读文件，所以另有一个容器沙箱模式：
+>
+> | | `local`（默认） | `docker` |
+> | --- | --- | --- |
+> | 读宿主文件（如 `.env`） | **可以** | 读不到（只只读挂载本次的临时工作目录） |
+> | 网络 | 可达 | 默认 `--network=none`，完全无网络 |
+> | 根文件系统 | 可写 | 只读（仅 `/tmp` 是可写 tmpfs，且 noexec） |
+> | 资源上限 | 仅 15 秒超时 + 每分钟 20 次 | 另有 256 MB 内存 / 1 CPU / 128 进程硬上限 |
+> | 残留进程 | Windows 上正常结束时可能留下后台进程 | 容器随执行结束消失 |
+>
+> `local` 仍是默认：现有部署的 Python 节点可能要靠网络连数据库（内置的「查询 PostgreSQL」模板就是），默认切到 `docker` 会直接打断这类用法。**需要隔离的部署显式设 `PYTHON_EXEC_MODE=docker`**，并先 `docker pull python:3.11-slim`（网关不会自动拉取——拉取耗时会让执行超时，问题也被伪装成「执行超时」）。docker 模式下如需连库，把 `PYTHON_EXEC_DOCKER_NETWORK` 改成 `bridge`。
+>
+> 两个模式都有回归测试：`python-exec-isolation-smoke.ts`（环境变量白名单）与 `python-docker-sandbox-smoke.ts`（加固参数齐全 + **真实容器里实测**读不到宿主文件、无网络、根目录只读、`/tmp` 可写、非 root）。
 
 ### 关键节点能力
 
@@ -308,7 +350,7 @@ LLM_DEFAULT_MODEL=deepseek-chat
 | 代码执行 | 脚本需声明 `function main({ params })`，明确拒绝 `async function main`；浏览器 QuickJS 试运行仅用于编辑阶段预览，发布后由独立 Dify Sandbox 执行；Dify 0.15.3 不接受 `boolean` / `array[boolean]` 输出，网关发布时兼容为 `number` / `array[number]`（运行结果以 `1/0` 表示真/假） |
 | 数组批处理（循环） | 每个工作流最多一个节点，单层串行执行，输入仅支持 `array[string]` / `array[number]`，最多 20 项；循环体是「块开始 → 内部节点… → 块结束」的单链子画布，内部可放任意受支持的业务节点，但不支持嵌套循环、条件/多条件分支、退出节点与并行执行；发布时转换为 Dify `iteration`（`is_parallel: false`） |
 | 退出节点 | `退出整个工作流` 转换为 Dify 的结束语义并可配置返回值，本地试运行与云端发布都支持；`跳出当前循环` 仅在循环体内有效，云端发布会明确拒绝（Dify `iteration` 无法中途跳出），需要跳出时应改用条件分支排除目标项 |
-| Python 执行 | 在本机 Python 3 执行 `def main(params)` 并返回 JSON（独立临时目录、15 秒超时）；`params` 是本次运行的工作流输入（开始节点声明的字段），由前端展开为 `{{引用}}` 模板后传入，因此 `params.get("query")` 能直接取到运行输入；本地试运行经网关 `/python/exec` 代理真实执行；**驱动随平台提供**（pg8000，见 `gateway/vendor/README.md`），因此能直接连接 PostgreSQL 做只读查询（表单内含「查询 PostgreSQL（只读）」模板，以 `BEGIN READ ONLY` 兜底写入）；**不能发布到云端** |
+| Python 执行 | 执行 `def main(params)` 并返回 JSON（独立临时目录、15 秒超时）；`params` 是本次运行的工作流输入（开始节点声明的字段），由前端展开为 `{{引用}}` 模板后传入，因此 `params.get("query")` 能直接取到运行输入；本地试运行经网关 `/python/exec` 代理真实执行；**驱动随平台提供**（pg8000，见 `gateway/vendor/README.md`），因此能直接连接 PostgreSQL 做只读查询（表单内含「查询 PostgreSQL（只读）」模板，以 `BEGIN READ ONLY` 兜底写入）。执行环境二选一：默认 `PYTHON_EXEC_MODE=local` 在本机 Python 3 里跑（环境变量白名单，但**不是沙箱**，能读宿主文件、能连网络）；设 `PYTHON_EXEC_MODE=docker` 切到容器沙箱（只只读挂载本次工作目录、默认无网络、根目录只读、256 MB/1 CPU/128 进程上限）。**不能发布到云端** |
 | 知识检索 / 子工作流 / MCP 工具 | 知识检索选择知识库、引用上游变量作为检索语句、返回数量 1-10，发布时转换为 Dify knowledge-retrieval；子工作流把同账号已发布工作流作为节点复用，发布时编译期内联展开（环检测、嵌套深度 ≤ 3）；MCP 工具注册 streamable HTTP 服务器（Bearer 令牌 AES-256-GCM 加密），发布时展开为受信网关代理调用，运行时仅携带 15 分钟窄权限短令牌，服务器地址与凭据永不进入 DSL；这三类节点的本地浏览器试运行会明确报错，请使用工具栏「云端试运行」或发布后在云端运行 |
 | 云端试运行 | 把当前保存的草稿导入用户专属沙箱 Dify 应用后真实执行（SSE 流式、计费与运行记录齐全），知识检索、子工作流、MCP 等云端专属节点无需发布即可验证；DSL 未变化的重复运行会复用沙箱跳过导入 |
 
@@ -319,7 +361,8 @@ LLM_DEFAULT_MODEL=deepseek-chat
 | ZIP 打包下载 | 本地试运行或已发布版本执行结束（成功或失败）后都可「打包下载 ZIP」 |
 | ZIP 内容 | 固定包含 `manifest.json`、`结果摘要.md`、`完整结果.json`、`节点执行记录.json`，存在对应数据时还包含 `工作流输入.json`、`文本输出.txt`、`工作流输出.json` |
 | 媒体与脱敏 | 媒体只保留图片/视频 URL 等结构化结果；凭据命名字段与已识别的凭据值统一替换为“已隐藏” |
-| 自动化触发器 | Webhook 触发（一次性密钥 URL）、定时触发（固定分钟间隔或每日固定时间 HH:MM，网关本地时区）、幂等保护（Idempotency-Key）；定时执行失败会按有限次退避重试，连续失败达阈值时输出 error 级日志并可在触发器列表看到次数 |
+| 自动化触发器 | Webhook 触发、定时触发（固定分钟间隔或每日固定时间 HH:MM，网关本地时区）、幂等保护（Idempotency-Key）；定时执行失败会按有限次退避重试，连续失败达阈值时输出 error 级日志并可在触发器列表看到次数 |
+| Webhook 调用方式 | 推荐把密钥放进请求头：`curl -H "X-Webhook-Secret: <secret>" -X POST http://localhost:3001/webhooks`。旧的 `/webhooks/<secret>` 仍可用（响应会带 `X-Webhook-Secret-Source: path-deprecated`），但路径里的密钥会被反向代理、网关和浏览器历史记进日志，不要在新接入时使用 |
 
 ### 个人中心、知识库与管理
 
@@ -343,6 +386,26 @@ LLM_DEFAULT_MODEL=deepseek-chat
 | 草稿与生产运行 | 草稿通过画布「试运行」在浏览器调试，生产运行只接受已发布的不可变版本；已发布版本通过版本专属 Dify 应用运行，Dify 未配置或发布版本尚未同步时明确报错，不静默切换执行语义 |
 
 ---
+
+## 备份与恢复
+
+一键启动把全部持久状态放在三处：网关 PostgreSQL 库、Dify PostgreSQL 库、媒体资产目录（默认 `.futureflow-media/`）。
+
+```bash
+pnpm run backup                                   # -> .futureflow-backups/<时间戳>/
+pnpm run backup -- --out D:\backups\ff-20260922   # 指定目录
+pnpm run backup -- --no-media                     # 只备份两个数据库
+
+node scripts/restore.cjs .futureflow-backups/<时间戳>          # 交互确认后恢复
+node scripts/restore.cjs <dir> --yes                           # 跳过确认（脚本/CI）
+node scripts/restore.cjs <dir> --db-only | --media-only        # 只恢复其中一部分
+```
+
+备份目录内含 `futureflow.dump`、`dify.dump`、`media.tar.gz` 与 `manifest.json`（记录字节数与 sha256，恢复前会校验）。数据库用 `pg_dump -Fc`，通过 `docker exec` 在两个容器里执行，因此**不需要在宿主机安装 PostgreSQL 客户端**。
+
+> ⚠️ 恢复是**破坏性操作**：`pg_restore --clean --if-exists` 会先清空目标库，媒体目录会被覆盖。执行前请确认备份目录的来源与时间戳。
+>
+> 备份目录被 `.gitignore` 忽略——里面是完整的数据库转储，不要提交进仓库。
 
 ## 验证与验收
 
@@ -416,7 +479,7 @@ GATEWAY_URL=http://localhost:3401 FRONTEND_URL=http://localhost:3400 pnpm run te
 | 多轮会话 | 缺失 | 当前按一次性工作流输入执行，没有会话状态、历史消息、记忆或上下文窗口管理 |
 | 审批与等待 | 缺失 | 未提供人工审批、表单回填、事件等待、暂停/恢复或长任务状态机 |
 | 异常分支与补偿 | 部分 | LLM/API 请求/代码执行节点已支持失败分支（Dify fail-branch），API 节点有网络失败重试；尚无节点级捕获汇总、工作流重试策略、回滚补偿或死信队列 |
-| Python 代码         | 部分 | 已提供「Python 执行」节点：在本机 Python 3 执行 `def main(params)`（`params` 为本次运行的工作流输入；独立临时目录、15 秒超时、JSON 结果回传），本地试运行经网关代理真实执行；暂无依赖白名单、资源配额、网络隔离与云端执行，发布云端暂不支持                                                                       |
+| Python 代码         | 部分 | 已提供「Python 执行」节点：执行 `def main(params)`（`params` 为本次运行的工作流输入；独立临时目录、15 秒超时、JSON 结果回传），本地试运行经网关代理真实执行。默认在本机 Python 3 里跑（`PYTHON_EXEC_MODE=local`，环境变量白名单，但**不是沙箱**）；设 `PYTHON_EXEC_MODE=docker` 可切到容器沙箱（读不到宿主文件、无网络、根目录只读、资源有硬上限）。暂无依赖白名单与云端执行，发布云端暂不支持 |
 | 原生图片/视频生成 | 部分 | 图片/视频节点支持 generate 模式，已接入 OpenAI/Google/豆包/MiniMax 四家供应商：凭据 AES-256-GCM 加密保存、异步任务轮询、生成的二进制资产落盘并可下载；但暂无素材库管理、转码或内容审核链路 |
 | 企业凭据中心 | 部分 | 已有面向用户的媒体生成凭据库（AES-256-GCM + AAD 绑定用户/供应商）和 LLM/Dify 服务端密钥管理；但 API 节点还没有独立凭据库，也没有团队共享、权限范围、审计和轮换策略 |
 

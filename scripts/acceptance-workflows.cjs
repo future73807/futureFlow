@@ -15,6 +15,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { join } = require('node:path');
 
@@ -28,7 +29,7 @@ const BASE = (() => {
   return 'http://localhost:3001';
 })();
 
-const PASSWORD = process.argv[2] || 'futureFlow@';
+const PASSWORD = process.argv[2] || adminPassword();
 
 /** 从 .env 读平台库连接，SQL 节点直连平台自身的 PostgreSQL */
 async function json(method, path, token, body) {

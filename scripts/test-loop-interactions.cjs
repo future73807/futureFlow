@@ -2,13 +2,14 @@
 'use strict';
 // 循环节点交互验证：展开/收缩、框随节点伸缩、整体拖动、选中面板
 const { chromium } = require('playwright-core');
+const { adminPassword } = require('./lib/admin-credentials.cjs');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
 const { existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 
 const FRONT = process.env.FRONTEND_URL || 'http://localhost:3000';
 const GATEWAY = process.env.GATEWAY_URL || 'http://localhost:3001';
-const PW = process.argv[2] || 'futureFlow@';
+const PW = process.argv[2] || adminPassword();
 const OUT = process.env.SHOT_DIR || join(process.cwd(), 'gui-test-screenshots');
 
 function findBrowser() {
