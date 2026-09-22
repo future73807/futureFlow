@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
@@ -28,6 +28,8 @@ interface ConsoleInit {
  */
 @Injectable()
 export class DraftRunService {
+  private readonly logger = new Logger(DraftRunService.name);
+
   /** 同一用户并发点击时串行化沙箱准备，避免重复导入互相覆盖。 */
   private readonly prepareLocks = new Map<string, Promise<DraftSandboxTarget>>();
 
@@ -62,11 +64,30 @@ export class DraftRunService {
     const yaml = this.converter.toDifyDSLYaml(flowgram);
     const dslHash = createHash('sha256').update(yaml, 'utf8').digest('hex');
 
-    const existing = await this.repo.findOne({
+    let existing = await this.repo.findOne({
       where: { userId },
       // encryptedApiKey 标记为 select:false，这里必须显式取回才能解密复用。
       select: ['id', 'userId', 'appId', 'dslHash', 'encryptedApiKey'],
     });
+
+    // 无论 DSL 是否变化，都要先确认记录里的沙箱应用在 Dify 侧还在 —— 两条路径
+    // 都会用到 existing.appId：DSL 未变时直接复用；DSL 变了也会复用同一个应用
+    // 重新导入（每个用户只有一个沙箱应用）。
+    //
+    // 少了这一步，一旦应用被外部删掉（人工清理 Dify 资源、Dify 数据卷被重置、
+    // 或误删），该用户的草稿试运行会**每次**以
+    // `Dify 草稿沙箱请求失败（HTTP 400）："App not found"` 硬失败，
+    // 而且用户侧完全无法自愈 —— 只有等 DSL 变化才会重新走到这里。
+    if (existing && !(await this.sandboxUsable(existing.appId))) {
+      this.logger.warn(
+        `草稿沙箱应用 ${existing.appId} 在 Dify 侧已不存在，丢弃这条记录并重建沙箱`,
+      );
+      // 丢掉陈旧记录并置空，让下面的路径走「新建应用」分支
+      // （不置空的话会拿着已删除的 appId 去导入，继续失败）。
+      await this.repo.delete({ id: existing.id });
+      existing = null;
+    }
+
     if (existing && existing.dslHash === dslHash) {
       return {
         appId: existing.appId,
@@ -173,6 +194,54 @@ export class DraftRunService {
       );
     }
     return auth;
+  }
+
+  /**
+   * 记录里的沙箱应用是否仍然可用（需要 Console 授权，且授权拿不到时放行）。
+   *
+   * 拿不到授权时按「可用」处理：复用路径本来就不需要授权（执行用的是已存的
+   * Service API Key），不能因为控制台暂时不可用而把本来能跑的路径拖垮。
+   */
+  private async sandboxUsable(appId: string): Promise<boolean> {
+    let auth: DifyConsoleAuthorization | null = null;
+    try {
+      auth = await this.dify.resolveConsoleAuthorization();
+    } catch (error) {
+      this.logger.warn(
+        `无法获取 Dify Console 授权，跳过沙箱存在性校验（按「可用」继续）：${this.safeError(error)}`,
+      );
+      return true;
+    }
+    if (!auth) return true;
+    return this.sandboxAppExists(appId, auth);
+  }
+
+  /**
+   * 沙箱应用在 Dify 侧是否仍然存在。
+   *
+   * 只有明确的 404 才判定为「不存在」。其余情况（网络抖动、5xx、授权异常）
+   * 一律按「存在」处理并让后续流程照常报错 —— 反过来做的话，一次瞬时故障就会
+   * 被当成应用丢失、白白重建沙箱（导入 + 发布 + 换 Key，代价远大于一次 GET）。
+   */
+  private async sandboxAppExists(
+    appId: string,
+    auth: DifyConsoleAuthorization,
+  ): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `${auth.consoleBase}/apps/${encodeURIComponent(appId)}`,
+        {
+          headers: { Authorization: `Bearer ${auth.token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      return response.status !== 404;
+    } catch (error) {
+      this.logger.warn(
+        `校验草稿沙箱应用是否存在时请求失败（按「存在」继续）：${this.safeError(error)}`,
+      );
+      return true;
+    }
   }
 
   /** Console 401/403 时自动刷新授权并重试一次（与知识库模块同一策略）。 */
