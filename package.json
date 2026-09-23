@@ -8,6 +8,7 @@
     "db:up": "node scripts/compose.cjs up -d postgres",
     "db:grant-app-user": "node scripts/db-grant-app-user.cjs",
     "admin:rotate-password": "node scripts/rotate-admin-password.cjs",
+    "user:reactivate": "node scripts/reactivate-user.cjs",
     "compose:up": "node scripts/compose.cjs up -d",
     "infra:up": "node scripts/start-full-stack.cjs --infrastructure-only",
     "db:down": "node scripts/compose.cjs down",
