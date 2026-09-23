@@ -128,7 +128,7 @@ async function main() {
     await admin.connect();
   } catch (error) {
     throw new Error(
-      `连不上 PostgreSQL：${error.message}\n请先 docker compose up -d postgres 并等待健康检查通过。`,
+      `连不上 PostgreSQL：${error.message}\n请先 pnpm run db:up 并等待健康检查通过。`,
     );
   }
 

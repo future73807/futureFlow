@@ -24,7 +24,7 @@ const { join, resolve } = require('node:path');
 const ROOT = resolve(__dirname, '..');
 const SCRIPTS_DIR = join(ROOT, 'scripts');
 
-const { detectCompose, composeInvocation, describeCompose } = require('./lib/docker-compose.cjs');
+const { detectCompose, composeInvocation, composeShellCommand, describeCompose } = require('./lib/docker-compose.cjs');
 const { composeContainerIds, containerState, resolveDockerArgs } = require('./start-full-stack.cjs');
 
 let passed = 0;
@@ -123,6 +123,38 @@ check('resolveDockerArgs 不动非 compose 的 docker 调用', () => {
   );
 });
 
+// ── 3a. composeShellCommand（shell 字符串形式）─────────────────────────
+check('composeShellCommand 用本机可用的形式，且能直接交给 shell 执行', () => {
+  const d = detectCompose();
+  const line = composeShellCommand(['version']);
+  assert.ok(line.startsWith(d.label.split(' ')[0]) || line.startsWith(d.command),
+    `应以探测到的命令开头，实际 ${JSON.stringify(line)}`);
+  assert.ok(!line.includes("''"), '不应出现空参数');
+  if (!d.available) {
+    console.log('       跳过执行：本机没有可用的 compose');
+    return;
+  }
+  const probe = spawnSync(line, { shell: true, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+  assert.equal(probe.status, 0, `拼出的命令应能执行成功，实际 status=${probe.status} ${probe.stderr || ''}`);
+  assert.ok(/compose/i.test(probe.stdout || ''), '应输出 compose 版本');
+});
+
+check('composeShellCommand 给含空白的参数加引号（否则会被 shell 拆开）', () => {
+  const line = composeShellCommand(['ps', '--format', '{{json .State}}']);
+  // 关键：`{{json .State}}` 里那个空格一旦裸露，shell 会把它拆成两个参数 ——
+  // 这正是 start-full-stack 的健康检查踩过的坑（报 template parsing error）
+  assert.ok(
+    line.includes('"{{json .State}}"') || line.includes("'{{json .State}}'"),
+    `含空白的参数必须被引起来，实际 ${JSON.stringify(line)}`,
+  );
+});
+
+check('composeShellCommand 不含空白时保持简洁（不加多余引号）', () => {
+  const line = composeShellCommand(['up', '-d']);
+  assert.ok(!line.includes('"'), `简单参数不应被加引号，实际 ${JSON.stringify(line)}`);
+  assert.ok(/(^|\s)up(\s|$)/.test(line) && /-d(\s|$)/.test(line), '子命令应原样保留');
+});
+
 // ── 3b. 健康检查的读取链路（真实探测）──────────────────────────────────
 check('containerState 能真实读到容器的 State（含 Health）', () => {
   const d = detectCompose();
@@ -202,6 +234,34 @@ check('scripts/*.cjs 不再以 `\'docker\', [\'compose\'` 形式写死调用', (
   assert.deepEqual(
     offenders, [],
     `这些脚本写死了 compose 调用，应改用 lib/docker-compose.cjs 的 composeInvocation：\n  ${offenders.join('\n  ')}`,
+  );
+});
+
+/**
+ * 上一条只挡住了**数组形式**（`spawn('docker', ['compose', ...])`），
+ * 漏了**字符串形式** —— 而 `e2e-full-test.cjs`（`pnpm run test:e2e`）与
+ * `e2e-test-with-retry.cjs` 正是这种：
+ *
+ *   await runCommand('docker compose up -d', ...)   // shell: true
+ *   execSync('docker compose down -v', ...)
+ *
+ * 结果在没装 compose 插件的机器上，`pnpm run test:e2e` 会在「启动容器」这一步
+ * 直接失败，报 `docker: unknown command: docker compose`。2026-09-23 才补上这条。
+ */
+check('scripts/*.cjs 不再把 compose 调用写成 shell 字符串', () => {
+  const offenders = [];
+  for (const name of readdirSync(SCRIPTS_DIR)) {
+    if (!name.endsWith('.cjs')) continue;
+    if (name === 'test-docker-compose.cjs') continue; // 本文件自身的匹配模式与说明文字
+    const source = stripCommentLines(readFileSync(join(SCRIPTS_DIR, name), 'utf8'));
+    // 引号/反引号紧跟 `docker compose` + 空白 —— 即「当成命令用的字符串」
+    // 注意不匹配 `...写死 \`docker compose\` 的检查` 这类说明文字（后面跟的是反引号而非空白）
+    if (/['"`]docker\s+compose\s/.test(source)) offenders.push(name);
+  }
+  assert.deepEqual(
+    offenders, [],
+    '这些脚本把 compose 调用写成了 shell 字符串，应改用 lib/docker-compose.cjs 的 '
+      + `composeShellCommand（或能传数组就用 composeInvocation）：\n  ${offenders.join('\n  ')}`,
   );
 });
 

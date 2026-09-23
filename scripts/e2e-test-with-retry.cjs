@@ -21,6 +21,7 @@ const http = require('node:http');
 const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
+const { composeShellCommand } = require('./lib/docker-compose.cjs');
 
 const randomSecret = () => randomBytes(32).toString('hex');
 // 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
@@ -161,7 +162,7 @@ async function step1_startContainers() {
   if (CLEAN_MODE) {
     log('info', 'Clean mode: stopping containers and removing volumes...');
     try {
-      execSync('docker compose down -v --remove-orphans', { stdio: 'pipe', timeout: 60000 });
+      execSync(composeShellCommand(['down', '-v', '--remove-orphans']), { stdio: 'pipe', timeout: 60000 });
       log('success', 'Old containers and volumes removed');
     } catch (err) {
       log('warn', 'No old containers to clean');
@@ -169,7 +170,7 @@ async function step1_startContainers() {
   }
   
   try {
-    execSync('docker compose up -d', { stdio: 'pipe', timeout: 120000 });
+    execSync(composeShellCommand(['up', '-d']), { stdio: 'pipe', timeout: 120000 });
   } catch (err) {
     throw new Error(`Failed to start containers: ${err.message}`);
   }

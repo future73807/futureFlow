@@ -19,6 +19,7 @@ const { resolve } = require('node:path');
 const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 const { cleanupTestWorkflows, reportCleanup } = require('./lib/cleanup-workflows.cjs');
+const { composeShellCommand } = require('./lib/docker-compose.cjs');
 
 const randomSecret = () => randomBytes(32).toString('hex');
 // 测试引导密钥：环境变量优先，缺失时在运行时随机生成，避免在源码里出现可直接使用的凭据字面量。
@@ -236,15 +237,16 @@ async function step1_startContainers() {
   
   // 停止旧容器（如果存在）
   try {
-    await runCommand('docker compose down --remove-orphans', { timeout: 30000 });
+    await runCommand(composeShellCommand(['down', '--remove-orphans']), { timeout: 30000 });
     log('info', 'Cleaned up old containers');
   } catch {
     log('warn', 'No old containers to clean up');
   }
   
   // 启动容器
-  log('info', 'Starting containers with docker compose up -d...');
-  await runCommand('docker compose up -d', { timeout: 120000, verbose: true });
+  const composeUp = composeShellCommand(['up', '-d']);
+  log('info', `Starting containers with ${composeUp}...`);
+  await runCommand(composeUp, { timeout: 120000, verbose: true });
   
   // 等待 PostgreSQL
   await waitForService('http://localhost:5432', 'PostgreSQL', 30000).catch(() => {

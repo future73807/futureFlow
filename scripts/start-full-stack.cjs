@@ -2,7 +2,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const { dirname, resolve } = require('node:path');
 const net = require('node:net');
-const { composeInvocation, describeCompose } = require('./lib/docker-compose.cjs');
+const { composeInvocation, composeShellCommand, describeCompose } = require('./lib/docker-compose.cjs');
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
@@ -203,30 +203,27 @@ async function waitForHealth(serviceName, env, timeoutMs) {
 
     for (const { containerId, state } of states) {
       const label = `${serviceName} (${containerId.slice(0, 12)})`;
+      const logsHint = `Inspect it with: ${composeShellCommand(['logs', serviceName])}`;
       if (state?.Status === 'exited' || state?.Status === 'dead') {
         const exitCode = Number.isInteger(state.ExitCode) ? ` (exit code ${state.ExitCode})` : '';
         throw new Error(
-          `${label} ${state.Status}${exitCode} before becoming healthy. `
-          + `Inspect it with: docker compose logs ${serviceName}`,
+          `${label} ${state.Status}${exitCode} before becoming healthy. ` + logsHint,
         );
       }
       if (state?.Status === 'restarting' || state?.Status === 'paused') {
         throw new Error(
-          `${label} entered state ${state.Status} before becoming healthy. `
-          + `Inspect it with: docker compose logs ${serviceName}`,
+          `${label} entered state ${state.Status} before becoming healthy. ` + logsHint,
         );
       }
       if (state?.Health?.Status === 'unhealthy') {
-        throw new Error(
-          `${label} became unhealthy. Inspect it with: docker compose logs ${serviceName}`,
-        );
+        throw new Error(`${label} became unhealthy. ` + logsHint);
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(
     `${serviceName} did not become healthy in time. `
-    + `Inspect it with: docker compose logs ${serviceName}`,
+    + `Inspect it with: ${composeShellCommand(['logs', serviceName])}`,
   );
 }
 

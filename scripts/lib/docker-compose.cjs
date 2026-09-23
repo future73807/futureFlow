@@ -80,6 +80,29 @@ function composeInvocation(args = []) {
   return { command: detected.command, args: [...detected.baseArgs, ...args] };
 }
 
+/**
+ * 拼出可直接交给 **shell** 的命令行字符串。
+ *
+ * 只在确实需要 shell 字符串时使用（`spawn(cmd, { shell: true })` / `execSync`）。
+ * 能传数组就优先用 `composeInvocation` —— 字符串形式要自己处理引号转义，
+ * 而 compose 的参数里确实会有带空格的（如 `--format '{{json .State}}'`），
+ * 一旦转义错就会被 shell 拆开，报出与真因无关的错。
+ *
+ * 含空白或 shell 元字符的参数会被双引号包起来。
+ *
+ * @param {string[]} args 传给 compose 的参数，如 ['up', '-d']
+ * @returns {string} 如 `docker-compose up -d`（本机无插件时）或 `docker compose up -d`
+ */
+function composeShellCommand(args = []) {
+  const { command, args: full } = composeInvocation(args);
+  const quote = (value) => {
+    const text = String(value);
+    if (!/[\s"'`$\\]/.test(text)) return text;
+    return `"${text.replace(/(["\\$`])/g, '\\$1')}"`;
+  };
+  return [command, ...full].map(quote).join(' ');
+}
+
 /** 单行描述，便于写进日志或报错信息。 */
 function describeCompose() {
   const detected = detectCompose();
@@ -88,4 +111,4 @@ function describeCompose() {
     : detected.hint;
 }
 
-module.exports = { detectCompose, composeInvocation, describeCompose };
+module.exports = { detectCompose, composeInvocation, composeShellCommand, describeCompose };
