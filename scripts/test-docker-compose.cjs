@@ -239,8 +239,7 @@ check('scripts/*.cjs 不再以 `\'docker\', [\'compose\'` 形式写死调用', (
 
 /**
  * 上一条只挡住了**数组形式**（`spawn('docker', ['compose', ...])`），
- * 漏了**字符串形式** —— 而 `e2e-full-test.cjs`（`pnpm run test:e2e`）与
- * `e2e-test-with-retry.cjs` 正是这种：
+ * 漏了**字符串形式** —— 而 `e2e-full-test.cjs`（`pnpm run test:e2e`）正是这种：
  *
  *   await runCommand('docker compose up -d', ...)   // shell: true
  *   execSync('docker compose down -v', ...)

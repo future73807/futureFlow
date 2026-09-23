@@ -60,18 +60,37 @@ pnpm start
 
 ### 测试账号与管理员（本地默认）
 
-| 项       | 值                              |
-| -------- | ------------------------------- |
-| 登录地址 | http://localhost:3000/login     |
-| 用户名   | `admin`                         |
-| 密码     | `pnpm run env:init` 随机生成，见本机 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_PASSWORD` |
-| 角色     | 管理员（可访问「平台管理」后台） |
+| 项       | 值                                    |
+| -------- | ------------------------------------- |
+| 登录地址 | http://localhost:3000/login           |
+| 用户名   | `admin`                               |
+| 密码     | 见下方「怎么查」（**本文件里不写值**） |
+| 角色     | 管理员（可访问「平台管理」后台）      |
 
-> 本机初始密码只在生成时打印一次。忘记或需要轮换，执行 `node scripts/rotate-admin-password.cjs`（会同步更新数据库里的管理员账号）。
+**怎么查密码** —— 一条命令，打印当前值 + 库里所有账号的角色与状态：
+
+```bash
+pnpm run credentials:show
+```
+
+想在本机留存一份明文，写进 `CREDENTIALS.local.md`（该文件已在 `.gitignore` 里，不会入库）。
+
+> ⚠️ **为什么 README 里不写密码值**：本仓库是**公开**的。写进来的值会立刻对所有人可见，
+> 而且**永久留在 git 历史里**（事后删掉也挖得出来）。同理，`pnpm run env:init` 生成的是
+> **随机密码**、仓库里**没有任何固定默认值** —— 2026-09-22 的安全加固正是为此把
+> 历史硬编码密码（`futureFlow@` / `demo123456`）从 README、`.env.example` 与 25 个脚本里全部移除。
+
+需要重置或轮换时：
+
+```bash
+pnpm run admin:rotate-password                          # 引导管理员：同步更新 .env 与数据库
+pnpm run user:reactivate --username <名> --role admin    # 其他任意账号（不动 .env）
+```
 
 - 管理员后台：http://localhost:3000/admin，提供仪表盘（用户/Key/工作流/运行数/Token/费用/7 天趋势）、用户管理（调整余额/修改 VIP/封禁/删除）、全站 API Key 吊销，以及工作流、运行记录与余额流水。
 - 账号由网关首次启动时自动创建，取值来自 `.env` 的 `GATEWAY_BOOTSTRAP_ADMIN_*`；账号已存在时不会重复创建或覆盖，应用日志不会输出密码；设置 `GATEWAY_BOOTSTRAP_ADMIN_ENABLED=false` 可关闭后续初始化。
-- 安全：改密后旧密码立即失效并强制下线其他会话（tokenVersion 机制）；15 分钟内失败 8 次会锁定该「IP+账号」15 分钟（正确密码也会被拒），**重启网关即可立即清除计数**，或用 `.env` 的 `LOGIN_RATE_LIMIT_*` 放宽；旧 `.env` 首次启动自动迁移到环境格式 v2；从旧版本升级时如果仍有使用公开旧密码的 `demo` 管理员，请先登录修改、封禁或删除。
+- 安全：改密后旧密码立即失效并强制下线其他会话（tokenVersion 机制）；15 分钟内失败 8 次会锁定该「IP+账号」15 分钟（正确密码也会被拒），**重启网关即可立即清除计数**，或用 `.env` 的 `LOGIN_RATE_LIMIT_*` 放宽；旧 `.env` 首次启动自动迁移到环境格式 v2。
+- 从旧版本升级时，如果库里仍有账号在使用历史公开密码，`SeedService` 会**自动暂停并降权**该账号（这是设计如此，公开密码等于任何人可登录）。要拿回账号：`pnpm run user:reactivate --username <名>` 会换新密码、恢复状态并按需恢复角色，同时让旧 JWT 立即失效。
 
 ---
 

@@ -46,9 +46,6 @@ const INTENTIONAL = new Map([
   // ── 需要外部输入、无法自给自足的测试：只能手工跑 ──
   ['test-loop-body-drag.cjs', '需外部传入「含 loop_code 内节点的循环工作流 ID」，无法自建（断言基于该工作流的既有布局）'],
   ['test-loop-fixed-frame.cjs', '同上；且其边距断言（M={96,32,96,54}）是为特定布局调出的，换工作流会让断言失真'],
-
-  // ── 待决策：同源分叉，去留需要人来定 ──
-  ['e2e-test-with-retry.cjs', '⚠️ 待定：与 test:e2e（e2e-full-test.cjs）是同源分叉（35% 行重叠，多出 publishWorkflow / pageDataContractTests 两步），需决定合并还是删除'],
 ]);
 
 /**
@@ -66,7 +63,7 @@ const SELF = 'test-script-orphans.cjs';
  * 必要：脚本的**说明注释**里经常会提到别的脚本名（解释「为什么改成这样」），
  * 那只是「提及」，不是「引用」。实测踩过两次：
  *   · 本文件的白名单本身就写着被保留的脚本名 → 每条都被判成「已接线」
- *   · test-docker-compose.cjs 的注释里提到 e2e-test-with-retry.cjs → 同款误判
+ *   · 另一个检查的**注释**里提到了某个脚本名 → 同款误判
  * 只剔除「整行就是注释」的行，不动行尾注释与字符串。
  */
 function stripCommentLines(source) {

@@ -16,6 +16,10 @@ build/
 .env.local
 *.env
 
+# 本机凭据留存（含管理员密码等明文，**绝不能**入库 —— 仓库是公开的）
+# 用 `pnpm run credentials:show` 查看当前值
+CREDENTIALS.local.md
+
 # IDE
 .idea/
 .vscode/
@@ -69,6 +73,9 @@ gateway-run.log.err
 
 # WorkBuddy AI 工作区数据（记忆、技能等本地状态，不随仓库分发）
 .workbuddy-ai/
+
+# AI 工具在本目录留下的本地状态（非项目内容）
+.commandcode/
 
 # Python 执行节点运行时生成的字节码缓存（gateway/vendor/python 下）
 __pycache__/
