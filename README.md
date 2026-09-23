@@ -448,6 +448,15 @@ pnpm run verify
 
 依次执行：`ts-check`（前后端类型检查）→ 纯本地回归（结果 ZIP 归档、媒体凭据 UI、Python 节点 `params` 契约、条件 / 退出 / HTTP / 数组批处理 / 变量聚合 / 循环类型的本地运行时）→ 网关冒烟 + 集成 + 模糊测试（`test:platform`，基于 pg-mem，**不需要真实数据库**）→ 网关与前端构建。
 
+依赖漏洞检查（供应链）：
+
+```bash
+pnpm run audit:deps        # = pnpm audit --prod
+```
+
+> 依赖覆盖（`overrides`）写在 `pnpm-workspace.yaml` 里 —— **pnpm 11 起只认这里**，
+> `package.json` 的 `pnpm.overrides` 会被静默忽略。改动后务必重跑 `audit:deps` 复核。
+
 适合提交前自检，全程不依赖 Docker 与网络。
 
 ### 端到端验收（需要真实栈）
