@@ -67,10 +67,55 @@ async function bootstrap() {
     credentials: true,
   });
 
+  warnMediaGatewayPortMismatch(config, Number(port));
+
   await app.listen(port, host);
   Logger.log(`futureFlow gateway started: http://${host}:${port}`, 'Bootstrap');
   Logger.log(
     'Dify API: ' + (config.get('DIFY_API_BASE') || '(not configured)'),
+    'Bootstrap',
+  );
+}
+
+/**
+ * 检查「Dify 回连网关」的端口是否与网关监听端口一致，不一致就在启动时点出来。
+ *
+ * 原生图片/视频节点发布后走「Dify → SSRF 代理 → 宿主网关」回调，这条链路要求
+ * 三处端口一致：网关监听端口、网关侧回连地址（`DIFY_MEDIA_GATEWAY_URL` 或
+ * `DIFY_MEDIA_GATEWAY_PORT`）、以及 SSRF 代理的白名单（compose 的
+ * `MEDIA_GATEWAY_PORT`，默认值已改为跟随 `GATEWAY_PORT`）。
+ *
+ * 不一致时媒体节点会以 **Squid 403** 失败 —— 报错发生在 SSRF 代理层，
+ * 与真因（改了 GATEWAY_PORT 但没同步另外两处）隔得很远，很容易查错方向。
+ * 这里在启动日志里直接点明，省掉那趟弯路。
+ *
+ * 只告警、不阻断启动：走反向代理时两者本就允许不同，而且只在地址里**写了明确端口**
+ * 时才比较（没写端口说明前面有代理，无法推断真实端口）。
+ */
+function warnMediaGatewayPortMismatch(config: ConfigService, listenPort: number): void {
+  const explicitUrl = String(config.get<string>('DIFY_MEDIA_GATEWAY_URL') || '').trim();
+  const explicitPort = String(config.get<string>('DIFY_MEDIA_GATEWAY_PORT') || '').trim();
+
+  let effectivePort: number | null = null;
+  if (explicitUrl) {
+    try {
+      const parsed = new URL(explicitUrl);
+      effectivePort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+    } catch {
+      effectivePort = null;
+    }
+  } else if (explicitPort) {
+    const parsed = Number.parseInt(explicitPort, 10);
+    effectivePort = Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (effectivePort === null || effectivePort === listenPort) return;
+
+  Logger.warn(
+    `媒体回连端口与网关监听端口不一致：回连地址指向 ${effectivePort}，但网关监听 ${listenPort}。`
+    + '原生图片/视频节点会以 Squid 403 失败（报错在 SSRF 代理层，与真因相隔很远）。'
+    + '请把 .env 里的 GATEWAY_PORT、DIFY_MEDIA_GATEWAY_URL、DIFY_MEDIA_GATEWAY_PORT 改成一致，'
+    + '并重建 SSRF 代理让白名单重新生成；若确实走反向代理，请忽略本条。',
     'Bootstrap',
   );
 }

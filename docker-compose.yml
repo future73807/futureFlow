@@ -103,7 +103,12 @@ services:
       # Only this exact host/port may bypass the private-destination deny-list.
       # Native media endpoints still require a short-lived, run-scoped token.
       MEDIA_GATEWAY_HOST: ${DIFY_MEDIA_GATEWAY_HOST:-host.docker.internal}
-      MEDIA_GATEWAY_PORT: ${DIFY_MEDIA_GATEWAY_PORT:-3001}
+      # 白名单端口默认跟随 GATEWAY_PORT，而不是写死 3001。
+      # 网关卡片的 DIFY_MEDIA_GATEWAY_PORT 会回退到 GATEWAY_PORT，三处（网关监听端口、
+      # 网关侧回连地址、这里的白名单）必须一致；写死 3001 时改了 GATEWAY_PORT 就会
+      # 只改到前两处，媒体节点以 Squid 403 失败 —— 报错在 SSRF 代理层，
+      # 与真因（一个端口没跟着改）隔得很远。
+      MEDIA_GATEWAY_PORT: "${DIFY_MEDIA_GATEWAY_PORT:-${GATEWAY_PORT:-3001}}"
       # Synthetic DNS egress is disabled by default. In environments that map
       # trusted public APIs into 198.18/15, list only those exact domains.
       SYNTHETIC_DNS_ALLOWED_DOMAINS: ${DIFY_SSRF_SYNTHETIC_DNS_ALLOWED_DOMAINS:-.invalid}
