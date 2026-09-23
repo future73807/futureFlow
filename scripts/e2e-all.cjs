@@ -91,6 +91,7 @@ const SUITES = [
   { id: 'docker-compose', script: 'test-docker-compose.cjs', group: 'local', desc: 'compose 调用形式探测 + 禁止写死 compose 调用的防回归检查' },
   { id: 'rotate-admin-password', script: 'test-rotate-admin-password.cjs', group: 'local', desc: '管理员密码轮换的选号逻辑 + 禁止「按 role 过滤 + LIMIT 1」的防回归检查' },
   { id: 'browser-context', script: 'test-browser-context.cjs', group: 'local', desc: '禁止把 Node 侧符号写进 page.evaluate 回调（含扫描器自校验）' },
+  { id: 'script-orphans', script: 'test-script-orphans.cjs', group: 'local', desc: '禁止无声的孤儿脚本；白名单必须写明理由且不得腐烂' },
 
   // ── 需要网关 + Dify ──
   { id: 'new-modules-api', script: 'test-new-modules-api.cjs', group: 'api', desc: '知识库 / 文件上传 / MCP 注册' },
