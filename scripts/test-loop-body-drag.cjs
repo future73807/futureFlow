@@ -12,6 +12,18 @@ function findBrowser() {
 }
 async function main() {
   const wf = process.argv[2];
+  // 本脚本需要一个**已存在的**、含 `loop_code` 内节点的循环工作流。
+  // 少了这道校验时，传错参数会一路走到 `Cannot read properties of null (reading 'x')`
+  // —— 报错现场与真因（参数根本不是工作流 ID）隔得很远，所以在这里挡住。
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!wf || !UUID_RE.test(wf)) {
+    console.error('用法: node scripts/test-loop-body-drag.cjs <工作流ID>');
+    console.error('');
+    console.error('需要一个已存在的循环工作流（含 loop_code 内节点）。');
+    console.error('可先运行 test-loop-interactions.cjs 建一个，或从画布地址栏复制 ID。');
+    console.error(`实际收到: ${wf === undefined ? '(未传)' : JSON.stringify(wf)}`);
+    process.exit(2);
+  }
   const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
   const page = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
   await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });

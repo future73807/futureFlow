@@ -90,6 +90,7 @@ const SUITES = [
   { id: 'llm-runtime', script: 'test-llm-runtime.cjs', group: 'local', desc: 'LLM 节点试运行票据注入（前端契约）' },
   { id: 'docker-compose', script: 'test-docker-compose.cjs', group: 'local', desc: 'compose 调用形式探测 + 禁止写死 compose 调用的防回归检查' },
   { id: 'rotate-admin-password', script: 'test-rotate-admin-password.cjs', group: 'local', desc: '管理员密码轮换的选号逻辑 + 禁止「按 role 过滤 + LIMIT 1」的防回归检查' },
+  { id: 'browser-context', script: 'test-browser-context.cjs', group: 'local', desc: '禁止把 Node 侧符号写进 page.evaluate 回调（含扫描器自校验）' },
 
   // ── 需要网关 + Dify ──
   { id: 'new-modules-api', script: 'test-new-modules-api.cjs', group: 'api', desc: '知识库 / 文件上传 / MCP 注册' },
@@ -106,6 +107,15 @@ const SUITES = [
   { id: 'page-buttons', script: 'test-page-buttons.cjs', group: 'gui', needsPassword: true, desc: '页面按钮逐一枚举核查' },
   { id: 'loop-body-node-ops', script: 'test-loop-body-node-ops.cjs', group: 'gui', needsPassword: true, desc: '循环体节点删除/移出/复制' },
   { id: 'loop-interactions', script: 'test-loop-interactions.cjs', group: 'gui', needsPassword: true, desc: '循环体折叠/展开/拖拽解耦' },
+  // ↓ 以下 7 个原为孤儿（全仓库零引用，从没被执行过）。2026-09-23 补齐接线，
+  //   同时修掉了它们里面「Node 侧符号被写进 page.evaluate 回调」的回归。
+  { id: 'loop-drop-in', script: 'test-loop-drop-in.cjs', group: 'gui', desc: '把画布上的节点拖进循环体（原生 NodeIntoContainer 路径）' },
+  { id: 'loop-free-connect', script: 'test-loop-free-connect.cjs', group: 'gui', desc: '空循环体 → 面板加节点 → 自由连线（左圆点→节点→右圆点）' },
+  { id: 'loop-chain-run', script: 'test-loop-chain-run.cjs', group: 'gui', needsPassword: true, desc: '循环体内多节点链（开始→代码1→代码2→结束）可试运行' },
+  { id: 'loop-e2e-run', script: 'test-loop-e2e-run.cjs', group: 'gui', needsPassword: true, desc: '循环（数值数组）画布保存后经网关试运行跑通' },
+  { id: 'loop-object-array', script: 'test-loop-object-array.cjs', group: 'gui', needsPassword: true, desc: '循环（对象数组）画布保存后经网关试运行跑通' },
+  { id: 'loop-reload', script: 'test-loop-reload.cjs', group: 'gui', desc: '重开已保存的循环工作流，加载后渲染一致（持久化往返）' },
+  { id: 'ref-requirements', script: 'verify-ref-requirements.cjs', group: 'gui', desc: '参考图需求核验 15 项（循环圆点/自动适配/聚合策略/类型系统/卡片视觉）' },
   { id: 'local-tools', script: 'test-local-tools.cjs', group: 'gui', needsPassword: true, desc: 'Python 节点真实执行（含连库）' },
   { id: 'trigger-failure-display', script: 'test-trigger-failure-display.cjs', group: 'gui', needsPassword: true, desc: '触发器「连续失败」界面可见性（依赖真实调度）' },
 ];

@@ -51,10 +51,12 @@ async function main() {
   const page = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
-  const wfid = await page.evaluate(async (body) => {
+  // 注意：page.evaluate 的函数体在**浏览器**里执行，看不到 Node 作用域 ——
+  // 密码必须作为参数传进去（把 adminPassword() 直接写在里面会 ReferenceError）
+  const wfid = await page.evaluate(async ({ body, password }) => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
+      body: JSON.stringify({ account: 'admin', password }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);
@@ -63,7 +65,7 @@ async function main() {
       body: JSON.stringify(body),
     });
     return (await wr.json()).id;
-  }, loopWorkflow());
+  }, { body: loopWorkflow(), password: adminPassword() });
   await page.goto(`http://localhost:3000/canvas/${wfid}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5000);
 

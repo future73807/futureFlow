@@ -44,14 +44,16 @@ async function main() {
   const page = await (await browser.newContext({ viewport: { width: 1680, height: 950 } })).newPage();
   await page.goto(`${FRONT}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
-  await page.evaluate(async () => {
+  // 注意：page.evaluate 的函数体在**浏览器**里执行，看不到 Node 作用域 ——
+  // 密码必须作为参数传进去（把 adminPassword() 直接写在里面会 ReferenceError）
+  await page.evaluate(async (password) => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
+      body: JSON.stringify({ account: 'admin', password }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);
-  });
+  }, adminPassword());
   const wfId = await page.evaluate(async ({ gateway, body }) => {
     const token = localStorage.getItem('futureflow_token');
     const r = await fetch(`${gateway}/workflows`, {

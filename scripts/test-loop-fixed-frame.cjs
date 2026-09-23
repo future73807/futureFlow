@@ -22,18 +22,32 @@ const WF = process.argv[2];
 const M = { l: 96, t: 32, r: 96, b: 54 };
 
 async function main() {
+  // 本脚本需要一个**已存在的**、含 `loop_code` 内节点的循环工作流。
+  // 少了这道校验时，传错参数会一路走到 `Error: loop not rendered` ——
+  // 报错现场与真因（参数根本不是工作流 ID）隔得很远，所以在这里挡住。
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!WF || !UUID_RE.test(WF)) {
+    console.error('用法: node scripts/test-loop-fixed-frame.cjs <工作流ID>');
+    console.error('');
+    console.error('需要一个已存在的循环工作流（含 loop_code 内节点）。');
+    console.error('可先运行 test-loop-interactions.cjs 建一个，或从画布地址栏复制 ID。');
+    console.error(`实际收到: ${WF === undefined ? '(未传)' : JSON.stringify(WF)}`);
+    process.exit(2);
+  }
   const browser = await chromium.launch({ headless: true, executablePath: findBrowser() });
   const page = await (await browser.newContext({ viewport: { width: 1680, height: 950 } })).newPage();
   await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
-  await page.evaluate(async () => {
+  // 注意：page.evaluate 的函数体在**浏览器**里执行，看不到 Node 作用域 ——
+  // 密码必须作为参数传进去（把 adminPassword() 直接写在里面会 ReferenceError）
+  await page.evaluate(async (password) => {
     const r = await fetch('http://localhost:3001/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'admin', password: adminPassword() }),
+      body: JSON.stringify({ account: 'admin', password }),
     });
     const j = await r.json();
     localStorage.setItem('futureflow_token', j.accessToken);
-  });
+  }, adminPassword());
   await page.goto(`http://localhost:3000/canvas/${WF}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5000);
 
