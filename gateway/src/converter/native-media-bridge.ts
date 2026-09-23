@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
+import { mediaGatewayBaseUrl } from './media-gateway-url';
 import { FlowGramJSON, FlowInputValue, FlowNodeJSON } from './types';
 
 export const MEDIA_RUN_TOKEN_INPUT = '__futureflow_media_token';
@@ -107,24 +108,7 @@ function optionalMediaSetting(value: unknown): string | undefined {
 }
 
 function gatewayBaseUrl(): string {
-  const explicit = String(process.env.DIFY_MEDIA_GATEWAY_URL || '').trim();
-  const port = String(
-    process.env.DIFY_MEDIA_GATEWAY_PORT
-      || process.env.GATEWAY_PORT
-      || '3001',
-  ).trim();
-  const fallback = `http://host.docker.internal:${port}`;
-  const raw = (explicit || fallback).replace(/\/+$/, '');
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new BadRequestException('DIFY_MEDIA_GATEWAY_URL 格式无效');
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new BadRequestException('DIFY_MEDIA_GATEWAY_URL 必须是无内嵌凭据的 HTTP(S) 地址');
-  }
-  return raw;
+  return mediaGatewayBaseUrl();
 }
 
 function buildRequestBody(node: FlowNodeJSON): string {

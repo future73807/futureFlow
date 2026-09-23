@@ -6,6 +6,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 
+import { mediaGatewayBaseUrl } from './media-gateway-url';
 import { FlowGramJSON, FlowNodeJSON, FlowInputValue } from './types';
 
 /** 运行时注入 start 节点的 MCP 执行短令牌输入名。 */
@@ -45,10 +46,7 @@ function mcpProxyBody(node: FlowNodeJSON): string {
 }
 
 function gatewayBaseUrl(): string {
-  const explicit = String(process.env.DIFY_MEDIA_GATEWAY_URL || '').trim();
-  if (explicit) return explicit.replace(/\/+$/, '');
-  const port = process.env.DIFY_MEDIA_GATEWAY_PORT || process.env.GATEWAY_PORT || '3001';
-  return `http://futureflow-gateway:${port}`;
+  return mediaGatewayBaseUrl();
 }
 
 function uniqueProxyNodeId(nodeId: string, existingIds: Set<string>): string {
