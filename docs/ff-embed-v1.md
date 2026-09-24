@@ -116,15 +116,24 @@ POST {url}  { "protocolVersion": "v1" }
 ### 4.3 计费三段事务（`HOST_BILLING_URL`，可选；缺省回落自带 balance）
 
 ```
-POST {url}  { "op": "reserve", "runId", "userId", "amount" }          → 冻结
-POST {url}  { "op": "settle", "runId", "userId", "frozenAmount",
-              "actualCost", "usage": {…}, "remark" }                  → 结算
-POST {url}  { "op": "refund", "runId", "userId", "amount" }           → 退款
+POST {url}  { "op": "reserve", "runId", "userId", "hostSubject", "amount" }        → 冻结
+POST {url}  { "op": "settle", "runId", "userId", "hostSubject", "frozenAmount",
+              "actualCost", "usage": {…}, "remark" }                               → 结算
+POST {url}  { "op": "refund", "runId", "userId", "hostSubject", "amount" }         → 退款
+→ 200 { "op", "replayed", "amount"?, "settledAmount"?, "uncoveredAmount"? }
 ```
 
 - **幂等键固定为 `flow:<runId>:<op>`**（经 `x-idempotency-key` 头下发）：网关重试、
-  宿主重试、进程重启后重跑同一 run 都不得重复扣费，宿主按此键去重；
-- `reserve` 余额不足时宿主回非 2xx，run 直接失败（不静默放行）；
+  宿主重试、进程重启后重跑同一 run 都不得重复扣费，宿主按此键去重；响应里的 `replayed`
+  表示这次是重放（宿主未再动账），可直接观测；
+- **`hostSubject` 是归属键**（必填）：计费是用户级的，宿主按它解析账目归属；回调发生在
+  run 生命周期里（可能晚于身份交换很久），短命会话令牌不可用，稳定的宿主 subject 才是
+  可用的键。flow 网关从 `users.hostSubject` 取出后随请求带上；用户没有宿主标识时**明确
+  拒绝**（不把费用记到别人账上）；
+- `userId` 是 **flow 侧**用户 id（仅作对账参考，宿主不据它归属）；
+- `reserve` 余额不足时宿主回非 2xx（402），run 直接失败（不静默放行）；
+- 宿主的冻结额是本次 run 的**消费上限**：结算实扣 `min(actualCost, 冻结额)`，超出部分在
+  `uncoveredAmount` 里如实回报（宿主账不与余额冲突，flow 侧对差额记警告日志）；
 - `usage` 是宿主折算自己计费单位的明细（totalTokens / totalSteps / model / engine 等）。
 
 ### 4.4 事件透出（`HOST_EVENTS_URL`，可选；缺省仅本地 SSE）
@@ -165,8 +174,9 @@ POST {url}  { "protocolVersion": "v1", "events": [ { "runId", "seq", "type", "pa
    应答 `hello-ack` → `identity`（把你的会话令牌放 `hostToken`）→ 可选 `theme`。
 4. **收消息**：监听 `message`，按 `event.origin ∈ 白名单` 与 `type` 前缀 `ff-embed/`
    过滤；`ready` 后可按 `run-event` 的 `seq` 做断线重放，`navigation` 用于刷新你的列表。
-5. **（可选）接三个回调缝**：凭证（§4.2，把你的 Dify/BYOK 实例下发）、计费
-   （§4.3，`flow:<runId>:<op>` 幂等键去重）、事件（§4.4）。
+5. **（可选）接三个回调缝**：凭证（§4.2，**部署级**——你配置一台 Dify/BYOK 实例供本
+   网关全体用户，宿主侧只需给共享密钥）、计费（§4.3，`flow:<runId>:<op>` 幂等键去重 +
+   `hostSubject` 归属）、事件（§4.4）。
 
 **最小宿主要求**：一个可承载 iframe 的容器 + 身份令牌注入通道 + 主题令牌。
 凭证 / 计费 / 事件三项缺省走 flow 自带实现——宿主只做「最小接入」也能跑。
