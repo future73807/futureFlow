@@ -101,6 +101,12 @@ export interface DifyAuthorizationValidationResult {
 export class DifyIntegrationService implements OnModuleInit {
   private readonly logger = new Logger(DifyIntegrationService.name);
 
+  /**
+   * Dify ≥1.17 的 console 会话（access_token + csrf_token），按 consoleBase 记账。
+   * 新增会话形态里的凭据只存在内存：网关重启后走既有的「存储 token 失效 → 重新登录」路径。
+   */
+  private readonly consoleSessions = new Map<string, { accessToken: string; csrfToken?: string }>();
+
   constructor(
     @InjectRepository(DifyIntegration)
     private readonly integrationRepo: Repository<DifyIntegration>,
@@ -1367,29 +1373,94 @@ export class DifyIntegrationService implements OnModuleInit {
   }
 
   private async loginConsole(consoleBase: string, email: string, password: string) {
-    let response: Response;
-    try {
-      response = await fetch(`${consoleBase}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, remember_me: true, language: 'zh-Hans' }),
-        signal: AbortSignal.timeout(15_000),
-      });
-    } catch (error) {
-      throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
-    }
-    const result = await response.json().catch(() => ({})) as {
+    // Dify ≥1.17 的控制面登录把口令改为 **base64 传输**（`FieldEncryption` 只做 base64，
+    // 真实安全靠 HTTPS），且令牌改为 **HttpOnly Cookie**（响应体 data=null）。
+    // 兼容策略：先按 base64 发（新基线），失败再退回明文（旧版 Dify 直接收明文）。
+    const attempt = async (encodedPassword: string) => {
+      try {
+        return await fetch(`${consoleBase}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password: encodedPassword,
+            remember_me: true,
+            language: 'zh-Hans',
+          }),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch (error) {
+        throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
+      }
+    };
+
+    let response = await attempt(Buffer.from(password, 'utf8').toString('base64'));
+    let result = (await response.clone().json().catch(() => ({}))) as {
       data?: { access_token?: string; refresh_token?: string };
     };
+    if (response.status === 401 && !result.data?.access_token) {
+      response = await attempt(password);
+      result = (await response.clone().json().catch(() => ({}))) as {
+        data?: { access_token?: string; refresh_token?: string };
+      };
+    }
+
     if (response.status >= 500) {
       throw new ServiceUnavailableException(
         `Dify Console 登录暂不可用（HTTP ${response.status}）`,
       );
     }
-    if (!response.ok || !result.data?.access_token) {
+
+    const cookies = this.readSetCookies(response);
+    const accessToken = result.data?.access_token || cookies.access_token || '';
+    if (!response.ok || !accessToken) {
       throw new BadRequestException('Dify Console 邮箱或密码授权失败');
     }
-    return { accessToken: result.data.access_token, refreshToken: result.data.refresh_token || '' };
+    // 1.17 起后续 console 调用要带上会话 cookie 与 CSRF 头（见 consoleSessionHeaders）
+    this.consoleSessions.set(this.consoleKey(consoleBase), {
+      accessToken,
+      ...(cookies.csrf_token ? { csrfToken: cookies.csrf_token } : {}),
+    });
+    return {
+      accessToken,
+      refreshToken: result.data?.refresh_token || cookies.refresh_token || '',
+    };
+  }
+
+  /** 解析 Set-Cookie（Node 20+ 有 getSetCookie；旧运行时退回单头解析）。 */
+  private readSetCookies(response: Response): Record<string, string> {
+    const headers = typeof response.headers.getSetCookie === 'function'
+      ? response.headers.getSetCookie()
+      : [response.headers.get('set-cookie') ?? ''];
+    const cookies: Record<string, string> = {};
+    for (const header of headers) {
+      const match = /^\s*([^=;]+)=([^;]*)/.exec(header);
+      if (match?.[1] && match[2]) cookies[match[1].trim()] = match[2].trim();
+    }
+    return cookies;
+  }
+
+  /** 会话按 consoleBase 记账（同一网关可能同时对接多个 Dify 实例）。 */
+  private consoleKey(consoleBase: string): string {
+    return consoleBase.replace(/\/+$/, '');
+  }
+
+  /**
+   * Dify ≥1.17 的 console 请求头：会话 cookie（HttpOnly access_token）+ CSRF
+   * （**头与 cookie 必须同时给出**，服务端取两者比对，缺一即 401「CSRF token is
+   * missing or invalid」）。旧版 Dify 没有会话记录时这里什么都不加，行为不变。
+   */
+  private consoleSessionHeaders(url: string): Record<string, string> {
+    for (const [base, session] of this.consoleSessions) {
+      if (!url.startsWith(base)) continue;
+      const cookies = [`access_token=${session.accessToken}`];
+      if (session.csrfToken) cookies.push(`csrf_token=${session.csrfToken}`);
+      return {
+        Cookie: cookies.join('; '),
+        ...(session.csrfToken ? { 'X-CSRF-Token': session.csrfToken } : {}),
+      };
+    }
+    return {};
   }
 
   private async createServiceApiKeyRecord(
@@ -1608,7 +1679,10 @@ export class DifyIntegrationService implements OnModuleInit {
     try {
       response = await fetch(`${consoleBase}/apps`, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...this.consoleSessionHeaders(`${consoleBase}/apps`),
+        },
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
@@ -1627,7 +1701,10 @@ export class DifyIntegrationService implements OnModuleInit {
     try {
       response = await fetch(url, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...this.consoleSessionHeaders(url),
+        },
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
@@ -1652,7 +1729,11 @@ export class DifyIntegrationService implements OnModuleInit {
     try {
       response = await fetch(url, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...this.consoleSessionHeaders(url),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(timeoutMs),
       });
