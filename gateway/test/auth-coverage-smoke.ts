@@ -49,6 +49,7 @@ const CLASS_LEVEL_EXEMPT: Record<string, string> = {
   'mcp/mcp.controller.ts': '逐条挂守卫：管理类路由用 JwtAuthGuard，容器回调路由用 McpExecutionGuard（限定用途令牌）',
   'workflows/workflows.controller.ts': '执行入口由 AuthMiddleware 覆盖（JWT 或平台 API Key 两种身份），故标 @Public() 交给中间件；health 为公开探针',
   'llm/llm-proxy.controller.ts': 'ticket 端点挂 JwtAuthGuard；chat/completions 标 @Public() 后在处理器内校验 Bearer 票据',
+  'host/host.controller.ts': 'ff-embed/v1 握手：两条路由都显式 @Public() 并逐条登记理由（capabilities 只回协议/能力/允许来源；session 验的是宿主令牌，由共享密钥回调宿主服务端验签）',
 };
 
 /**
@@ -65,6 +66,10 @@ const PUBLIC_ROUTES: Record<string, Record<string, string>> = {
     runWorkflow: '已停用：直接抛 400，不做任何执行',
     executePublishedWorkflow: '由 AuthMiddleware 覆盖：支持 JWT 与平台 API Key 两种身份',
     draftRun: '由 AuthMiddleware 覆盖：支持 JWT 与平台 API Key 两种身份',
+  },
+  'host/host.controller.ts': {
+    capabilities: '内嵌握手第一步：前端此时还没有 flow 凭据，需要先知道协议版本 / 能力归属 / 允许的宿主 origin；只回这些与降级原因，不含密钥与用户数据',
+    exchange: '内嵌模式的登录入口：出示的是**宿主令牌**而非 flow 令牌，由共享密钥 + 回调宿主服务端验签后按 sub get-or-create，因此不能要求 flow 的 JWT',
   },
   'health/health.controller.ts': {
     readiness: 'GET /healthz 存活/就绪探针，公开：只回进程与数据库状态；detailed 仅探测 Dify 可达性，不含业务数据',

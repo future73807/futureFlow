@@ -6,6 +6,8 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
+import { notifyNavigation } from '../../embed/client';
+
 import styled from 'styled-components';
 import {
   Button,
@@ -710,6 +712,8 @@ export const WorkflowListPage = () => {
         });
 
         Toast.success('创建成功');
+        // 内嵌形态：告诉宿主「这里新建了一个工作流」，宿主据此刷新自己的列表 / 面包屑。
+        notifyNavigation({ kind: 'workflow-created', workflowId: wf.id, name: values.name });
         setCreateVisible(false);
         navigate(`/canvas/${wf.id}`);
       } catch (err: any) {

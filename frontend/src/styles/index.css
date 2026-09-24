@@ -655,3 +655,26 @@ body:has(.semi-sidesheet-mask) .app-content .page-scroll {
 .admin-table-scroll .semi-table-thead {
   box-shadow: 12px 0 0 var(--ff-surface-muted);
 }
+
+/* 内嵌形态降级横幅（ff-embed）：协议版本不匹配 / 宿主 origin 不在白名单 /
+   身份交换失败时，把「已按独立模式运行」与原因摆在页面上方——降级必须能被看见。 */
+.ff-embed-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ff-text);
+  background: var(--ff-warning-soft, #fff7e6);
+  border-bottom: 1px solid var(--ff-border);
+}
+
+.ff-embed-notice strong {
+  flex: none;
+  font-weight: 600;
+}
+
+.ff-embed-notice span {
+  color: var(--ff-text-muted, var(--ff-text));
+}

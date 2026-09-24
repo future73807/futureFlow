@@ -1,11 +1,17 @@
 import {
+  Inject,
   Injectable,
   Logger,
   InternalServerErrorException,
+  Optional,
 } from '@nestjs/common';
 import { describeError } from '../common/describe-error';
 import { DifyConfigService } from './dify-config.service';
 import { DifyIntegrationService } from './dify-integration.service';
+import {
+  HOST_CREDENTIALS,
+  type HostCredentialsProvider,
+} from '../host/host.types';
 import {
   redactInputValues,
   redactSensitiveValues,
@@ -62,6 +68,17 @@ export class DifyClientService {
   constructor(
     private readonly difyConfig: DifyConfigService,
     private readonly integration: DifyIntegrationService,
+    /**
+     * 凭证缝（Definition → {@link HostCredentialsProvider}）：内嵌形态下引擎地址与
+     * 基础 Key 由宿主下发（宿主自己的 BYOK 实例或第三方网关），独立形态返回 `local`
+     * 表示照旧走 `.env`。
+     *
+     * 可选注入：缺省 = 独立口径（本地 `.env`）。装配层（HostModule）在两种形态下都会
+     * 给出实现；这里可选是为了让只关心 SSE 解析的单元测试不必搭宿主装配。
+     */
+    @Optional()
+    @Inject(HOST_CREDENTIALS)
+    private readonly hostCredentials?: HostCredentialsProvider,
   ) {}
 
   /**
@@ -69,6 +86,12 @@ export class DifyClientService {
    * 委托给 DifyConfigService 进行格式校验
    */
   async isConfigured(target: DifyExecutionTarget = {}): Promise<boolean> {
+    const credentials = await this.hostCredentials?.resolveEngineCredentials();
+    if (credentials?.source === 'host' && !target.apiKey) {
+      // 宿主下发：有效期由宿主保证（可能是第三方网关，非 Dify 的 app- 前缀格式），
+      // 这里只做「非空」判断，不套用 Dify 官方的 Key 格式规则。
+      return Boolean(credentials.apiBase && credentials.apiKey);
+    }
     const apiKey = await this.resolveApiKey(target);
     return this.difyConfig.isValidApiKey(apiKey);
   }
@@ -93,7 +116,7 @@ export class DifyClientService {
       };
     }
 
-    const apiBase = this.difyConfig.getApiBase();
+    const { apiBase } = await this.resolveEngineBase();
     const apiKey = await this.resolveApiKey();
     const start = Date.now();
 
@@ -160,7 +183,7 @@ export class DifyClientService {
       });
     }
 
-    const apiBase = this.difyConfig.getApiBase();
+    const { apiBase } = await this.resolveEngineBase();
     const apiKey = await this.resolveApiKey(target);
     const url = `${apiBase}/workflows/run`;
 
@@ -440,15 +463,36 @@ export class DifyClientService {
       // 草稿沙箱目标：调用方已完成归属校验并解析好应用 Key。
       return target.apiKey;
     }
+    const { hostKey } = await this.resolveEngineBase();
+    // 宿主下发凭据时，**兜底 Key 也是宿主的**：per-version 应用是导入到宿主那台 Dify
+    // 的，回落到本机 `.env` 的 Key 会打到另一台实例上。
+    const fallbackKey = hostKey ?? this.difyConfig.getApiKey();
     if (target.workflowId && target.workflowVersion) {
       // Never fall back to a global app for a published workflow. Doing so
       // could execute a different workflow after an unrelated import.
       return this.integration.resolveWorkflowOrLegacyApiKey(
         target.workflowId,
         target.workflowVersion,
-        this.difyConfig.getApiKey(),
+        fallbackKey,
       );
     }
-    return this.integration.resolveServiceApiKey(this.difyConfig.getApiKey());
+    return this.integration.resolveServiceApiKey(fallbackKey);
+  }
+
+  /**
+   * 引擎接入点（地址 + 兜底 Key）：**凭证缝的唯一消费处**。
+   *
+   * 宿主下发（内嵌模式的 BYOK 实例 / 第三方网关）时用宿主的；否则用本机 `.env`。
+   * 「两个来源」这件事只在这里判断一次，其他调用点不再各自读配置。
+   */
+  private async resolveEngineBase(): Promise<{
+    apiBase: string;
+    hostKey: string | null;
+  }> {
+    const credentials = await this.hostCredentials?.resolveEngineCredentials();
+    if (credentials?.source === 'host') {
+      return { apiBase: credentials.apiBase, hostKey: credentials.apiKey };
+    }
+    return { apiBase: this.difyConfig.getApiBase(), hostKey: null };
   }
 }

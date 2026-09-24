@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 
 import logoUrl from '../../assets/logo.svg';
+import { useFfEmbedBrandHidden } from '../../embed/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
@@ -49,15 +50,20 @@ export const MainLayout = () => {
     navigate('/login', { replace: true });
   }, [navigate]);
 
+  // 内嵌形态（宿主应用里）去品牌：宿主自带 chrome，flow 不再摆自己的 logo / 名字。
+  const hideBrand = useFfEmbedBrandHidden();
+
   return (
     <div className="app-layout">
       <aside className="app-sidebar">
-        <button className="app-brand" type="button" onClick={() => navigate('/')}>
-          <span className="app-brand-mark" aria-hidden="true">
-            <img src={logoUrl} width={24} height={24} alt="" />
-          </span>
-          <strong>futureFlow</strong>
-        </button>
+        {hideBrand ? null : (
+          <button className="app-brand" type="button" onClick={() => navigate('/')}>
+            <span className="app-brand-mark" aria-hidden="true">
+              <img src={logoUrl} width={24} height={24} alt="" />
+            </span>
+            <strong>futureFlow</strong>
+          </button>
+        )}
 
         <nav className="sidebar-nav" aria-label="主导航">
           {NAV_ITEMS

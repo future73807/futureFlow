@@ -2,6 +2,8 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import type { HostConfig } from './host/host.config';
+import { HOST_CONFIG } from './host/host.types';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
@@ -23,7 +25,6 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-
   const isLocalDevelopmentOrigin = (origin?: string) => {
     if (isProduction || !origin) return false;
 
@@ -40,7 +41,11 @@ async function bootstrap() {
     }
   };
 
-  const allowedOrigins = new Set(configuredOrigins);
+  // 内嵌形态（ff-embed）：宿主页面里的 flow 前端会**跨域**调本网关，
+  // 所以宿主 origin 必须进 CORS 允许列表——它的权威来源是 HOST_ALLOWED_ORIGINS
+  // （网关据此下发白名单给前端做 postMessage 校验，两处用的是同一份配置）。
+  const hostConfig = app.get<HostConfig>(HOST_CONFIG);
+  const allowedOrigins = new Set([...configuredOrigins, ...hostConfig.allowedOrigins]);
 
   // 被拒来源只提示一次，避免页面反复重试或扫描器把日志刷满。
   const warnedOrigins = new Set<string>();

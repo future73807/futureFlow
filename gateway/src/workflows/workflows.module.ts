@@ -16,6 +16,7 @@ import { DifyModule } from '../dify/dify.module';
 import { BillingModule } from '../billing/billing.module';
 import { AuthModule } from '../auth/auth.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { HostModule } from '../host/host.module';
 
 @Module({
   imports: [
@@ -25,6 +26,8 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
     BillingModule,
     AuthModule,
     KnowledgeModule,
+    // 计费缝 + 事件缝：独立形态转发到自带实现，内嵌形态交给宿主。
+    HostModule,
   ],
   controllers: [WorkflowsController, WorkflowCrudController],
   providers: [

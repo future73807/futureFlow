@@ -55,8 +55,8 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return {
-      ...this.generateTokens(user),
-      user: this.sanitizeUser(user),
+      ...this.issueSession(user),
+      user: this.toProfile(user),
     };
   }
 
@@ -85,8 +85,8 @@ export class AuthService {
 
     this.loginRateLimit.reset(clientKey);
     return {
-      ...this.generateTokens(user),
-      user: this.sanitizeUser(user),
+      ...this.issueSession(user),
+      user: this.toProfile(user),
     };
   }
 
@@ -95,7 +95,7 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('用户不存在');
     }
-    return this.sanitizeUser(user);
+    return this.toProfile(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
@@ -117,7 +117,7 @@ export class AuthService {
       user.email = email;
     }
 
-    return this.sanitizeUser(await this.userRepo.save(user));
+    return this.toProfile(await this.userRepo.save(user));
   }
 
   /** 修改密码：验证当前密码后重置哈希，并自增 token 版本号强制全部旧会话下线。 */
@@ -136,18 +136,26 @@ export class AuthService {
     // 签发一个携带新版本号的新 token，让当前会话无缝续期；
     // 其他端的旧 token 版本号落后，会在守卫处被拒。
     return {
-      ...this.generateTokens(user),
-      user: this.sanitizeUser(user),
+      ...this.issueSession(user),
+      user: this.toProfile(user),
     };
   }
 
-  private generateTokens(user: User) {
+  /**
+   * 签发会话令牌（唯一会写 JWT 载荷的地方）。
+   *
+   * 宿主适配层的身份缝也走这里（`HostSessionService` → 换取会话）：载荷形状、`tv`
+   * 版本号语义只有一处定义，避免「宿主登录的会话不受改密码影响」这类漂移。
+   */
+  issueSession(user: User) {
     const payload = {
       sub: user.id,
       username: user.username,
       vipLevel: user.vipLevel,
       role: user.role,
       status: user.status,
+      // 原样带上库里的值（守卫是 `user.tokenVersion === payload.tv` 的严格比较，
+      // 两侧都取自同一处读取路径才不会因驱动类型差异而误判）。
       tv: user.tokenVersion || 0,
     };
 
@@ -157,7 +165,8 @@ export class AuthService {
     };
   }
 
-  private sanitizeUser(user: User) {
+  /** 用户对外形状（不含密码哈希 / 令牌版本等内部字段）。 */
+  toProfile(user: User) {
     return {
       id: user.id,
       username: user.username,

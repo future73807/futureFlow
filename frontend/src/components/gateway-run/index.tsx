@@ -14,6 +14,7 @@ import { useClientContext, useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useParams } from 'react-router-dom';
 import './gateway-run.css';
 import { apiFetch, apiJson } from '../../utils/api';
+import { publishRunEvent } from '../../embed/client';
 import { callSaveHook } from '../../utils/save-registry';
 import { downloadResultArchive } from '../../utils/result-archive';
 import { getFieldLabel } from '../../form-components/field-labels';
@@ -348,6 +349,13 @@ export const GatewayRunButton = ({
 
           try {
             const event = JSON.parse(jsonText);
+            // 内嵌形态：把每个运行事件透出给宿主通道（带 seq，宿主可断线重放）；
+            // 独立形态是空操作，不额外开销。
+            publishRunEvent({
+              runId: event.workflow_run_id || workflowId || 'draft',
+              type: event.event,
+              payload: event,
+            });
             if (receivedTerminalEvent) {
               throw new Error('执行流在终态之后仍返回事件，结果不可信');
             }

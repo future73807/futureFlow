@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   BadRequestException,
@@ -13,7 +14,12 @@ import { WorkflowRun } from '../database/entities/workflow-run.entity';
 import { FlowGramJSON } from '../converter/types';
 import { DifyConverterService } from '../converter/dify-converter.service';
 import { DifyClientService, DifySSEEvent } from '../dify/dify-client.service';
-import { BillingService } from '../billing/billing.service';
+import {
+  HOST_BILLING,
+  HOST_EVENTS,
+  type HostBillingProvider,
+  type HostEventSink,
+} from '../host/host.types';
 import { PermissionChecker } from '../auth/auth.module';
 import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
 import {
@@ -59,12 +65,27 @@ export class WorkflowsService {
     private readonly runRepo: Repository<WorkflowRun>,
     private readonly converter: DifyConverterService,
     private readonly difyClient: DifyClientService,
-    private readonly billing: BillingService,
+    /**
+     * 计费缝（Definition → {@link HostBillingProvider}）：独立形态转发到自带 balance，
+     * 内嵌形态把三段事务交给宿主（同一 run id 作幂等键）。本服务不认模式。
+     */
+    @Inject(HOST_BILLING)
+    private readonly billing: HostBillingProvider,
     private readonly permissionChecker: PermissionChecker,
     @Optional()
     private readonly executionGuard?: WorkflowExecutionGuardService,
     @Optional()
     private readonly jwtService?: JwtService,
+    /**
+     * 事件缝（Definition → {@link HostEventSink}）：内嵌形态把运行事件透出给宿主通道
+     * （带 seq，宿主可断线重放）；独立形态是空实现（本地 SSE 就是通道）。
+     *
+     * 可选注入：缺省 = 只走本地 SSE。装配层（HostModule）在两种形态下都会给出实现，
+     * 这里只是为了不让「只关心执行链路的单元测试」被迫搭一套宿主装配。
+     */
+    @Optional()
+    @Inject(HOST_EVENTS)
+    private readonly hostEvents?: HostEventSink,
   ) {}
 
   /**
@@ -219,6 +240,23 @@ export class WorkflowsService {
       }
     };
 
+    /**
+     * 事件缝的消费者：把每个 run 事件按 seq 透出给宿主通道（独立形态由空实现吞掉）。
+     * seq 是**该 run 内**的单调序号，宿主据此做断线重放（`lastSeq`）。
+     */
+    let hostEventSeq = 0;
+    const publishHostEvent = async (event: DifySSEEvent) => {
+      if (!this.hostEvents) return;
+      hostEventSeq += 1;
+      await this.hostEvents.publish({
+        runId,
+        seq: hostEventSeq,
+        type: event.event,
+        payload: event,
+        at: new Date().toISOString(),
+      });
+    };
+
     try {
       // A published release was imported into its own Dify app at publish
       // time. Execution is read-only and never serializes other workflows.
@@ -247,6 +285,7 @@ export class WorkflowsService {
       );
       for await (const event of stream) {
         recordEvent(event);
+        await publishHostEvent(event);
         yield event;
         if (event.event === 'workflow_started' && event.workflow_run_id) {
           await this.runRepo.update(runId, {
@@ -268,6 +307,7 @@ export class WorkflowsService {
             message: executionError.message,
           },
         };
+        await publishHostEvent(errorEvent);
         yield errorEvent;
       }
     } finally {
@@ -318,6 +358,13 @@ export class WorkflowsService {
           actualCost,
           runId,
           `Token: ${result.totalTokens}, Steps: ${result.totalSteps}, Model: ${modelName}, Engine: dify`,
+          {
+            totalTokens: result.totalTokens,
+            totalSteps: result.totalSteps,
+            elapsedTime: result.elapsedTime ?? null,
+            model: modelName,
+            engine: 'dify',
+          },
         );
 
         await this.runRepo.update(runId, {
@@ -337,6 +384,8 @@ export class WorkflowsService {
           `工作流完成: runId=${runId}, tokens=${result.totalTokens}, cost=${actualCost}, model=${modelName}, engine=dify`,
         );
       }
+      // run 结束：冲刷事件缓冲（独立形态是空操作；内嵌形态把最后一批透出给宿主）。
+      if (this.hostEvents) await this.hostEvents.flush();
     }
   }
 

@@ -27,6 +27,16 @@ export class User {
   @Column({ nullable: true })
   passwordHash: string; // bcrypt 密码哈希（注册用户必填，API Key 用户可空）
 
+  /**
+   * 宿主适配层的稳定外部标识（`ff-embed` 内嵌模式）。
+   *
+   * 宿主是身份权威：同一个 `hostSubject` 反复换取会话只会命中同一行用户（get-or-create），
+   * 与用户名 / 邮箱这些可变的展示字段无关。独立模式下恒为 null。
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @Index('users_host_subject_unique', { unique: true })
+  hostSubject: string | null;
+
   @Column({ nullable: true })
   apiKey: string; // 用户调用网关的 API Key（向后兼容）
 

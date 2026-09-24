@@ -1,3 +1,5 @@
+import { readHostConfig } from '../host/host.config';
+
 type Environment = Record<string, string | undefined>;
 
 function isPlaceholder(value?: string): boolean {
@@ -74,6 +76,12 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
   )) {
     throw new Error('MEDIA_CREDENTIAL_ENCRYPTION_SECRET must be at least 32 characters and not a placeholder');
   }
+
+  // 宿主适配层（ff-embed）：形状校验统一走 host.config 的读取器，避免两处规则漂移。
+  // 它只依赖已读到的 map，不会因为 Nest 还没装配就漏检。
+  readHostConfig({
+    get: <T = string>(key: string) => environment[key] as T | undefined,
+  });
 
   if (nodeEnv !== 'production') return environment;
 

@@ -23,6 +23,7 @@ import { LlmModule } from './llm/llm.module';
 import { LocalToolsModule } from './localtools/localtools.module';
 import { PluginsModule } from './plugins/plugins.module';
 import { TasksModule } from './tasks/tasks.module';
+import { HostModule } from './host/host.module';
 
 @Module({
   imports: [
@@ -90,6 +91,8 @@ import { TasksModule } from './tasks/tasks.module';
     LocalToolsModule,
     PluginsModule,
     TasksModule,
+    // 宿主适配层（ff-embed）：一处装配六缝的 Provider，见 host/host.module.ts。
+    HostModule,
   ],
   providers: [
     // 全局鉴权：默认要登录，只有显式 @Public() 或自带守卫的路由才放行。

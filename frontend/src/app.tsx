@@ -20,6 +20,8 @@ import { CanvasPage } from './pages/canvas';
 import { isLoggedIn, getUser } from './utils/auth';
 import { AUTH_EXPIRED_EVENT } from './utils/api';
 import { applyTheme, resolveInitialTheme } from './utils/theme';
+import { initFfEmbed } from './embed/client';
+import { FfEmbedNotice } from './embed/react';
 
 /**
  * React 18/19 polyfill for form-materials
@@ -28,6 +30,10 @@ unstableSetCreateRoot(createRoot);
 
 // 在首个组件渲染前套用主题，避免浅色闪烁。
 applyTheme(resolveInitialTheme());
+
+// 宿主适配（ff-embed）：被宿主 iframe 嵌进来时握手换会话、随宿主视觉；
+// 不在宿主里 / 网关为独立模式时它什么也不做（内部已判）。
+void initFfEmbed();
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn()) {
@@ -68,6 +74,7 @@ const app = createRoot(document.getElementById('root')!);
 app.render(
   <BrowserRouter>
     <AuthExpiredWatcher />
+    <FfEmbedNotice />
     <Routes>
       <Route path="/login" element={<LoginRegisterPage />} />
       <Route
