@@ -135,6 +135,18 @@ export const HOST_CREDENTIALS = 'HOST_CREDENTIALS';
 export const HOST_BILLING = 'HOST_BILLING';
 export const HOST_EVENTS = 'HOST_EVENTS';
 
+/**
+ * 计费回调的**归属键**解析：flow 用户 id → 宿主 subject（`users.hostSubject`）。
+ *
+ * 为什么需要它：计费是**用户级**的（谁跑的谁付），而宿主只知道它自己下发的 subject；
+ * 机器对机器的回调发生在 run 的生命周期里（可能晚于身份交换很久），短命会话令牌不可用，
+ * 稳定的 `hostSubject` 才是可用的归属键（契约见 `HostBillingProvider` 各方法的请求体）。
+ */
+export interface HostSubjectLookup {
+  /** 没有宿主标识（如独立模式开户的老用户）返回 null——调用方据此明确拒绝，不静默归到别人账上。 */
+  findHostSubject(userId: string): Promise<string | null>;
+}
+
 /** 独立形态的能力归属（六项全部自带；theme/navigation 由前端消费者直接读 mode）。 */
 export const LOCAL_CAPABILITIES: HostCapabilities = {
   identity: false,

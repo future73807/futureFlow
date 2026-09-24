@@ -414,6 +414,12 @@ async function testEmbeddedBilling() {
       new HostHttpClient(config),
       service,
       hostCapabilities(config).capabilities,
+      {
+        // 假宿主侧标识解析：flow 用户 user-1 → 宿主 subject host-subject-1
+        async findHostSubject(userId: string) {
+          return userId === 'user-1' ? 'host-subject-1' : null;
+        },
+      },
     );
 
     const frozen = await provider.freezeBalance('user-1', 2.5, 'run-1');
@@ -434,6 +440,12 @@ async function testEmbeddedBilling() {
       ['flow:run-1:reserve', 'flow:run-1:settle', 'flow:run-2:refund'],
       '幂等键固定为 flow:<runId>:<op>（宿主可安全重放）',
     );
+    // 归属键：宿主按 hostSubject 解析账目归属（机器对机器回调不带会话令牌）
+    assert.deepEqual(
+      host.requests.map((request) => request.body.hostSubject),
+      ['host-subject-1', 'host-subject-1', 'host-subject-1'],
+      '三段回调都必须带宿主 subject',
+    );
     assert.equal(host.requests[0].body.amount, 2.5);
     assert.equal(host.requests[1].body.actualCost, 0.7);
     assert.deepEqual(host.requests[1].body.usage, {
@@ -447,6 +459,13 @@ async function testEmbeddedBilling() {
       () => provider.freezeBalance('user-1', 999, 'run-3'),
       /宿主返回 402.*宿主额度不足/s,
       '宿主拒付要如实冒泡（run 必须失败，而不是偷偷用本地余额）',
+    );
+
+    // 没有宿主标识的用户：明确拒绝并说明原因（不把费用记到别人账上）
+    await assert.rejects(
+      () => provider.freezeBalance('user-without-subject', 1, 'run-4'),
+      /没有宿主标识（hostSubject）/,
+      '归属键缺失必须明确拒绝，而不是静默归到别人账上',
     );
   } finally {
     await host.close();

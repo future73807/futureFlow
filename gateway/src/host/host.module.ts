@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import type { Repository } from 'typeorm';
 
 import { AuthModule } from '../auth/auth.module';
 import { BillingModule } from '../billing/billing.module';
 import { BillingService } from '../billing/billing.service';
+import { User } from '../database/entities/user.entity';
 import { EmbeddedBillingProvider } from './embedded-billing.provider';
 import { EmbeddedCredentialsProvider } from './embedded-credentials.provider';
 import { EmbeddedEventSink } from './embedded-events.provider';
@@ -11,7 +14,11 @@ import { EmbeddedIdentityProvider } from './embedded-identity.provider';
 import { HostController } from './host.controller';
 import { HostHttpClient } from './host-http.client';
 import { HostSessionService } from './host-session.service';
-import { hostCapabilities, readHostConfig, type HostConfig } from './host.config';
+import {
+  hostCapabilities,
+  readHostConfig,
+  type HostConfig,
+} from './host.config';
 import {
   StandaloneBillingProvider,
   StandaloneCredentialsProvider,
@@ -24,6 +31,7 @@ import {
   HOST_CREDENTIALS,
   HOST_EVENTS,
   HOST_IDENTITY,
+  type HostSubjectLookup,
 } from './host.types';
 
 /**
@@ -38,7 +46,7 @@ import {
  * `if (embedded)` 之类的模式分支。
  */
 @Module({
-  imports: [AuthModule, BillingModule],
+  imports: [AuthModule, BillingModule, TypeOrmModule.forFeature([User])],
   controllers: [HostController],
   providers: [
     {
@@ -50,6 +58,20 @@ import {
       provide: HostHttpClient,
       useFactory: (config: HostConfig) => new HostHttpClient(config),
       inject: [HOST_CONFIG],
+    },
+    /**
+     * 计费归属键解析：flow 用户 → `users.hostSubject`（身份缝开户时写入）。
+     * 两种形态都提供（独立 Provider 用不到它，但装配保持一处、不按模式分叉）。
+     */
+    {
+      provide: 'HOST_SUBJECT_LOOKUP',
+      useFactory: (users: Repository<User>): HostSubjectLookup => ({
+        async findHostSubject(userId: string) {
+          const user = await users.findOne({ where: { id: userId } });
+          return user?.hostSubject?.trim() || null;
+        },
+      }),
+      inject: [getRepositoryToken(User)],
     },
     {
       provide: HOST_IDENTITY,
@@ -81,6 +103,7 @@ import {
         config: HostConfig,
         http: HostHttpClient,
         billing: BillingService,
+        subjectLookup: HostSubjectLookup,
       ) =>
         config.mode === 'embedded'
           ? new EmbeddedBillingProvider(
@@ -88,9 +111,10 @@ import {
               http,
               billing,
               hostCapabilities(config).capabilities,
+              subjectLookup,
             )
           : new StandaloneBillingProvider(billing),
-      inject: [HOST_CONFIG, HostHttpClient, BillingService],
+      inject: [HOST_CONFIG, HostHttpClient, BillingService, 'HOST_SUBJECT_LOOKUP'],
     },
     {
       provide: HOST_EVENTS,
