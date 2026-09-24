@@ -26,6 +26,9 @@ export const FF_EMBED_MESSAGE_TYPES = [
   'ff-embed/hello-ack',
   'ff-embed/identity',
   'ff-embed/theme',
+  // 内嵌形态下导航由宿主侧栏承担（flow 自己的侧栏隐藏）：
+  // 宿主侧栏点「工作流 / 任务中心」时发这条，flow 据此路由跳转。
+  'ff-embed/navigate',
 ] as const;
 
 export type FfEmbedMessageType = (typeof FF_EMBED_MESSAGE_TYPES)[number];
@@ -43,6 +46,7 @@ const HOST_TO_FLOW = new Set<FfEmbedMessageType>([
   'ff-embed/hello-ack',
   'ff-embed/identity',
   'ff-embed/theme',
+  'ff-embed/navigate',
 ]);
 
 export interface FfEmbedMessage {
@@ -65,6 +69,12 @@ export interface FfEmbedIdentityMessage extends FfEmbedMessage {
   type: 'ff-embed/identity';
   /** 宿主签发的令牌；flow 只把它交给**网关**去验签，前端不解析它。 */
   hostToken: string;
+}
+
+export interface FfEmbedNavigateMessage extends FfEmbedMessage {
+  type: 'ff-embed/navigate';
+  /** flow 内部路由路径（必须以 `/` 开头，防宿主消息把页面带去任意外部 URL）。 */
+  path: string;
 }
 
 export interface FfEmbedThemeMessage extends FfEmbedMessage {
@@ -136,6 +146,13 @@ export function parseHostMessage(
     if (typeof token !== 'string' || !token.trim()) return null;
     if (token.length > 8 * 1024) return null;
     return { ...message, hostToken: token };
+  }
+
+  if (message.type === 'ff-embed/navigate') {
+    const path = candidate.path;
+    // 只收站内路径：防宿主消息把页面带去任意外部 URL
+    if (typeof path !== 'string' || !path.startsWith('/') || path.length > 256) return null;
+    return { ...message, path };
   }
 
   if (message.type === 'ff-embed/theme') {

@@ -36,6 +36,7 @@ import { AddPluginFavorites1723177600000 } from './migrations/1723177600000-add-
 import { AddVersionCommentAndSource1723264000000 } from './migrations/1723264000000-add-version-comment-and-source';
 import { AddWorkflowRunOutputs1723350400000 } from './migrations/1723350400000-add-workflow-run-outputs';
 import { AddUserHostSubject1790280000000 } from './migrations/1790280000000-add-user-host-subject';
+import { AddUserDisplayName1790290000000 } from './migrations/1790290000000-add-user-display-name';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) return;
@@ -106,6 +107,7 @@ export default new DataSource({
     AddVersionCommentAndSource1723264000000,
     AddWorkflowRunOutputs1723350400000,
     AddUserHostSubject1790280000000,
+    AddUserDisplayName1790290000000,
   ],
   synchronize: false,
   logging: false,

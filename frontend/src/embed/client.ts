@@ -30,6 +30,16 @@ import {
   type FfEmbedThemeMessage,
 } from './protocol';
 
+/**
+ * 宿主 → flow 的站内导航（`ff-embed/navigate`）由 React 侧注册的 router 回调执行
+ * （`FfEmbedNavigateBridge`，见 react.tsx）；embed 客户端本身在 Router 之外。
+ */
+let navigateHandler: ((path: string) => void) | null = null;
+
+export function setFfEmbedNavigateHandler(handler: (path: string) => void): void {
+  navigateHandler = handler;
+}
+
 export type FfEmbedStatus =
   /** 不在宿主里（或网关以独立模式运行）：一切照旧。 */
   | { state: 'standalone' }
@@ -216,6 +226,11 @@ async function onMessage(event: MessageEvent): Promise<void> {
       (message as FfEmbedIdentityMessage).hostToken,
       message as FfEmbedIdentityMessage
     );
+    return;
+  }
+  if (message.type === 'ff-embed/navigate') {
+    const path = (message as { path?: unknown }).path;
+    if (typeof path === 'string') navigateHandler?.(path);
     return;
   }
   if (message.type === 'ff-embed/theme') {

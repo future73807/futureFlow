@@ -170,6 +170,8 @@ export class AuthService {
     return {
       id: user.id,
       username: user.username,
+      // 账号互通（内嵌模式）：展示名由宿主下发同步；缺省回退用户名
+      displayName: user.displayName || null,
       email: user.email,
       vipLevel: user.vipLevel,
       role: user.role,

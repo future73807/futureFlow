@@ -37,6 +37,13 @@ export class User {
   @Index('users_host_subject_unique', { unique: true })
   hostSubject: string | null;
 
+  /**
+   * 账号显示名（`ff-embed` 内嵌模式由宿主下发同步）：界面优先显示它，
+   * 缺省回退 username（派生键 `host-<hash>` 只是稳定标识，不适合给人看）。
+   */
+  @Column({ type: 'varchar', nullable: true })
+  displayName: string | null;
+
   @Column({ nullable: true })
   apiKey: string; // 用户调用网关的 API Key（向后兼容）
 

@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 
 import logoUrl from '../../assets/logo.svg';
-import { useFfEmbedBrandHidden } from '../../embed/react';
+import { useFfEmbedBrandHidden, useFfEmbedStatus } from '../../embed/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
@@ -52,6 +52,20 @@ export const MainLayout = () => {
 
   // 内嵌形态（宿主应用里）去品牌：宿主自带 chrome，flow 不再摆自己的 logo / 名字。
   const hideBrand = useFfEmbedBrandHidden();
+  // 内嵌形态下**整个侧栏都交给宿主**：导航走宿主侧栏（ff-embed/navigate 桥），
+  // 账号即宿主账号（身份缝），插件商店 / 平台管理等管理面收敛到宿主后台——
+  // flow 只保留内容区（工作流画布 / 任务中心内容）。
+  const embedded = useFfEmbedStatus().state === 'embedded';
+
+  if (embedded) {
+    return (
+      <div className="app-layout is-embedded">
+        <main className="app-content">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-layout">
@@ -89,10 +103,12 @@ export const MainLayout = () => {
         <div className="sidebar-footer">
           <button className="sidebar-account" type="button" onClick={() => navigate('/profile')}>
             <Avatar size="small">
-              {user?.username?.[0]?.toUpperCase() || 'U'}
+              {(user?.displayName || user?.username)?.[0]?.toUpperCase() || 'U'}
             </Avatar>
             <span>
-              <Typography.Text strong>{user?.username || '加载中'}</Typography.Text>
+              <Typography.Text strong>
+                {user?.displayName || user?.username || '加载中'}
+              </Typography.Text>
               <Typography.Text type="tertiary">
                 {user?.vipLevel?.toUpperCase() || 'FREE'} · ¥{Number(user?.balance || 0).toFixed(2)}
               </Typography.Text>

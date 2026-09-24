@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { notifyNavigation } from '../../embed/client';
+import { useFfEmbedStatus } from '../../embed/react';
 
 import styled from 'styled-components';
 import {
@@ -1220,7 +1221,11 @@ export const WorkflowListPage = () => {
         <h1>工作流</h1>
         <p className="page-sub">在这里查看、编辑和发布你的 AI 工作流。</p>
         <div className="page-actions">
-          <Button onClick={() => void openDifySettings()}>Dify 引擎</Button>
+          {/* 内嵌形态：引擎凭证由宿主下发（凭证缝），受控引擎的授权也在宿主侧完成——
+              管理入口不暴露给内嵌用户（管理员面收敛到宿主后台） */}
+          {useFfEmbedStatus().state === 'embedded' ? null : (
+            <Button onClick={() => void openDifySettings()}>Dify 引擎</Button>
+          )}
         </div>
       </header>
 

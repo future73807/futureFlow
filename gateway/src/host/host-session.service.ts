@@ -74,11 +74,20 @@ export class HostSessionService {
 
   /** 宿主是 displayName / email 的权威源：每次都同步，但不动用户名与本地状态。 */
   private async syncProfile(user: User, identity: HostIdentity): Promise<User> {
+    // 宿主给的展示名优先：账号互通要求 flow 界面显示的是宿主账号的身份，
+    // 而不是 `host-<hash>` 派生用户名（那只适合当稳定键）。缺失则保留原值。
+    const nextDisplayName = identity.displayName?.trim() || null;
+    if (nextDisplayName && nextDisplayName !== user.displayName) {
+      user.displayName = nextDisplayName;
+    }
+
     // 宿主这一轮没给邮箱时保留原值（邮箱列可空，但**不主动清空**：
     // 清空会让「宿主暂时没带 email」变成一次不可逆的信息丢失）。
     const nextEmail = identity.email ?? user.email;
-    if (!nextEmail || nextEmail === user.email) return user;
-    user.email = nextEmail;
+    if ((!nextEmail || nextEmail === user.email) && user.displayName === nextDisplayName) {
+      return user;
+    }
+    user.email = nextEmail ?? user.email;
     try {
       return await this.userRepo.save(user);
     } catch {
@@ -108,6 +117,10 @@ export class HostSessionService {
         passwordHash: undefined,
         email: email ?? undefined,
         hostSubject: identity.subject,
+        // 账号互通：flow 界面显示宿主账号的展示名（缺失时界面回退用户名）
+        ...(identity.displayName?.trim()
+          ? { displayName: identity.displayName.trim() }
+          : {}),
         // 宿主承担计费时，节点权限不再受 flow 的 VIP 档位约束（默认 pro，可配）；
         // 宿主不承担计费时按 free 起步，照旧受自带余额与档位约束。
         vipLevel: this.config.hostUserVipLevel,
