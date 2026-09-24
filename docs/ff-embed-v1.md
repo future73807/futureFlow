@@ -139,11 +139,20 @@ POST {url}  { "op": "refund", "runId", "userId", "hostSubject", "amount" }      
 ### 4.4 事件透出（`HOST_EVENTS_URL`，可选；缺省仅本地 SSE）
 
 ```
-POST {url}  { "protocolVersion": "v1", "events": [ { "runId", "seq", "type", "payload", "at" } ] }
+POST {url}  { "protocolVersion": "v1",
+              "events": [ { "runId", "seq", "type", "payload", "at", "hostSubject" } ] }
+→ 200 { "accepted": n, "skipped": m }
 ```
 
 批量（≤25 条/批，或 250ms 攒批）；`seq` 是 **run 内**单调序号，宿主按 `lastSeq`
-断线重放。事件是旁路：外发失败 flow 只记日志并丢弃该批（有界），不拖垮 run。
+断线重放（宿主侧把事件包成 `flowRun.event` 投给该用户 WS 连接）。事件是旁路：
+外发失败 flow 只记日志并丢弃该批（有界），不拖垮 run。
+
+- **`hostSubject` 逐事件必填**（与 §4.3 同一归属键）：事件 sink 是网关级单例，
+  一批里可能混着多个用户的 run（并发执行），归属必须随事件走；网关从
+  `users.hostSubject` 取值，**缺归属的事件在 flow 侧就被丢弃并计数**（不把整批打成 400）。
+- 宿主响应里 `accepted` / `skipped` 是投递计数：归属认不出或时间戳非法的条目
+  逐条计入 `skipped`（整批仍 200，不因单条坏数据回滚）。
 
 ## 5. 环境变量（网关侧）
 

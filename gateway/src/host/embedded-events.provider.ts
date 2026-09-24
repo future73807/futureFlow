@@ -25,6 +25,8 @@ export class EmbeddedEventSink implements HostEventSink {
   private queue: HostRunEvent[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private dropped = 0;
+  /** 归属键缺失的丢弃计数（与「外发失败丢弃」分开计，日志里不混因由）。 */
+  private unattributed = 0;
 
   constructor(
     private readonly config: HostConfig,
@@ -34,6 +36,15 @@ export class EmbeddedEventSink implements HostEventSink {
 
   async publish(event: HostRunEvent): Promise<void> {
     if (!this.config.endpoints.events) return;
+    // 归属键缺失的事件宿主无法投递（契约里 hostSubject 必填）：丢弃并计数，
+    // 不让一条无归属事件把整批打成 400（旁路纪律，与「失败有界丢弃」同一口径）。
+    if (!event.hostSubject?.trim()) {
+      this.unattributed += 1;
+      this.logger.warn(
+        `宿主事件通道：事件缺少 hostSubject（runId=${event.runId}, seq=${event.seq}），已丢弃（累计 ${this.unattributed} 条）。`,
+      );
+      return;
+    }
     this.queue.push(event);
     if (this.queue.length >= MAX_BATCH) {
       await this.flush();

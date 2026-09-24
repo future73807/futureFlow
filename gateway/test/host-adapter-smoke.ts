@@ -495,6 +495,7 @@ async function testEmbeddedEvents() {
         type: 'node_finished',
         payload: { node_id: `n-${seq}` },
         at: new Date().toISOString(),
+        hostSubject: 'host-subject-1',
       });
     }
     assert.equal(batches.length, 0, '不足一批时先攒着（不把宿主打成一串单条请求）');
@@ -516,11 +517,23 @@ async function testEmbeddedEvents() {
         type: 'node_finished',
         payload: {},
         at: new Date().toISOString(),
+        hostSubject: 'host-subject-1',
       });
     }
     assert.equal(batches.length, 2, '攒满一批（25 条）立刻外发');
     assert.equal(batches[1].length, 25);
     await sink.flush();
+
+    // 归属键缺失：丢弃并计数，**不混进批次**（不让一条无归属事件把整批打成 400）
+    await sink.publish({
+      runId: 'run-1',
+      seq: 50,
+      type: 'node_finished',
+      payload: {},
+      at: new Date().toISOString(),
+    });
+    await sink.flush();
+    assert.equal(batches.length, 2, '无 hostSubject 的事件不得外发');
   } finally {
     await host.close();
   }
@@ -539,6 +552,7 @@ async function testEmbeddedEvents() {
     await sink.publish({
       runId: 'run-1',
       seq: 1,
+      hostSubject: 'host-subject-1',
       type: 'workflow_started',
       payload: {},
       at: new Date().toISOString(),

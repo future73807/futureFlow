@@ -17,8 +17,10 @@ import { DifyClientService, DifySSEEvent } from '../dify/dify-client.service';
 import {
   HOST_BILLING,
   HOST_EVENTS,
+  HOST_SUBJECT_LOOKUP,
   type HostBillingProvider,
   type HostEventSink,
+  type HostSubjectLookup,
 } from '../host/host.types';
 import { PermissionChecker } from '../auth/auth.module';
 import { WorkflowExecutionGuardService } from './services/workflow-execution-guard.service';
@@ -86,6 +88,13 @@ export class WorkflowsService {
     @Optional()
     @Inject(HOST_EVENTS)
     private readonly hostEvents?: HostEventSink,
+    /**
+     * 归属键解析（用户 → 宿主 subject）：事件与计费都按它归属。可选注入，
+     * 缺省 = 独立形态（事件 sink 是空实现，不需要归属）。
+     */
+    @Optional()
+    @Inject(HOST_SUBJECT_LOOKUP)
+    private readonly hostSubjects?: HostSubjectLookup,
   ) {}
 
   /**
@@ -243,8 +252,20 @@ export class WorkflowsService {
     /**
      * 事件缝的消费者：把每个 run 事件按 seq 透出给宿主通道（独立形态由空实现吞掉）。
      * seq 是**该 run 内**的单调序号，宿主据此做断线重放（`lastSeq`）。
+     *
+     * 归属键（`hostSubject`）**每 run 解析一次**（不是每事件查库）：run 的归属不会中途变化；
+     * 解析不到就照常发布（内嵌 sink 会丢弃并计数——事件是旁路，不因此拖垮 run）。
      */
     let hostEventSeq = 0;
+    let hostSubject: string | undefined;
+    if (this.hostEvents && this.hostEvents.kind === 'embedded') {
+      hostSubject = (await this.hostSubjects?.findHostSubject(user.id)) ?? undefined;
+      if (!hostSubject) {
+        this.logger.warn(
+          `运行事件缺少归属键（用户 ${user.id} 没有 hostSubject）：宿主事件通道将丢弃本次 run 的事件。`,
+        );
+      }
+    }
     const publishHostEvent = async (event: DifySSEEvent) => {
       if (!this.hostEvents) return;
       hostEventSeq += 1;
@@ -254,6 +275,7 @@ export class WorkflowsService {
         type: event.event,
         payload: event,
         at: new Date().toISOString(),
+        ...(hostSubject ? { hostSubject } : {}),
       });
     };
 

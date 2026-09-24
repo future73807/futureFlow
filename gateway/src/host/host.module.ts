@@ -31,6 +31,7 @@ import {
   HOST_CREDENTIALS,
   HOST_EVENTS,
   HOST_IDENTITY,
+  HOST_SUBJECT_LOOKUP,
   type HostSubjectLookup,
 } from './host.types';
 
@@ -64,7 +65,7 @@ import {
      * 两种形态都提供（独立 Provider 用不到它，但装配保持一处、不按模式分叉）。
      */
     {
-      provide: 'HOST_SUBJECT_LOOKUP',
+      provide: HOST_SUBJECT_LOOKUP,
       useFactory: (users: Repository<User>): HostSubjectLookup => ({
         async findHostSubject(userId: string) {
           const user = await users.findOne({ where: { id: userId } });
@@ -114,7 +115,12 @@ import {
               subjectLookup,
             )
           : new StandaloneBillingProvider(billing),
-      inject: [HOST_CONFIG, HostHttpClient, BillingService, 'HOST_SUBJECT_LOOKUP'],
+      inject: [
+        HOST_CONFIG,
+        HostHttpClient,
+        BillingService,
+        HOST_SUBJECT_LOOKUP,
+      ],
     },
     {
       provide: HOST_EVENTS,

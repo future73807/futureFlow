@@ -118,6 +118,14 @@ export interface HostRunEvent {
   type: string;
   payload: unknown;
   at: string;
+  /**
+   * 事件归属（宿主侧稳定用户标识）：宿主按它把事件投给对应用户的 WS 连接。
+   *
+   * 为什么在**事件级**而不是批次级：事件 sink 是网关级单例，一批里可能混着多个用户
+   * 的 run（并发执行）；归属必须随事件走。缺它的事件由内嵌 sink **丢弃并计数**
+   * （旁路纪律：不让一条无归属事件把整批打成 400）。
+   */
+  hostSubject?: string;
 }
 
 export interface HostEventSink {
@@ -135,15 +143,18 @@ export const HOST_CREDENTIALS = 'HOST_CREDENTIALS';
 export const HOST_BILLING = 'HOST_BILLING';
 export const HOST_EVENTS = 'HOST_EVENTS';
 
+/** DI 令牌：归属键解析器（{@link HostSubjectLookup}）的注入点。 */
+export const HOST_SUBJECT_LOOKUP = 'HOST_SUBJECT_LOOKUP';
+
 /**
- * 计费回调的**归属键**解析：flow 用户 id → 宿主 subject（`users.hostSubject`）。
+ * 计费 / 事件回调的**归属键**解析：flow 用户 id → 宿主 subject（`users.hostSubject`）。
  *
- * 为什么需要它：计费是**用户级**的（谁跑的谁付），而宿主只知道它自己下发的 subject；
- * 机器对机器的回调发生在 run 的生命周期里（可能晚于身份交换很久），短命会话令牌不可用，
- * 稳定的 `hostSubject` 才是可用的归属键（契约见 `HostBillingProvider` 各方法的请求体）。
+ * 为什么需要它：计费与事件都是**用户级**的（谁跑的谁付/谁的连接收），而宿主只知道它自己
+ * 下发的 subject；机器对机器的回调发生在 run 的生命周期里（可能晚于身份交换很久），
+ * 短命会话令牌不可用，稳定的 `hostSubject` 才是可用的归属键。
  */
 export interface HostSubjectLookup {
-  /** 没有宿主标识（如独立模式开户的老用户）返回 null——调用方据此明确拒绝，不静默归到别人账上。 */
+  /** 没有宿主标识（如独立模式开户的老用户）返回 null——调用方据此明确拒绝/丢弃，不静默归到别人账上。 */
   findHostSubject(userId: string): Promise<string | null>;
 }
 
