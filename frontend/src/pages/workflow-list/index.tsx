@@ -3032,7 +3032,8 @@ const TABLE_GRID = "36px minmax(38%, 1fr) 130px 170px 90px";
 const SelectCell = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* 靠列首左对齐（用户反馈：选择框往左移） */
+  justify-content: flex-start;
 `;
 
 const TableHeader = styled.div`
