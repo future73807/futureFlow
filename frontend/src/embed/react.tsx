@@ -5,7 +5,6 @@ import { useSyncExternalStore } from 'react';
 import {
   getFfEmbedStatus,
   setFfEmbedNavigateHandler,
-  shouldHideBrand,
   subscribeFfEmbed,
 } from './client';
 
@@ -14,9 +13,12 @@ export function useFfEmbedStatus() {
   return useSyncExternalStore(subscribeFfEmbed, getFfEmbedStatus);
 }
 
-/** 内嵌形态且宿主没要求保留品牌 → 隐藏 flow 自己的 logo / 名字。 */
-export function useFfEmbedBrandHidden(): boolean {
-  return useSyncExternalStore(subscribeFfEmbed, shouldHideBrand);
+/** 宿主 chrome（flow 自己的侧栏 / 品牌等）是否可见：独立与降级可见，其余隐藏。 */
+export function useFfEmbedChromeVisible(): boolean {
+  return useSyncExternalStore(subscribeFfEmbed, () => {
+    const state = getFfEmbedStatus().state;
+    return state === 'standalone' || state === 'degraded';
+  });
 }
 
 /**

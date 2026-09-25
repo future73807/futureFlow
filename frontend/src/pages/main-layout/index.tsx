@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 
 import logoUrl from '../../assets/logo.svg';
-import { useFfEmbedBrandHidden, useFfEmbedStatus } from '../../embed/react';
+import { useFfEmbedChromeVisible } from '../../embed/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Toast, Typography } from '@douyinfe/semi-ui';
 import {
@@ -50,14 +50,14 @@ export const MainLayout = () => {
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  // 内嵌形态（宿主应用里）去品牌：宿主自带 chrome，flow 不再摆自己的 logo / 名字。
-  const hideBrand = useFfEmbedBrandHidden();
-  // 内嵌形态下**整个侧栏都交给宿主**：导航走宿主侧栏（ff-embed/navigate 桥），
+  // 内嵌形态（宿主应用里）**整个侧栏都交给宿主**：导航走宿主侧栏（ff-embed/navigate 桥），
   // 账号即宿主账号（身份缝），插件商店 / 平台管理等管理面收敛到宿主后台——
   // flow 只保留内容区（工作流画布 / 任务中心内容）。
-  const embedded = useFfEmbedStatus().state === 'embedded';
+  // probing / handshaking（在 iframe 内、握手未落定）期间同样不渲染独立 chrome：
+  // 首帧即内嵌形态，防「独立 UI 闪现」。
+  const chromeVisible = useFfEmbedChromeVisible();
 
-  if (embedded) {
+  if (!chromeVisible) {
     return (
       <div className="app-layout is-embedded">
         <main className="app-content">
@@ -70,14 +70,13 @@ export const MainLayout = () => {
   return (
     <div className="app-layout">
       <aside className="app-sidebar">
-        {hideBrand ? null : (
-          <button className="app-brand" type="button" onClick={() => navigate('/')}>
-            <span className="app-brand-mark" aria-hidden="true">
-              <img src={logoUrl} width={24} height={24} alt="" />
-            </span>
-            <strong>futureFlow</strong>
-          </button>
-        )}
+        {/* 独立模式显示品牌（内嵌不会走到这里：chromeVisible 为 false 已提前返回） */}
+        <button className="app-brand" type="button" onClick={() => navigate('/')}>
+          <span className="app-brand-mark" aria-hidden="true">
+            <img src={logoUrl} width={24} height={24} alt="" />
+          </span>
+          <strong>futureFlow</strong>
+        </button>
 
         <nav className="sidebar-nav" aria-label="主导航">
           {NAV_ITEMS

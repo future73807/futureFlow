@@ -43,6 +43,9 @@ export function setFfEmbedNavigateHandler(handler: (path: string) => void): void
 export type FfEmbedStatus =
   /** 不在宿主里（或网关以独立模式运行）：一切照旧。 */
   | { state: 'standalone' }
+  /** 在 iframe 里但尚未确认能否内嵌：首帧不渲染独立 chrome（防「独立 UI 闪现」）。
+   *  探测结论只会落回 standalone / degraded / handshaking——不会停在这里。 */
+  | { state: 'probing' }
   /** 已识别到宿主，正在握手（等 hello-ack / identity）。 */
   | { state: 'handshaking' }
   /** 握手完成：身份由宿主注入，界面随宿主。 */
@@ -90,6 +93,8 @@ export function subscribeFfEmbed(listener: () => void): () => void {
 
 /** 内嵌形态且宿主没要求保留品牌时，隐藏 flow 自己的 logo / 名字。 */
 export function shouldHideBrand(): boolean {
+  // probing / handshaking 阶段也隐藏：首帧就不出现品牌，避免内嵌时闪现后又被隐藏
+  if (status.state === 'probing' || status.state === 'handshaking') return true;
   return status.state === 'embedded' && !status.brand;
 }
 
@@ -244,7 +249,15 @@ async function onMessage(event: MessageEvent): Promise<void> {
  * 返回是否进入握手（供启动期打点/测试断言用）。
  */
 export async function initFfEmbed(): Promise<boolean> {
-  if (typeof window === 'undefined' || window.parent === window) return false;
+  if (typeof window === 'undefined') return false;
+  if (window.parent === window) {
+    // 直接打开（非 iframe）：确定性独立模式，同步落定——首帧就是完整 chrome，无闪烁。
+    return false;
+  }
+  // 在 iframe 里：能否内嵌要等 capabilities 探测（异步）——**同步**先进入 probing，
+  // 让首帧跳过独立 chrome 渲染（MainLayout / 工作流页都按此状态隐藏宿主不该出现的部分）。
+  // 这个 setStatus 必须留在第一个 await 之前：晚一帧，独立 UI 就闪出来了。
+  setStatus({ state: 'probing' });
 
   const capabilities = await readCapabilities();
   if (!capabilities) return false;
