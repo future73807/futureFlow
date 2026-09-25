@@ -140,6 +140,59 @@ export class KnowledgeService {
     await this.ownerRepo.delete({ datasetId });
   }
 
+  /**
+   * 导出：dataset 元信息 + 每个文档的名称与分段全文拼装。
+   * Dify 没有一键复制知识库的路由，这份导出 JSON 同时是「跨实例搬运」的载体。
+   */
+  async exportDataset(
+    userId: string,
+    datasetId: string,
+    requireAdmin = false,
+  ): Promise<{
+    kind: string;
+    name: string;
+    description: string;
+    exportedAt: string;
+    documents: Array<{ name: string; text: string }>;
+  }> {
+    await this.assertOwned(userId, datasetId, requireAdmin);
+    const meta = await this.consoleJson<any>(
+      `/datasets/${encodeURIComponent(datasetId)}`,
+    );
+    const docsResponse = await this.consoleJson<any>(
+      `/datasets/${encodeURIComponent(datasetId)}/documents?page=1&limit=100`,
+    );
+    const docs = Array.isArray(docsResponse?.data) ? docsResponse.data : [];
+
+    const documents: Array<{ name: string; text: string }> = [];
+    for (const doc of docs) {
+      const docId = String(doc?.id || '');
+      if (!docId) continue;
+      try {
+        const segments = await this.consoleJson<any>(
+          `/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(docId)}/segments`,
+        );
+        const items = Array.isArray(segments?.data) ? segments.data : [];
+        const text = items
+          .map((item: any) => String(item?.content ?? ''))
+          .filter(Boolean)
+          .join('\n\n');
+        documents.push({ name: String(doc?.name || docId), text });
+      } catch {
+        // 单个文档的分段读取失败不拖垮整个导出：如实留空并标注
+        documents.push({ name: String(doc?.name || docId), text: '' });
+      }
+    }
+
+    return {
+      kind: 'knowledge-dataset-export',
+      name: String(meta?.name || datasetId),
+      description: String(meta?.description || ''),
+      exportedAt: new Date().toISOString(),
+      documents,
+    };
+  }
+
   /** 改名：代理 Dify Console 的 PATCH /datasets/{id}（归属校验同删除）。 */
   async renameDataset(
     userId: string,

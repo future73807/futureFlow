@@ -65,6 +65,18 @@ export class KnowledgeController {
     );
   }
 
+  @Get('datasets/:datasetId/export')
+  exportDataset(
+    @Request() req: any,
+    @Param('datasetId', DATASET_ID_PIPE) datasetId: string,
+  ) {
+    return this.knowledge.exportDataset(
+      this.currentUserId(req),
+      datasetId,
+      this.isAdmin(req),
+    );
+  }
+
   @Patch('datasets/:datasetId')
   renameDataset(
     @Request() req: any,

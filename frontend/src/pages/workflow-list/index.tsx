@@ -1,44 +1,45 @@
 ﻿/**
  * 工作流列表页
- * 参考图布局：标签行（全部/工作流/知识库/文件 + 搜索 + 创建画布）、发布状态筛选与资源表格。
+ * 参考图布局：标签行（全部/工作流/知识库/文件 + 搜索 + 创建工作流）、发布状态筛选与资源表格。
  */
 
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-
-import { notifyNavigation } from '../../embed/client';
-import { useFfEmbedStatus } from '../../embed/react';
-
-import styled from 'styled-components';
 import {
-  Button,
-  Typography,
-  Empty,
-  Dropdown,
-  Modal,
-  Form,
-  Toast,
-  Spin,
-  Tag,
-  Pagination,
-  Popconfirm,
-  Select,
-  Input,
-} from '@douyinfe/semi-ui';
-import {
-  IconDelete,
   IconMore,
   IconPlus,
   IconSearch,
   IconTickCircle,
   IconUpload,
-  IconUser,
-} from '@douyinfe/semi-icons';
+} from "@douyinfe/semi-icons";
+import {
+  Button,
+  Checkbox,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Pagination,
+  Popconfirm,
+  Select,
+  Spin,
+  Tag,
+  Toast,
+  TextArea,
+  Typography,
+} from "@douyinfe/semi-ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { GATEWAY_URL } from '../../utils/config';
-import { apiJson } from '../../utils/api';
-import { parseWorkflowFile } from '../../utils/workflow-io';
-import { formatVersionLabel } from '../../utils/version';
+import styled from "styled-components";
+import { notifyNavigation } from "../../embed/client";
+import { useFfEmbedStatus } from "../../embed/react";
+import { apiFetch, apiJson } from "../../utils/api";
+import { GATEWAY_URL } from "../../utils/config";
+import { formatVersionLabel } from "../../utils/version";
+import {
+  buildWorkflowExport,
+  parseWorkflowFile,
+} from "../../utils/workflow-io";
 
 interface Workflow {
   id: string;
@@ -54,7 +55,7 @@ interface Workflow {
 
 interface WorkflowRun {
   id: string;
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   source?: string | null;
   totalTokens: number;
   totalSteps: number;
@@ -67,11 +68,11 @@ interface WorkflowRun {
 }
 
 const RUN_SOURCE_LABELS: Record<string, string> = {
-  api: 'API 调用',
-  'draft-run': '云端试运行',
-  webhook: 'Webhook',
-  schedule: '定时调度',
-  manual: '手动运行',
+  api: "API 调用",
+  "draft-run": "云端试运行",
+  webhook: "Webhook",
+  schedule: "定时调度",
+  manual: "手动运行",
 };
 
 interface WorkflowTemplate {
@@ -87,10 +88,10 @@ interface WorkflowTemplate {
 interface WorkflowTrigger {
   id: string;
   name: string;
-  type: 'webhook' | 'schedule';
-  status: 'active' | 'paused';
+  type: "webhook" | "schedule";
+  status: "active" | "paused";
   intervalMinutes?: number | null;
-  scheduleType?: 'interval' | 'daily' | 'cron';
+  scheduleType?: "interval" | "daily" | "cron";
   dailyTime?: string | null;
   cronExpression?: string | null;
   staticInputs?: Record<string, string | number | boolean> | null;
@@ -132,7 +133,7 @@ interface StoredFile {
 interface DifyIntegrationStatus {
   encryptionReady: boolean;
   connectionAuthorized: boolean;
-  status: 'active' | 'not_authorized' | 'reauthorization_required' | 'disabled';
+  status: "active" | "not_authorized" | "reauthorization_required" | "disabled";
   consoleBase: string | null;
   lastConsoleAuthorizedAt: string | null;
   managedWorkflowAppCount: number;
@@ -146,13 +147,22 @@ interface DifyIntegrationStatus {
   modelProvider?: {
     provider: string | null;
     model: string | null;
-    status: 'active' | 'configured' | 'not_configured' | 'unsupported' | 'disabled';
+    status:
+      | "active"
+      | "configured"
+      | "not_configured"
+      | "unsupported"
+      | "disabled";
     configuredNow: boolean;
     message: string;
   };
 }
 
-type DifyPreflightState = 'passed' | 'failed' | 'not_configured' | 'not_checked';
+type DifyPreflightState =
+  | "passed"
+  | "failed"
+  | "not_configured"
+  | "not_checked";
 
 interface DifyPreflightCheck {
   state: DifyPreflightState;
@@ -177,19 +187,19 @@ interface DifyPreflightResult {
 
 interface DifySyncResult {
   appId: string | null;
-  status: 'synced' | 'not_configured' | 'failed';
+  status: "synced" | "not_configured" | "failed";
   message: string;
 }
 
-type ResourceTab = 'all' | 'workflow' | 'dataset' | 'file';
-type ResourceKind = 'workflow' | 'dataset' | 'file';
-type PublishFilter = 'all' | 'published' | 'draft';
+type ResourceTab = "all" | "workflow" | "dataset" | "file";
+type ResourceKind = "workflow" | "dataset" | "file";
+type PublishFilter = "all" | "published" | "draft";
 
 const RESOURCE_TABS: Array<{ key: ResourceTab; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'workflow', label: '工作流' },
-  { key: 'dataset', label: '知识库' },
-  { key: 'file', label: '文件' },
+  { key: "all", label: "全部" },
+  { key: "workflow", label: "工作流" },
+  { key: "dataset", label: "知识库" },
+  { key: "file", label: "文件" },
 ];
 
 /** 资源表格前端分页档位：一次列出全部会让长列表难以浏览 */
@@ -197,9 +207,9 @@ const PAGE_SIZE_OPTS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 10;
 
 const TYPE_LABELS: Record<ResourceKind, string> = {
-  workflow: '工作流',
-  dataset: '知识库',
-  file: '文件',
+  workflow: "工作流",
+  dataset: "知识库",
+  file: "文件",
 };
 
 /** 表格统一行数据：三类资源在同一个表格中展示 */
@@ -216,12 +226,12 @@ interface ResourceRow {
 
 /** 统一 YYYY-MM-DD HH:mm 展示；缺失或非法时间回退为 - */
 const formatDateTime = (value?: string | null) => {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  const pad = (input: number) => String(input).padStart(2, '0');
+  if (Number.isNaN(date.getTime())) return "-";
+  const pad = (input: number) => String(input).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours()
+    date.getHours(),
   )}:${pad(date.getMinutes())}`;
 };
 
@@ -242,9 +252,9 @@ const editedTimeValue = (value?: string | null) => {
 export const WorkflowListPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<ResourceTab>('all');
-  const [publishFilter, setPublishFilter] = useState<PublishFilter>('all');
-  const [keyword, setKeyword] = useState('');
+  const [activeTab, setActiveTab] = useState<ResourceTab>("all");
+  const [publishFilter, setPublishFilter] = useState<PublishFilter>("all");
+  const [keyword, setKeyword] = useState("");
   // 各 tab 共用一套前端分页状态；切 tab、改搜索/筛选时统一回到第 1 页。
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -270,25 +280,32 @@ export const WorkflowListPage = () => {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<Workflow | null>(null);
   /** 重命名目标：三种资源统一一个对话框（kind 决定调用哪个端点）。 */
-  const [renameTarget, setRenameTarget] = useState<
-    { kind: 'workflow' | 'dataset' | 'file'; id: string; name: string } | null
-  >(null);
-  const [renameName, setRenameName] = useState('');
-  const [deleteDataset, setDeleteDataset] = useState<KnowledgeDataset | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    kind: "workflow" | "dataset" | "file";
+    id: string;
+    name: string;
+  } | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [deleteDataset, setDeleteDataset] = useState<KnowledgeDataset | null>(
+    null,
+  );
   const [deleteFile, setDeleteFile] = useState<StoredFile | null>(null);
   // 知识库 / 文件 tab 的创建入口（原在个人中心，收敛到工作流页对应 tab）
   const [datasetCreateVisible, setDatasetCreateVisible] = useState(false);
-  const [datasetName, setDatasetName] = useState('');
-  const [uploadDocTarget, setUploadDocTarget] = useState<KnowledgeDataset | null>(null);
-  const [uploadDocName, setUploadDocName] = useState('');
-  const [uploadDocText, setUploadDocText] = useState('');
+  const [datasetName, setDatasetName] = useState("");
+  const [uploadDocTarget, setUploadDocTarget] =
+    useState<KnowledgeDataset | null>(null);
+  const [uploadDocName, setUploadDocName] = useState("");
+  const [uploadDocText, setUploadDocText] = useState("");
   const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [apiWorkflow, setApiWorkflow] = useState<Workflow | null>(null);
   const [runsWorkflow, setRunsWorkflow] = useState<Workflow | null>(null);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
-  const [versionsWorkflow, setVersionsWorkflow] = useState<Workflow | null>(null);
+  const [versionsWorkflow, setVersionsWorkflow] = useState<Workflow | null>(
+    null,
+  );
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
@@ -299,9 +316,15 @@ export const WorkflowListPage = () => {
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [triggersLoading, setTriggersLoading] = useState(false);
   const [triggerCreating, setTriggerCreating] = useState(false);
-  const [triggerUpdatingId, setTriggerUpdatingId] = useState<string | null>(null);
-  const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>({});
-  const [intervalEdits, setIntervalEdits] = useState<Record<string, string>>({});
+  const [triggerUpdatingId, setTriggerUpdatingId] = useState<string | null>(
+    null,
+  );
+  const [dailyTimeEdits, setDailyTimeEdits] = useState<Record<string, string>>(
+    {},
+  );
+  const [intervalEdits, setIntervalEdits] = useState<Record<string, string>>(
+    {},
+  );
   const [cronEdits, setCronEdits] = useState<Record<string, string>>({});
   const [staticInputsEdit, setStaticInputsEdit] = useState<{
     trigger: WorkflowTrigger;
@@ -309,24 +332,27 @@ export const WorkflowListPage = () => {
   } | null>(null);
   const [newWebhookUrl, setNewWebhookUrl] = useState<string | null>(null);
   const [difyVisible, setDifyVisible] = useState(false);
-  const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(null);
-  const [difyPreflight, setDifyPreflight] = useState<DifyPreflightResult | null>(null);
+  const [difyStatus, setDifyStatus] = useState<DifyIntegrationStatus | null>(
+    null,
+  );
+  const [difyPreflight, setDifyPreflight] =
+    useState<DifyPreflightResult | null>(null);
   const [difyLoading, setDifyLoading] = useState(false);
   const [difyPreflighting, setDifyPreflighting] = useState(false);
   const [difyProvisioning, setDifyProvisioning] = useState(false);
-  const difySubmitMode = useRef<'validate' | 'save'>('save');
+  const difySubmitMode = useRef<"validate" | "save">("save");
 
   const loadWorkflows = useCallback(async (force = false) => {
     if (!force && loadedRef.current.workflow) return;
     loadedRef.current.workflow = true;
     setWorkflowsLoading(true);
     try {
-      setWorkflows(await apiJson<Workflow[]>('/workflows'));
+      setWorkflows(await apiJson<Workflow[]>("/workflows"));
       setWorkflowsError(null);
     } catch (error: any) {
       loadedRef.current.workflow = false;
-      setWorkflowsError(error.message || '加载工作流列表失败');
-      Toast.error(error.message || '加载工作流列表失败');
+      setWorkflowsError(error.message || "加载工作流列表失败");
+      Toast.error(error.message || "加载工作流列表失败");
     } finally {
       setWorkflowsLoading(false);
     }
@@ -337,12 +363,12 @@ export const WorkflowListPage = () => {
     loadedRef.current.dataset = true;
     setDatasetsLoading(true);
     try {
-      setDatasets(await apiJson<KnowledgeDataset[]>('/knowledge/datasets'));
+      setDatasets(await apiJson<KnowledgeDataset[]>("/knowledge/datasets"));
       setDatasetsError(null);
     } catch (error: any) {
       loadedRef.current.dataset = false;
-      setDatasetsError(error.message || '加载知识库列表失败');
-      Toast.error(error.message || '加载知识库列表失败');
+      setDatasetsError(error.message || "加载知识库列表失败");
+      Toast.error(error.message || "加载知识库列表失败");
     } finally {
       setDatasetsLoading(false);
     }
@@ -353,12 +379,12 @@ export const WorkflowListPage = () => {
     loadedRef.current.file = true;
     setFilesLoading(true);
     try {
-      setFiles(await apiJson<StoredFile[]>('/files'));
+      setFiles(await apiJson<StoredFile[]>("/files"));
       setFilesError(null);
     } catch (error: any) {
       loadedRef.current.file = false;
-      setFilesError(error.message || '加载文件列表失败');
-      Toast.error(error.message || '加载文件列表失败');
+      setFilesError(error.message || "加载文件列表失败");
+      Toast.error(error.message || "加载文件列表失败");
     } finally {
       setFilesLoading(false);
     }
@@ -366,17 +392,17 @@ export const WorkflowListPage = () => {
 
   // 标签懒加载：进入「全部」并行拉取三类资源，其余标签只加载自己；单个源失败不影响其他源。
   useEffect(() => {
-    if (activeTab === 'all' || activeTab === 'workflow') void loadWorkflows();
-    if (activeTab === 'all' || activeTab === 'dataset') void loadDatasets();
-    if (activeTab === 'all' || activeTab === 'file') void loadFiles();
+    if (activeTab === "all" || activeTab === "workflow") void loadWorkflows();
+    if (activeTab === "all" || activeTab === "dataset") void loadDatasets();
+    if (activeTab === "all" || activeTab === "file") void loadFiles();
   }, [activeTab, loadWorkflows, loadDatasets, loadFiles]);
 
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     try {
-      setTemplates(await apiJson<WorkflowTemplate[]>('/workflow-templates'));
+      setTemplates(await apiJson<WorkflowTemplate[]>("/workflow-templates"));
     } catch (error: any) {
-      Toast.error(error.message || '加载模板库失败');
+      Toast.error(error.message || "加载模板库失败");
     } finally {
       setTemplatesLoading(false);
     }
@@ -388,12 +414,12 @@ export const WorkflowListPage = () => {
   }, [loadTemplates]);
 
   useEffect(() => {
-    const action = searchParams.get('action');
-    if (action !== 'create' && action !== 'templates') return;
-    if (action === 'create') setCreateVisible(true);
-    if (action === 'templates') void openTemplates();
+    const action = searchParams.get("action");
+    if (action !== "create" && action !== "templates") return;
+    if (action === "create") setCreateVisible(true);
+    if (action === "templates") void openTemplates();
     const next = new URLSearchParams(searchParams);
-    next.delete('action');
+    next.delete("action");
     setSearchParams(next, { replace: true });
   }, [openTemplates, searchParams, setSearchParams]);
 
@@ -402,15 +428,17 @@ export const WorkflowListPage = () => {
     setDifyLoading(true);
     try {
       const [status, preflight] = await Promise.all([
-        apiJson<DifyIntegrationStatus>('/admin/dify/status'),
-        apiJson<DifyPreflightResult>('/admin/dify/preflight'),
+        apiJson<DifyIntegrationStatus>("/admin/dify/status"),
+        apiJson<DifyPreflightResult>("/admin/dify/preflight"),
       ]);
       setDifyStatus(status);
       setDifyPreflight(preflight);
     } catch (error: any) {
       setDifyStatus(null);
       setDifyPreflight(null);
-      Toast.error(error.message || '无法读取 Dify 引擎状态；此设置仅管理员可用');
+      Toast.error(
+        error.message || "无法读取 Dify 引擎状态；此设置仅管理员可用",
+      );
     } finally {
       setDifyLoading(false);
     }
@@ -419,11 +447,15 @@ export const WorkflowListPage = () => {
   const runDifyPreflight = useCallback(async () => {
     setDifyPreflighting(true);
     try {
-      const preflight = await apiJson<DifyPreflightResult>('/admin/dify/preflight');
+      const preflight = await apiJson<DifyPreflightResult>(
+        "/admin/dify/preflight",
+      );
       setDifyPreflight(preflight);
-      Toast.success('安全预检已完成：未读取或保存管理员凭据，未创建应用或 Key，也未执行模型。');
+      Toast.success(
+        "安全预检已完成：未读取或保存管理员凭据，未创建应用或 Key，也未执行模型。",
+      );
     } catch (error: any) {
-      Toast.error(error.message || 'Dify 安全预检失败');
+      Toast.error(error.message || "Dify 安全预检失败");
     } finally {
       setDifyPreflighting(false);
     }
@@ -438,8 +470,8 @@ export const WorkflowListPage = () => {
     }) => {
       setDifyProvisioning(true);
       try {
-        await apiJson('/admin/dify/validate-authorization', {
-          method: 'POST',
+        await apiJson("/admin/dify/validate-authorization", {
+          method: "POST",
           body: JSON.stringify({
             consoleBase: values.consoleBase?.trim() || undefined,
             email: values.email?.trim() || undefined,
@@ -447,14 +479,16 @@ export const WorkflowListPage = () => {
             consoleToken: values.consoleToken?.trim() || undefined,
           }),
         });
-        Toast.success('管理员授权已验证：未保存凭据，未创建应用或 Key，未执行模型。');
+        Toast.success(
+          "管理员授权已验证：未保存凭据，未创建应用或 Key，未执行模型。",
+        );
       } catch (error: any) {
-        Toast.error(error.message || 'Dify 管理员授权验证失败');
+        Toast.error(error.message || "Dify 管理员授权验证失败");
       } finally {
         setDifyProvisioning(false);
       }
     },
-    []
+    [],
   );
 
   const bootstrapDify = useCallback(
@@ -466,43 +500,49 @@ export const WorkflowListPage = () => {
     }) => {
       setDifyProvisioning(true);
       try {
-        const status = await apiJson<DifyIntegrationStatus>('/admin/dify/bootstrap', {
-          method: 'POST',
-          body: JSON.stringify({
-            consoleBase: values.consoleBase?.trim() || undefined,
-            email: values.email?.trim() || undefined,
-            password: values.password || undefined,
-            consoleToken: values.consoleToken?.trim() || undefined,
-          }),
-        });
+        const status = await apiJson<DifyIntegrationStatus>(
+          "/admin/dify/bootstrap",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              consoleBase: values.consoleBase?.trim() || undefined,
+              email: values.email?.trim() || undefined,
+              password: values.password || undefined,
+              consoleToken: values.consoleToken?.trim() || undefined,
+            }),
+          },
+        );
         setDifyStatus(status);
         Toast.success(
           status.modelProvider?.configuredNow
-            ? 'Dify 已授权，模型 Provider 已验证；发布后即可运行完整工作流'
-            : 'Dify 已授权；之后每次发布都会自动创建独立应用和加密 Key'
+            ? "Dify 已授权，模型 Provider 已验证；发布后即可运行完整工作流"
+            : "Dify 已授权；之后每次发布都会自动创建独立应用和加密 Key",
         );
       } catch (error: any) {
-        Toast.error(error.message || 'Dify 授权或自动建 Key 失败');
+        Toast.error(error.message || "Dify 授权或自动建 Key 失败");
       } finally {
         setDifyProvisioning(false);
       }
     },
-    []
+    [],
   );
 
   const syncPublishedDify = useCallback(async (id: string) => {
     setDifyProvisioning(true);
     try {
-      const result = await apiJson<DifySyncResult>(`/workflows/${id}/dify/sync`, {
-        method: 'POST',
-      });
-      if (result.status === 'synced') {
-        Toast.success('已同步到该工作流版本专属的 Dify 应用');
+      const result = await apiJson<DifySyncResult>(
+        `/workflows/${id}/dify/sync`,
+        {
+          method: "POST",
+        },
+      );
+      if (result.status === "synced") {
+        Toast.success("已同步到该工作流版本专属的 Dify 应用");
       } else {
         Toast.error(result.message);
       }
     } catch (error: any) {
-      Toast.error(error.message || 'Dify 同步失败，请检查授权和 Dify 模型配置');
+      Toast.error(error.message || "Dify 同步失败，请检查授权和 Dify 模型配置");
     } finally {
       setDifyProvisioning(false);
     }
@@ -515,20 +555,20 @@ export const WorkflowListPage = () => {
         const workflow = await apiJson<Workflow>(
           `/workflow-templates/${template.id}/create-workflow`,
           {
-            method: 'POST',
+            method: "POST",
             body: JSON.stringify({ name: template.name }),
-          }
+          },
         );
         Toast.success(`已从「${template.name}」创建工作流`);
         setTemplateVisible(false);
         navigate(`/canvas/${workflow.id}`);
       } catch (error: any) {
-        Toast.error(error.message || '从模板创建失败');
+        Toast.error(error.message || "从模板创建失败");
       } finally {
         setCreating(false);
       }
     },
-    [navigate]
+    [navigate],
   );
 
   const handleOpenTriggers = useCallback(async (workflow: Workflow) => {
@@ -536,94 +576,110 @@ export const WorkflowListPage = () => {
     setNewWebhookUrl(null);
     setTriggersLoading(true);
     try {
-      setTriggers(await apiJson<WorkflowTrigger[]>(`/workflows/${workflow.id}/triggers`));
+      setTriggers(
+        await apiJson<WorkflowTrigger[]>(`/workflows/${workflow.id}/triggers`),
+      );
     } catch (error: any) {
       setTriggers([]);
-      Toast.error(error.message || '加载触发器失败');
+      Toast.error(error.message || "加载触发器失败");
     } finally {
       setTriggersLoading(false);
     }
   }, []);
 
   const createTrigger = useCallback(
-    async (type: 'webhook' | 'schedule-daily' | 'schedule-cron') => {
+    async (type: "webhook" | "schedule-daily" | "schedule-cron") => {
       if (!triggerWorkflow) return;
       setTriggerCreating(true);
       try {
         const body =
-          type === 'webhook'
-            ? { name: 'Webhook 触发器', type }
-            : type === 'schedule-daily'
-            ? {
-                name: '每天 09:00 定时触发',
-                type: 'schedule',
-                scheduleType: 'daily',
-                dailyTime: '09:00',
-              }
-            : {
-                name: '每周一 09:00 Cron 触发',
-                type: 'schedule',
-                scheduleType: 'cron',
-                cronExpression: '0 9 * * 1',
-              };
-        const result = await apiJson<any>(`/workflows/${triggerWorkflow.id}/triggers`, {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
+          type === "webhook"
+            ? { name: "Webhook 触发器", type }
+            : type === "schedule-daily"
+              ? {
+                  name: "每天 09:00 定时触发",
+                  type: "schedule",
+                  scheduleType: "daily",
+                  dailyTime: "09:00",
+                }
+              : {
+                  name: "每周一 09:00 Cron 触发",
+                  type: "schedule",
+                  scheduleType: "cron",
+                  cronExpression: "0 9 * * 1",
+                };
+        const result = await apiJson<any>(
+          `/workflows/${triggerWorkflow.id}/triggers`,
+          {
+            method: "POST",
+            body: JSON.stringify(body),
+          },
+        );
         setTriggers((items) => [result.trigger, ...items]);
         if (result.webhookUrl) setNewWebhookUrl(result.webhookUrl);
-        Toast.success(type === 'webhook' ? 'Webhook 已创建，请立即复制地址' : '定时触发器已创建');
+        Toast.success(
+          type === "webhook"
+            ? "Webhook 已创建，请立即复制地址"
+            : "定时触发器已创建",
+        );
       } catch (error: any) {
-        Toast.error(error.message || '创建触发器失败');
+        Toast.error(error.message || "创建触发器失败");
       } finally {
         setTriggerCreating(false);
       }
     },
-    [triggerWorkflow]
+    [triggerWorkflow],
   );
 
   const deleteTrigger = useCallback(
     async (triggerId: string) => {
       if (!triggerWorkflow) return;
       try {
-        await apiJson(`/workflows/${triggerWorkflow.id}/triggers/${triggerId}`, {
-          method: 'DELETE',
-        });
+        await apiJson(
+          `/workflows/${triggerWorkflow.id}/triggers/${triggerId}`,
+          {
+            method: "DELETE",
+          },
+        );
         setTriggers((items) => items.filter((item) => item.id !== triggerId));
-        Toast.success('触发器已删除');
+        Toast.success("触发器已删除");
       } catch (error: any) {
-        Toast.error(error.message || '删除触发器失败');
+        Toast.error(error.message || "删除触发器失败");
       }
     },
-    [triggerWorkflow]
+    [triggerWorkflow],
   );
 
   const updateTrigger = useCallback(
     async (
       trigger: WorkflowTrigger,
-      patch: Partial<Pick<WorkflowTrigger, 'status' | 'intervalMinutes'>> & {
-        scheduleType?: 'interval' | 'daily' | 'cron';
+      patch: Partial<Pick<WorkflowTrigger, "status" | "intervalMinutes">> & {
+        scheduleType?: "interval" | "daily" | "cron";
         dailyTime?: string;
         cronExpression?: string;
         staticInputs?: Record<string, string | number | boolean>;
-      }
+      },
     ) => {
       if (!triggerWorkflow) return;
       setTriggerUpdatingId(trigger.id);
       try {
         const updated = await apiJson<WorkflowTrigger>(
           `/workflows/${triggerWorkflow.id}/triggers/${trigger.id}`,
-          { method: 'PATCH', body: JSON.stringify(patch) }
+          { method: "PATCH", body: JSON.stringify(patch) },
         );
-        setTriggers((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-        Toast.success(updated.status === 'paused' ? '触发器已暂停' : '触发器已启用');
+        setTriggers((items) =>
+          items.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        Toast.success(
+          updated.status === "paused" ? "触发器已暂停" : "触发器已启用",
+        );
       } catch (error: any) {
-        Toast.error(error.message || '更新触发器失败');
+        Toast.error(error.message || "更新触发器失败");
       } finally {
         setTriggerUpdatingId(null);
       }
     },
-    [triggerWorkflow]
+    [triggerWorkflow],
   );
 
   const rotateWebhook = useCallback(
@@ -633,20 +689,22 @@ export const WorkflowListPage = () => {
       try {
         const result = await apiJson<any>(
           `/workflows/${triggerWorkflow.id}/triggers/${trigger.id}/rotate-webhook`,
-          { method: 'POST' }
+          { method: "POST" },
         );
         setTriggers((items) =>
-          items.map((item) => (item.id === result.trigger.id ? result.trigger : item))
+          items.map((item) =>
+            item.id === result.trigger.id ? result.trigger : item,
+          ),
         );
         setNewWebhookUrl(result.webhookUrl || null);
-        Toast.success('Webhook 地址已轮换，请立即复制新地址');
+        Toast.success("Webhook 地址已轮换，请立即复制新地址");
       } catch (error: any) {
-        Toast.error(error.message || '轮换 Webhook 地址失败');
+        Toast.error(error.message || "轮换 Webhook 地址失败");
       } finally {
         setTriggerUpdatingId(null);
       }
     },
-    [triggerWorkflow]
+    [triggerWorkflow],
   );
 
   const handleCreate = useCallback(
@@ -656,88 +714,107 @@ export const WorkflowListPage = () => {
         const blankFlowgram = {
           nodes: [
             {
-              id: 'start_0',
-              type: 'start',
+              id: "start_0",
+              type: "start",
               meta: { position: { x: 80, y: 200 } },
               data: {
-                title: '开始',
+                title: "开始",
                 outputs: {
-                  type: 'object',
+                  type: "object",
                   properties: {
-                    query: { type: 'string', default: '你好，请介绍一下你自己。' },
+                    query: {
+                      type: "string",
+                      default: "你好，请介绍一下你自己。",
+                    },
                   },
                 },
               },
             },
             {
-              id: 'llm_0',
-              type: 'llm',
+              id: "llm_0",
+              type: "llm",
               meta: { position: { x: 480, y: 200 } },
               data: {
-                title: '大语言模型 1',
+                title: "大语言模型 1",
                 inputsValues: {
-                  modelName: { type: 'constant', content: 'glm-5.3-flash' },
-                  temperature: { type: 'constant', content: 0.7 },
+                  modelName: { type: "constant", content: "glm-5.3-flash" },
+                  temperature: { type: "constant", content: 0.7 },
                   systemPrompt: {
-                    type: 'template',
-                    content: '你是一个友好的 AI 助手，请用简洁的中文回答用户的问题。',
+                    type: "template",
+                    content:
+                      "你是一个友好的 AI 助手，请用简洁的中文回答用户的问题。",
                   },
-                  prompt: { type: 'template', content: '{{start_0.query}}' },
+                  prompt: { type: "template", content: "{{start_0.query}}" },
                 },
                 inputs: {
-                  type: 'object',
-                  required: ['modelName', 'temperature', 'prompt'],
+                  type: "object",
+                  required: ["modelName", "temperature", "prompt"],
                   properties: {
-                    modelName: { type: 'string' },
-                    temperature: { type: 'number' },
-                    systemPrompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
-                    prompt: { type: 'string', extra: { formComponent: 'prompt-editor' } },
+                    modelName: { type: "string" },
+                    temperature: { type: "number" },
+                    systemPrompt: {
+                      type: "string",
+                      extra: { formComponent: "prompt-editor" },
+                    },
+                    prompt: {
+                      type: "string",
+                      extra: { formComponent: "prompt-editor" },
+                    },
                   },
                 },
                 outputs: {
-                  type: 'object',
-                  properties: { result: { type: 'string' } },
+                  type: "object",
+                  properties: { result: { type: "string" } },
                 },
               },
             },
             {
-              id: 'end_0',
-              type: 'end',
+              id: "end_0",
+              type: "end",
               meta: { position: { x: 880, y: 200 } },
               data: {
-                title: '结束',
-                inputsValues: { result: { type: 'ref', content: ['llm_0', 'result'] } },
-                inputs: { type: 'object', properties: { result: { type: 'string' } } },
+                title: "结束",
+                inputsValues: {
+                  result: { type: "ref", content: ["llm_0", "result"] },
+                },
+                inputs: {
+                  type: "object",
+                  properties: { result: { type: "string" } },
+                },
               },
             },
           ],
           edges: [
-            { sourceNodeID: 'start_0', targetNodeID: 'llm_0' },
-            { sourceNodeID: 'llm_0', targetNodeID: 'end_0' },
+            { sourceNodeID: "start_0", targetNodeID: "llm_0" },
+            { sourceNodeID: "llm_0", targetNodeID: "end_0" },
           ],
         };
 
-        const wf = await apiJson<Workflow>('/workflows', {
-          method: 'POST',
+        const wf = await apiJson<Workflow>("/workflows", {
+          method: "POST",
           body: JSON.stringify({
             name: values.name,
-            description: values.description || '',
+            description: values.description || "",
             flowgram: JSON.stringify(blankFlowgram),
           }),
         });
 
-        Toast.success('创建成功');
+        Toast.success("创建成功");
         // 内嵌形态：告诉宿主「这里新建了一个工作流」，宿主据此刷新自己的列表 / 面包屑。
-        notifyNavigation({ kind: 'workflow-created', workflowId: wf.id, name: values.name });
+        notifyNavigation({
+          kind: "workflow-created",
+          workflowId: wf.id,
+          name: values.name,
+        });
         setCreateVisible(false);
         navigate(`/canvas/${wf.id}`);
       } catch (err: any) {
-        Toast.error(err.message || '创建失败');
+        Toast.error(err.message || "创建失败");
       } finally {
         setCreating(false);
       }
     },
-    [navigate]
+    [navigate],
   );
 
   /** 导入工作流文件：本地先做结构自检，语义校验交给网关，避免两套规则漂移 */
@@ -745,26 +822,29 @@ export const WorkflowListPage = () => {
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       // 选同一个文件第二次也要能触发 change
-      event.target.value = '';
+      event.target.value = "";
       if (!file) return;
       setImporting(true);
       try {
         const text = await file.text();
-        const fallbackName = file.name.replace(/\.(futureflow\.)?json$/i, '');
-        const { data, error } = parseWorkflowFile(text, fallbackName || '导入的工作流');
+        const fallbackName = file.name.replace(/\.(futureflow\.)?json$/i, "");
+        const { data, error } = parseWorkflowFile(
+          text,
+          fallbackName || "导入的工作流",
+        );
         if (!data) {
-          Toast.error(error || '文件解析失败');
+          Toast.error(error || "文件解析失败");
           return;
         }
-        const created = await apiJson<Workflow>('/workflows/import', {
-          method: 'POST',
+        const created = await apiJson<Workflow>("/workflows/import", {
+          method: "POST",
           body: JSON.stringify(data),
         });
         Toast.success(`已导入「${created.name}」`);
         void loadWorkflows(true);
         navigate(`/canvas/${created.id}`);
       } catch (error: any) {
-        Toast.error(error?.message || '导入失败');
+        Toast.error(error?.message || "导入失败");
       } finally {
         setImporting(false);
       }
@@ -776,15 +856,15 @@ export const WorkflowListPage = () => {
     async (id: string) => {
       try {
         await apiJson<{ success: boolean }>(`/workflows/${id}`, {
-          method: 'DELETE',
+          method: "DELETE",
         });
-        Toast.success('已删除');
+        Toast.success("已删除");
         await loadWorkflows(true);
       } catch (error: any) {
-        Toast.error(error.message || '删除失败');
+        Toast.error(error.message || "删除失败");
       }
     },
-    [loadWorkflows]
+    [loadWorkflows],
   );
 
   const confirmDeleteWorkflow = useCallback(async () => {
@@ -801,65 +881,76 @@ export const WorkflowListPage = () => {
   const handleDeleteDataset = useCallback(
     async (dataset: KnowledgeDataset) => {
       try {
-        await apiJson(`/knowledge/datasets/${dataset.id}`, { method: 'DELETE' });
-        Toast.success('已删除知识库');
+        await apiJson(`/knowledge/datasets/${dataset.id}`, {
+          method: "DELETE",
+        });
+        Toast.success("已删除知识库");
         await loadDatasets(true);
       } catch (error: any) {
-        Toast.error(error.message || '删除知识库失败');
+        Toast.error(error.message || "删除知识库失败");
       }
     },
-    [loadDatasets]
+    [loadDatasets],
   );
 
   const handleDeleteFile = useCallback(
     async (file: StoredFile) => {
       try {
-        await apiJson(`/files/${file.id}`, { method: 'DELETE' });
-        Toast.success('已删除文件');
+        await apiJson(`/files/${file.id}`, { method: "DELETE" });
+        Toast.success("已删除文件");
         await loadFiles(true);
       } catch (error: any) {
-        Toast.error(error.message || '删除文件失败');
+        Toast.error(error.message || "删除文件失败");
       }
     },
-    [loadFiles]
+    [loadFiles],
   );
 
   const handleDuplicate = useCallback(
     async (id: string) => {
       try {
         await apiJson<Workflow>(`/workflows/${id}/duplicate`, {
-          method: 'POST',
+          method: "POST",
         });
-        Toast.success('已复制');
+        Toast.success("已复制");
         await loadWorkflows(true);
       } catch (error: any) {
-        Toast.error(error.message || '复制失败');
+        Toast.error(error.message || "复制失败");
       }
     },
-    [loadWorkflows]
+    [loadWorkflows],
   );
 
   const handleRename = useCallback(
-    async (kind: 'workflow' | 'dataset' | 'file', id: string, name: string) => {
+    async (kind: "workflow" | "dataset" | "file", id: string, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) {
-        Toast.error('名称不能为空');
+        Toast.error("名称不能为空");
         return;
       }
       try {
-        if (kind === 'workflow') {
-          await apiJson(`/workflows/${id}`, { method: 'PUT', body: { name: trimmed } });
+        if (kind === "workflow") {
+          await apiJson(`/workflows/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ name: trimmed }),
+          });
           await loadWorkflows(true);
-        } else if (kind === 'dataset') {
-          await apiJson(`/knowledge/datasets/${id}`, { method: 'PATCH', body: { name: trimmed } });
+        } else if (kind === "dataset") {
+          await apiJson(`/knowledge/datasets/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name: trimmed }),
+          });
           await loadDatasets(true);
         } else {
-          await apiJson(`/files/${id}`, { method: 'PATCH', body: { name: trimmed } });
+          await apiJson(`/files/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name: trimmed }),
+          });
           await loadFiles(true);
         }
-        Toast.success('已重命名');
+        Toast.success("已重命名");
       } catch (error: any) {
-        Toast.error(error.message || '重命名失败');
+        Toast.error(error.message || "重命名失败");
       }
     },
     [loadWorkflows, loadDatasets, loadFiles],
@@ -886,14 +977,14 @@ export const WorkflowListPage = () => {
   const handleCreateDataset = useCallback(
     async (name: string, description: string) => {
       try {
-        await apiJson('/knowledge/datasets', {
-          method: 'POST',
-          body: { name, description, indexing_technique: 'economy' },
+        await apiJson("/knowledge/datasets", {
+          method: "POST",
+          body: JSON.stringify({ name, description, indexing_technique: "economy" }),
         });
-        Toast.success('知识库已创建');
+        Toast.success("知识库已创建");
         await loadDatasets(true);
       } catch (error: any) {
-        Toast.error(error.message || '创建知识库失败');
+        Toast.error(error.message || "创建知识库失败");
       }
     },
     [loadDatasets],
@@ -903,12 +994,12 @@ export const WorkflowListPage = () => {
     async (file: File) => {
       try {
         const body = new FormData();
-        body.append('file', file);
-        await apiJson('/files/upload', { method: 'POST', body });
-        Toast.success('文件已上传');
+        body.append("file", file);
+        await apiJson("/files/upload", { method: "POST", body });
+        Toast.success("文件已上传");
         await loadFiles(true);
       } catch (error: any) {
-        Toast.error(error.message || '上传失败');
+        Toast.error(error.message || "上传失败");
       }
     },
     [loadFiles],
@@ -918,28 +1009,29 @@ export const WorkflowListPage = () => {
     async (datasetId: string, name: string, text: string) => {
       try {
         await apiJson(`/knowledge/datasets/${datasetId}/documents`, {
-          method: 'POST',
-          body: { name, text },
+          method: "POST",
+          body: JSON.stringify({ name, text }),
         });
-        Toast.success('文档已上传');
+        Toast.success("文档已上传");
         await loadDatasets(true);
       } catch (error: any) {
-        Toast.error(error.message || '文档上传失败');
+        Toast.error(error.message || "文档上传失败");
       }
     },
     [loadDatasets],
   );
 
+
   const handleDuplicateDatasetFile = useCallback(
-    async (kind: 'dataset' | 'file', id: string) => {
+    async (kind: "dataset" | "file", id: string) => {
       try {
-        if (kind === 'file') {
-          await apiJson(`/files/${id}/duplicate`, { method: 'POST' });
+        if (kind === "file") {
+          await apiJson(`/files/${id}/duplicate`, { method: "POST" });
           await loadFiles(true);
-          Toast.success('已复制');
+          Toast.success("已复制");
         }
       } catch (error: any) {
-        Toast.error(error.message || '复制失败');
+        Toast.error(error.message || "复制失败");
       }
     },
     [loadFiles],
@@ -949,52 +1041,55 @@ export const WorkflowListPage = () => {
     async (id: string) => {
       setPublishingId(id);
       try {
-        const result = await apiJson<{ workflow: Workflow; message: string; dify: DifySyncResult }>(
-          `/workflows/${id}/publish`,
-          { method: 'POST' }
-        );
-        if (result.dify?.status === 'synced') {
+        const result = await apiJson<{
+          workflow: Workflow;
+          message: string;
+          dify: DifySyncResult;
+        }>(`/workflows/${id}/publish`, { method: "POST" });
+        if (result.dify?.status === "synced") {
           Toast.success(`${result.message}，已同步至版本专属 Dify 应用`);
         } else {
           Toast.warning(
-            `${result.message}；${result.dify?.message || '尚未同步至 Dify，暂不能云端运行'}`
+            `${result.message}；${result.dify?.message || "尚未同步至 Dify，暂不能云端运行"}`,
           );
         }
         await loadWorkflows(true);
       } catch (error: any) {
-        Toast.error(error.message || '发布失败');
+        Toast.error(error.message || "发布失败");
       } finally {
         setPublishingId(null);
       }
     },
-    [loadWorkflows]
+    [loadWorkflows],
   );
 
   const handleUnpublish = useCallback(
     async (id: string) => {
       setPublishingId(id);
       try {
-        await apiJson(`/workflows/${id}/unpublish`, { method: 'POST' });
-        Toast.success('已取消发布，线上调用已停止');
+        await apiJson(`/workflows/${id}/unpublish`, { method: "POST" });
+        Toast.success("已取消发布，线上调用已停止");
         await loadWorkflows(true);
       } catch (error: any) {
-        Toast.error(error.message || '取消发布失败');
+        Toast.error(error.message || "取消发布失败");
       } finally {
         setPublishingId(null);
       }
     },
-    [loadWorkflows]
+    [loadWorkflows],
   );
 
   const handleOpenRuns = useCallback(async (workflow: Workflow) => {
     setRunsWorkflow(workflow);
     setRunsLoading(true);
     try {
-      const result = await apiJson<{ items: WorkflowRun[] }>(`/workflows/${workflow.id}/runs`);
+      const result = await apiJson<{ items: WorkflowRun[] }>(
+        `/workflows/${workflow.id}/runs`,
+      );
       setRuns(result.items);
     } catch (error: any) {
       setRuns([]);
-      Toast.error(error.message || '加载运行记录失败');
+      Toast.error(error.message || "加载运行记录失败");
     } finally {
       setRunsLoading(false);
     }
@@ -1003,7 +1098,9 @@ export const WorkflowListPage = () => {
   // 运行历史中存在进行中的运行时自动轮询刷新（最多 2 分钟），结束后停止。
   useEffect(() => {
     if (!runsWorkflow) return;
-    const active = runs.some((run) => run.status === 'running' || run.status === 'pending');
+    const active = runs.some(
+      (run) => run.status === "running" || run.status === "pending",
+    );
     if (!active) return;
     const startedAt = Date.now();
     const timer = window.setInterval(async () => {
@@ -1013,10 +1110,14 @@ export const WorkflowListPage = () => {
       }
       try {
         const result = await apiJson<{ items: WorkflowRun[] }>(
-          `/workflows/${runsWorkflow.id}/runs`
+          `/workflows/${runsWorkflow.id}/runs`,
         );
         setRuns(result.items);
-        if (!result.items.some((run) => run.status === 'running' || run.status === 'pending')) {
+        if (
+          !result.items.some(
+            (run) => run.status === "running" || run.status === "pending",
+          )
+        ) {
           window.clearInterval(timer);
         }
       } catch {
@@ -1030,10 +1131,12 @@ export const WorkflowListPage = () => {
     setVersionsWorkflow(workflow);
     setVersionsLoading(true);
     try {
-      setVersions(await apiJson<WorkflowVersion[]>(`/workflows/${workflow.id}/versions`));
+      setVersions(
+        await apiJson<WorkflowVersion[]>(`/workflows/${workflow.id}/versions`),
+      );
     } catch (error: any) {
       setVersions([]);
-      Toast.error(error.message || '加载版本历史失败');
+      Toast.error(error.message || "加载版本历史失败");
     } finally {
       setVersionsLoading(false);
     }
@@ -1046,62 +1149,62 @@ export const WorkflowListPage = () => {
       try {
         await apiJson<Workflow>(
           `/workflows/${versionsWorkflow.id}/versions/${version.version}/restore`,
-          { method: 'POST' }
+          { method: "POST" },
         );
         Toast.success(`已将 v${version.version} 恢复为草稿；请检查后重新发布`);
         await loadWorkflows(true);
       } catch (error: any) {
-        Toast.error(error.message || '恢复版本失败');
+        Toast.error(error.message || "恢复版本失败");
       } finally {
         setRestoringVersion(null);
       }
     },
-    [loadWorkflows, versionsWorkflow]
+    [loadWorkflows, versionsWorkflow],
   );
 
   // 当前标签可见行：三类资源合并后按编辑时间倒序；搜索与发布状态筛选即时生效。
   const resourceRows = useMemo(() => {
     const rows: ResourceRow[] = [];
-    if (activeTab === 'all' || activeTab === 'workflow') {
+    if (activeTab === "all" || activeTab === "workflow") {
       workflows
         .filter((workflow) => {
-          if (publishFilter === 'published') return !!workflow.publishedVersion;
-          if (publishFilter === 'draft') return !workflow.publishedVersion;
+          if (publishFilter === "published") return !!workflow.publishedVersion;
+          if (publishFilter === "draft") return !workflow.publishedVersion;
           return true;
         })
         .forEach((workflow) =>
           rows.push({
             key: `workflow:${workflow.id}`,
-            kind: 'workflow',
-            name: workflow.name || '未命名工作流',
-            description: workflow.description || '暂无描述',
+            kind: "workflow",
+            name: workflow.name || "未命名工作流",
+            description: workflow.description || "暂无描述",
             editedAt: workflow.updatedAt || workflow.createdAt || null,
             workflow,
-          })
+          }),
         );
     }
-    if (activeTab === 'all' || activeTab === 'dataset') {
+    if (activeTab === "all" || activeTab === "dataset") {
       datasets.forEach((dataset) =>
         rows.push({
           key: `dataset:${dataset.id}`,
-          kind: 'dataset',
-          name: dataset.name || '未命名知识库',
-          description: dataset.description || '暂无描述',
+          kind: "dataset",
+          name: dataset.name || "未命名知识库",
+          description: dataset.description || "暂无描述",
           editedAt: dataset.createdAt || dataset.updatedAt || null,
           dataset,
-        })
+        }),
       );
     }
-    if (activeTab === 'all' || activeTab === 'file') {
+    if (activeTab === "all" || activeTab === "file") {
       files.forEach((file) =>
         rows.push({
           key: `file:${file.id}`,
-          kind: 'file',
-          name: file.originalName || '未命名文件',
+          kind: "file",
+          name: file.originalName || "未命名文件",
           description: formatFileSize(file.sizeBytes),
           editedAt: file.createdAt || null,
           file,
-        })
+        }),
       );
     }
 
@@ -1110,13 +1213,114 @@ export const WorkflowListPage = () => {
       ? rows.filter(
           (row) =>
             row.name.toLowerCase().includes(needle) ||
-            row.description.toLowerCase().includes(needle)
+            row.description.toLowerCase().includes(needle),
         )
       : rows;
     return matched.sort(
-      (left, right) => editedTimeValue(right.editedAt) - editedTimeValue(left.editedAt)
+      (left, right) =>
+        editedTimeValue(right.editedAt) - editedTimeValue(left.editedAt),
     );
   }, [activeTab, publishFilter, keyword, workflows, datasets, files]);
+  // ── 多选导出（key = kind:id，切 tab / 重载数据时清空） ──
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+
+  const toggleSelected = useCallback((key: string, checked: boolean) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [activeTab]);
+
+  const downloadBlob = useCallback((filename: string, data: unknown) => {
+    const safe = (filename || "export")
+      .replace(/[/:*?"<>|]+/g, "_")
+      .slice(0, 100);
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safe}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const downloadFileBlob = useCallback(
+    async (fileId: string, filename: string) => {
+      const response = await apiFetch(`/files/${fileId}/download`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename || "file";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    },
+    [],
+  );
+
+  const exportOne = useCallback(
+    async (row: ResourceRow) => {
+      if (row.kind === "workflow" && row.workflow) {
+        const detail = await apiJson<
+          Workflow & { flowgramJson?: Record<string, unknown> }
+        >(`/workflows/${row.workflow.id}`);
+        downloadBlob(
+          `${row.name || "workflow"}.futureflow`,
+          buildWorkflowExport(
+            row.name || "workflow",
+            detail.description || "",
+            (detail.flowgramJson || {}) as Record<string, unknown>,
+          ),
+        );
+        return;
+      }
+      if (row.kind === "dataset" && row.dataset) {
+        const data = await apiJson<unknown>(
+          `/knowledge/datasets/${row.dataset.id}/export`,
+        );
+        downloadBlob(`${row.name || "dataset"}.knowledge`, data);
+        return;
+      }
+      if (row.kind === "file" && row.file) {
+        await downloadFileBlob(row.file.id, row.file.originalName);
+        return;
+      }
+    },
+    [downloadBlob, downloadFileBlob],
+  );
+
+  const handleExportSelected = useCallback(async () => {
+    if (selectedKeys.size === 0) return;
+    setExporting(true);
+    try {
+      const rows = resourceRows.filter((row) => selectedKeys.has(row.key));
+      for (const row of rows) {
+        try {
+          await exportOne(row);
+        } catch (error: any) {
+          Toast.error(
+            `${row.name || "资源"} 导出失败：${error.message || "未知错误"}`,
+          );
+        }
+      }
+      if (rows.length > 0) Toast.success(`已导出 ${rows.length} 项`);
+    } finally {
+      setExporting(false);
+    }
+  }, [resourceRows, selectedKeys, exportOne]);
 
   // 前端分页只渲染当前页；删除/刷新后数据变少时把越界页码回收到最后一页
   const totalPages = Math.max(1, Math.ceil(resourceRows.length / pageSize));
@@ -1126,11 +1330,11 @@ export const WorkflowListPage = () => {
 
   const pagedRows = useMemo(
     () => resourceRows.slice((page - 1) * pageSize, page * pageSize),
-    [resourceRows, page, pageSize]
+    [resourceRows, page, pageSize],
   );
 
   const currentKinds: ResourceKind[] =
-    activeTab === 'all' ? ['workflow', 'dataset', 'file'] : [activeTab];
+    activeTab === "all" ? ["workflow", "dataset", "file"] : [activeTab];
   const loadingByKind: Record<ResourceKind, boolean> = {
     workflow: workflowsLoading,
     dataset: datasetsLoading,
@@ -1143,32 +1347,34 @@ export const WorkflowListPage = () => {
   };
   const currentLoading = currentKinds.some((kind) => loadingByKind[kind]);
   const currentError =
-    currentKinds.map((kind) => errorByKind[kind]).find((message): message is string => !!message) ||
-    null;
+    currentKinds
+      .map((kind) => errorByKind[kind])
+      .find((message): message is string => !!message) || null;
 
   const reloadCurrentTab = useCallback(() => {
-    if (activeTab === 'all' || activeTab === 'workflow') void loadWorkflows(true);
-    if (activeTab === 'all' || activeTab === 'dataset') void loadDatasets(true);
-    if (activeTab === 'all' || activeTab === 'file') void loadFiles(true);
+    if (activeTab === "all" || activeTab === "workflow")
+      void loadWorkflows(true);
+    if (activeTab === "all" || activeTab === "dataset") void loadDatasets(true);
+    if (activeTab === "all" || activeTab === "file") void loadFiles(true);
   }, [activeTab, loadWorkflows, loadDatasets, loadFiles]);
 
   const emptyTitleByTab: Record<ResourceTab, string> = {
-    all: '暂无资源',
-    workflow: '暂无工作流',
-    dataset: '暂无知识库',
-    file: '暂无文件',
+    all: "暂无资源",
+    workflow: "暂无工作流",
+    dataset: "暂无知识库",
+    file: "暂无文件",
   };
 
   const emptyDescriptionByTab: Record<ResourceTab, string> = {
-    all: '创建你的第一个工作流，或在个人中心添加知识库与文件。',
-    workflow: '点击上方「创建画布」，开始你的第一个 AI 工作流。',
-    dataset: '知识库可在个人中心创建并管理。',
-    file: '文件可在个人中心上传并管理。',
+    all: "创建你的第一个工作流，或在个人中心添加知识库与文件。",
+    workflow: "点击上方「创建工作流」，开始你的第一个 AI 工作流。",
+    dataset: "知识库可在个人中心创建并管理。",
+    file: "文件可在个人中心上传并管理。",
   };
 
   // 操作列：工作流沿用原有全部动作并收进 ... 菜单；知识库/文件为删除（带确认）+ 个人中心入口。
   const renderRowActions = (row: ResourceRow) => {
-    if (row.kind === 'workflow' && row.workflow) {
+    if (row.kind === "workflow" && row.workflow) {
       const workflow = row.workflow;
       return (
         <Dropdown
@@ -1187,8 +1393,12 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
-                  setRenameName(workflow.name || '');
-                  setRenameTarget({ kind: 'workflow', id: workflow.id, name: workflow.name || '' });
+                  setRenameName(workflow.name || "");
+                  setRenameTarget({
+                    kind: "workflow",
+                    id: workflow.id,
+                    name: workflow.name || "",
+                  });
                 }}
               >
                 重命名
@@ -1264,6 +1474,14 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
+                  void exportOne(row);
+                }}
+              >
+                导出
+              </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
                   void handleDuplicate(workflow.id);
                 }}
               >
@@ -1291,7 +1509,7 @@ export const WorkflowListPage = () => {
         </Dropdown>
       );
     }
-    if (row.kind === 'dataset' && row.dataset) {
+    if (row.kind === "dataset" && row.dataset) {
       const dataset = row.dataset;
       return (
         <Dropdown
@@ -1302,8 +1520,8 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
-                  setUploadDocName('');
-                  setUploadDocText('');
+                  setUploadDocName("");
+                  setUploadDocText("");
                   setUploadDocTarget(dataset);
                 }}
               >
@@ -1312,8 +1530,20 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
-                  setRenameName(dataset.name || '');
-                  setRenameTarget({ kind: 'dataset', id: dataset.id, name: dataset.name || '' });
+                  void exportOne(row);
+                }}
+              >
+                导出
+              </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRenameName(dataset.name || "");
+                  setRenameTarget({
+                    kind: "dataset",
+                    id: dataset.id,
+                    name: dataset.name || "",
+                  });
                 }}
               >
                 重命名
@@ -1340,7 +1570,7 @@ export const WorkflowListPage = () => {
         </Dropdown>
       );
     }
-    if (row.kind === 'file' && row.file) {
+    if (row.kind === "file" && row.file) {
       const file = row.file;
       return (
         <Dropdown
@@ -1351,8 +1581,20 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
-                  setRenameName(file.originalName || '');
-                  setRenameTarget({ kind: 'file', id: file.id, name: file.originalName || '' });
+                  void exportOne(row);
+                }}
+              >
+                导出
+              </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRenameName(file.originalName || "");
+                  setRenameTarget({
+                    kind: "file",
+                    id: file.id,
+                    name: file.originalName || "",
+                  });
                 }}
               >
                 重命名
@@ -1360,7 +1602,7 @@ export const WorkflowListPage = () => {
               <Dropdown.Item
                 onClick={(event) => {
                   event.stopPropagation();
-                  void handleDuplicateDatasetFile('file', file.id);
+                  void handleDuplicateDatasetFile("file", file.id);
                 }}
               >
                 创建副本
@@ -1398,7 +1640,7 @@ export const WorkflowListPage = () => {
         <div className="page-actions">
           {/* 内嵌形态：引擎凭证由宿主下发（凭证缝），受控引擎的授权也在宿主侧完成——
               管理入口不暴露给内嵌用户（管理员面收敛到宿主后台） */}
-          {useFfEmbedStatus().state === 'embedded' ? null : (
+          {useFfEmbedStatus().state === "embedded" ? null : (
             <Button onClick={() => void openDifySettings()}>Dify 引擎</Button>
           )}
         </div>
@@ -1429,41 +1671,56 @@ export const WorkflowListPage = () => {
       {/* 工具条：操作按钮在左，搜索与筛选在右 */}
       <div className="list-toolbar page-fixed">
         <div className="toolbar-actions">
-          {/* 创建画布 / 导入只属于工作流：知识库 / 文件 tab 不显示（避免误导性入口） */}
-          {(activeTab === 'all' || activeTab === 'workflow') && (
-            <>
-              <Button
-                type="primary"
-                theme="solid"
-                icon={<IconPlus />}
-                onClick={() => setCreateVisible(true)}
-              >
-                创建画布
+          {/* 创建工作流 / 导入只属于工作流：知识库 / 文件 tab 不显示（避免误导性入口） */}
+          {activeTab === "all" && (
+            <Dropdown
+              trigger="click"
+              position="bottom"
+              render={
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => setCreateVisible(true)}>
+                    新建工作流
+                  </Dropdown.Item>
+                  <Dropdown.Item
+                    onClick={() => {
+                      setDatasetName("");
+                      setDatasetCreateVisible(true);
+                    }}
+                  >
+                    新建知识库
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              }
+            >
+              <Button type="primary" theme="solid" icon={<IconPlus />}>
+                创建
               </Button>
-              <Button
-                theme="light"
-                icon={<IconUpload />}
-                loading={importing}
-                onClick={() => importInputRef.current?.click()}
-              >
-                导入
-              </Button>
-            </>
+            </Dropdown>
           )}
-          {activeTab === 'dataset' && (
+          {activeTab === "workflow" && (
+            <Button
+              type="primary"
+              theme="solid"
+              icon={<IconPlus />}
+              onClick={() => setCreateVisible(true)}
+            >
+              创建工作流
+            </Button>
+          )}
+          {activeTab === "dataset" && (
             <Button
               type="primary"
               theme="solid"
               icon={<IconPlus />}
               onClick={() => {
-                setDatasetName('');
+                setDatasetName("");
                 setDatasetCreateVisible(true);
               }}
             >
               新建知识库
             </Button>
           )}
-          {activeTab === 'file' && (
+          {activeTab === "file" && (
             <Button
               type="primary"
               theme="solid"
@@ -1473,15 +1730,33 @@ export const WorkflowListPage = () => {
               上传文件
             </Button>
           )}
+          {activeTab === "all" || activeTab === "workflow" ? (
+            <Button
+              theme="light"
+              icon={<IconUpload />}
+              loading={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              导入
+            </Button>
+          ) : null}
+          <Button
+            theme="light"
+            disabled={selectedKeys.size === 0}
+            loading={exporting}
+            onClick={() => void handleExportSelected()}
+          >
+            导出{selectedKeys.size > 0 ? `（${selectedKeys.size}）` : ""}
+          </Button>
           {/* 文件 tab 的隐藏上传 input（与工作流导入同款交互） */}
           <input
             ref={uploadFileInputRef}
             type="file"
-            style={{ display: 'none' }}
+            style={{ display: "none" }}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void handleUploadFile(file);
-              event.target.value = '';
+              event.target.value = "";
             }}
           />
           {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
@@ -1497,7 +1772,7 @@ export const WorkflowListPage = () => {
           {/* Semi 输入框默认 width:100%，会把同行的发布状态下拉挤到第二行；限定可伸缩宽度后两者保持同一行 */}
           <Input
             className="resource-search"
-            style={{ flex: '0 1 240px', minWidth: 180 }}
+            style={{ flex: "0 1 240px", minWidth: 180 }}
             prefix={<IconSearch />}
             placeholder="搜索资源"
             value={keyword}
@@ -1509,7 +1784,7 @@ export const WorkflowListPage = () => {
             showClear
           />
           {/* 发布状态筛选仅对「全部/工作流」有意义 */}
-          {(activeTab === 'all' || activeTab === 'workflow') && (
+          {(activeTab === "all" || activeTab === "workflow") && (
             <Select
               value={publishFilter}
               onChange={(value) => {
@@ -1519,9 +1794,9 @@ export const WorkflowListPage = () => {
               style={{ width: 122 }}
               aria-label="发布状态筛选"
               optionList={[
-                { value: 'all', label: '全部' },
-                { value: 'published', label: '已发布' },
-                { value: 'draft', label: '草稿' },
+                { value: "all", label: "全部" },
+                { value: "published", label: "已发布" },
+                { value: "draft", label: "草稿" },
               ]}
             />
           )}
@@ -1535,6 +1810,29 @@ export const WorkflowListPage = () => {
             {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
             {(currentLoading || resourceRows.length > 0) && (
               <TableHeader>
+                <span>
+                  <Checkbox
+                    aria-label="全选本页"
+                    checked={
+                      pagedRows.length > 0 &&
+                      pagedRows.every((row) => selectedKeys.has(row.key))
+                    }
+                    indeterminate={
+                      selectedKeys.size > 0 &&
+                      pagedRows.some((row) => selectedKeys.has(row.key)) &&
+                      !pagedRows.every((row) => selectedKeys.has(row.key))
+                    }
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      const next = new Set(selectedKeys);
+                      for (const row of pagedRows) {
+                        if (checked) next.add(row.key);
+                        else next.delete(row.key);
+                      }
+                      setSelectedKeys(next);
+                    }}
+                  />
+                </span>
                 <span>资源</span>
                 <span>类型</span>
                 <span>编辑时间</span>
@@ -1547,12 +1845,18 @@ export const WorkflowListPage = () => {
               </TableBodyState>
             ) : resourceRows.length === 0 ? (
               <TableEmptyState>
-                <div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
+                <div
+                  style={{ display: "grid", justifyItems: "center", gap: 12 }}
+                >
                   <Empty
-                    title={keyword.trim() ? '没有匹配的资源' : emptyTitleByTab[activeTab]}
+                    title={
+                      keyword.trim()
+                        ? "没有匹配的资源"
+                        : emptyTitleByTab[activeTab]
+                    }
                     description={
                       keyword.trim()
-                        ? '换个关键词试试。'
+                        ? "换个关键词试试。"
                         : currentError || emptyDescriptionByTab[activeTab]
                     }
                   />
@@ -1565,34 +1869,51 @@ export const WorkflowListPage = () => {
               pagedRows.map((row) => (
                 <ResourceRowItem
                   key={row.key}
-                  $clickable={row.kind === 'workflow'}
+                  $clickable={row.kind === "workflow"}
                   onClick={
-                    row.kind === 'workflow' && row.workflow
+                    row.kind === "workflow" && row.workflow
                       ? () => navigate(`/canvas/${row.workflow?.id}`)
                       : undefined
                   }
                 >
+                  <SelectCell onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      aria-label={`选择 ${row.name || row.key}`}
+                      checked={selectedKeys.has(row.key)}
+                      onChange={(event) =>
+                        toggleSelected(
+                          row.key,
+                          (event.target as HTMLInputElement).checked,
+                        )
+                      }
+                    />
+                  </SelectCell>
                   <ResourceCell>
-                    <RowIcon $tint={cardTint(row.name || row.key)} aria-hidden="true">
-                      {(row.name || '?').trim().slice(0, 1).toUpperCase()}
+                    <RowIcon
+                      $tint={cardTint(row.name || row.key)}
+                      aria-hidden="true"
+                    >
+                      {(row.name || "?").trim().slice(0, 1).toUpperCase()}
                     </RowIcon>
                     <ResourceText>
                       <div className="resource-name">
                         <span className="resource-name-text" title={row.name}>
                           {row.name}
                         </span>
-                        {row.kind === 'workflow' && !!row.workflow?.publishedVersion && (
-                          <span
-                            className="resource-published"
-                            title={`已发布 v${
-                              formatVersionLabel(row.workflow.publishedVersion) ??
-                              row.workflow.publishedVersion
-                            }`}
-                            aria-label={`已发布`}
-                          >
-                            <IconTickCircle />
-                          </span>
-                        )}
+                        {row.kind === "workflow" &&
+                          !!row.workflow?.publishedVersion && (
+                            <span
+                              className="resource-published"
+                              title={`已发布 v${
+                                formatVersionLabel(
+                                  row.workflow.publishedVersion,
+                                ) ?? row.workflow.publishedVersion
+                              }`}
+                              aria-label={`已发布`}
+                            >
+                              <IconTickCircle />
+                            </span>
+                          )}
                       </div>
                       <div className="resource-desc" title={row.description}>
                         {row.description}
@@ -1615,7 +1936,10 @@ export const WorkflowListPage = () => {
                 value={pageSize}
                 style={{ width: 88 }}
                 aria-label="每页条数"
-                optionList={PAGE_SIZE_OPTS.map((size) => ({ value: size, label: String(size) }))}
+                optionList={PAGE_SIZE_OPTS.map((size) => ({
+                  value: size,
+                  label: String(size),
+                }))}
                 onChange={(value) => {
                   setPageSize(Number(value));
                   setPage(1);
@@ -1636,36 +1960,19 @@ export const WorkflowListPage = () => {
       </ScrollArea>
 
       <Modal
-        title="创建新画布"
+        title="创建工作流"
         visible={createVisible}
         onCancel={() => setCreateVisible(false)}
         footer={null}
         style={{ borderRadius: 12 }}
       >
         <Form onSubmit={handleCreate}>
-          {/* 与参考图一致：先给一张「要创建什么」的示意图卡，再填名称 */}
-          <CreatePreview>
-            <svg width="228" height="96" viewBox="0 0 228 96" fill="none" aria-hidden="true">
-              <rect x="1" y="1" width="226" height="94" rx="8" fill="#f5f8ff" stroke="#dbe4f7" />
-              <rect x="18" y="18" width="72" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
-              <rect x="18" y="42" width="120" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
-              <rect x="18" y="66" width="92" height="12" rx="6" fill="#ffffff" stroke="#cfdcf6" />
-              <circle cx="196" cy="30" r="13" fill="#e4edff" />
-              <path d="M190 30h12M196 24v12" stroke="#2563eb" strokeWidth="2.4" strokeLinecap="round" />
-              <circle cx="196" cy="66" r="13" fill="#ffffff" stroke="#cfdcf6" />
-              <path d="M190 66l4 4 8-9" stroke="#16803c" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <div>
-              <strong>创建画布</strong>
-              <span>从空白画布开始，用节点编排你的 AI 工作流。</span>
-            </div>
-          </CreatePreview>
           <Form.Input
             field="name"
             label="工作流名称"
             placeholder="如：翻译助手"
             size="large"
-            rules={[{ required: true, message: '请输入名称' }]}
+            rules={[{ required: true, message: "请输入名称" }]}
           />
           <Form.TextArea
             field="description"
@@ -1692,7 +1999,7 @@ export const WorkflowListPage = () => {
         visible={!!deleteCandidate}
         onCancel={() => setDeleteCandidate(null)}
         footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
             <Button onClick={() => setDeleteCandidate(null)}>取消</Button>
             <Button
               type="danger"
@@ -1708,13 +2015,19 @@ export const WorkflowListPage = () => {
         <Typography.Text type="tertiary">
           {deleteCandidate
             ? `「${deleteCandidate.name}」删除后无法恢复，发布版本与运行记录将一并移除。`
-            : ''}
+            : ""}
         </Typography.Text>
       </Modal>
 
       {/* 重命名（工作流 / 知识库 / 文件 三种资源共用） */}
       <Modal
-        title={renameTarget?.kind === 'workflow' ? '重命名工作流' : renameTarget?.kind === 'dataset' ? '重命名知识库' : '重命名文件'}
+        title={
+          renameTarget?.kind === "workflow"
+            ? "重命名工作流"
+            : renameTarget?.kind === "dataset"
+              ? "重命名知识库"
+              : "重命名文件"
+        }
         visible={!!renameTarget}
         onCancel={() => setRenameTarget(null)}
         onOk={() => void confirmRename()}
@@ -1725,7 +2038,7 @@ export const WorkflowListPage = () => {
           maxLength={128}
           onChange={(value) => setRenameName(value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') void confirmRename();
+            if (event.key === "Enter") void confirmRename();
           }}
         />
       </Modal>
@@ -1740,7 +2053,9 @@ export const WorkflowListPage = () => {
         type="warning"
       >
         <Typography.Text type="tertiary">
-          {deleteDataset ? `「${deleteDataset.name}」及其文档将一并删除，无法恢复。` : ''}
+          {deleteDataset
+            ? `「${deleteDataset.name}」及其文档将一并删除，无法恢复。`
+            : ""}
         </Typography.Text>
       </Modal>
 
@@ -1754,7 +2069,7 @@ export const WorkflowListPage = () => {
         type="warning"
       >
         <Typography.Text type="tertiary">
-          {deleteFile ? `「${deleteFile.originalName}」删除后无法恢复。` : ''}
+          {deleteFile ? `「${deleteFile.originalName}」删除后无法恢复。` : ""}
         </Typography.Text>
       </Modal>
 
@@ -1765,16 +2080,16 @@ export const WorkflowListPage = () => {
         onCancel={() => setDatasetCreateVisible(false)}
         onOk={() => {
           if (!datasetName.trim()) {
-            Toast.error('知识库名称不能为空');
+            Toast.error("知识库名称不能为空");
             return;
           }
-          void handleCreateDataset(datasetName.trim(), '');
+          void handleCreateDataset(datasetName.trim(), "");
           setDatasetCreateVisible(false);
-          setDatasetName('');
+          setDatasetName("");
         }}
         okText="创建"
       >
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           <Input
             placeholder="知识库名称"
             value={datasetName}
@@ -1786,16 +2101,16 @@ export const WorkflowListPage = () => {
 
       {/* 上传文档（按文本创建；文件型文档仍在个人中心管理） */}
       <Modal
-        title={`上传文档到「${uploadDocTarget?.name || ''}」`}
+        title={`上传文档到「${uploadDocTarget?.name || ""}」`}
         visible={!!uploadDocTarget}
         onCancel={() => setUploadDocTarget(null)}
         onOk={() => {
           if (!uploadDocName.trim() || !uploadDocText.trim()) {
-            Toast.error('请填写文档名称与内容');
+            Toast.error("请填写文档名称与内容");
             return;
           }
           void handleUploadDocument(
-            uploadDocTarget?.id || '',
+            uploadDocTarget?.id || "",
             uploadDocName.trim(),
             uploadDocText,
           );
@@ -1804,18 +2119,18 @@ export const WorkflowListPage = () => {
         okText="上传"
         width={560}
       >
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           <Input
             placeholder="文档名称"
             value={uploadDocName}
             maxLength={200}
             onChange={(value) => setUploadDocName(value)}
           />
-          <Input.TextArea
+          <TextArea
             placeholder="粘贴文档内容（纯文本）"
             value={uploadDocText}
             autosize={{ minRows: 6, maxRows: 16 }}
-            onChange={(value) => setUploadDocText(value)}
+            onChange={(value: string) => setUploadDocText(value)}
           />
         </div>
       </Modal>
@@ -1825,8 +2140,8 @@ export const WorkflowListPage = () => {
         visible={templateVisible}
         onCancel={() => setTemplateVisible(false)}
         footer={null}
-        style={{ width: 960, maxWidth: 'calc(100vw - 32px)' }}
-        bodyStyle={{ maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}
+        style={{ width: 960, maxWidth: "calc(100vw - 32px)" }}
+        bodyStyle={{ maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}
       >
         {templatesLoading ? (
           <LoadingCenter>
@@ -1847,13 +2162,19 @@ export const WorkflowListPage = () => {
               {templates.map((template) => (
                 <TemplateCard key={template.id}>
                   <TemplateCardHeader>
-                    <TemplateMark>{template.tags[0]?.slice(0, 1) || 'AI'}</TemplateMark>
-                    <TemplateTier>{template.requiresDify ? 'Dify 引擎' : '平台模板'}</TemplateTier>
+                    <TemplateMark>
+                      {template.tags[0]?.slice(0, 1) || "AI"}
+                    </TemplateMark>
+                    <TemplateTier>
+                      {template.requiresDify ? "Dify 引擎" : "平台模板"}
+                    </TemplateTier>
                   </TemplateCardHeader>
                   <Typography.Title heading={6} style={{ margin: 0 }}>
                     {template.name}
                   </Typography.Title>
-                  <TemplateDescription>{template.description}</TemplateDescription>
+                  <TemplateDescription>
+                    {template.description}
+                  </TemplateDescription>
                   <TemplateTags>
                     {template.tags.map((tag) => (
                       <Tag key={tag} size="small">
@@ -1883,7 +2204,11 @@ export const WorkflowListPage = () => {
         onCancel={() => setDifyVisible(false)}
         footer={null}
         style={{ width: 640 }}
-        bodyStyle={{ maxHeight: 'calc(100vh - 156px)', overflowY: 'auto', paddingRight: 20 }}
+        bodyStyle={{
+          maxHeight: "calc(100vh - 156px)",
+          overflowY: "auto",
+          paddingRight: 20,
+        }}
       >
         {difyLoading ? (
           <LoadingCenter>
@@ -1891,9 +2216,14 @@ export const WorkflowListPage = () => {
           </LoadingCenter>
         ) : (
           <>
-            <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>
-              只需完成一次管理员授权。futureFlow 会在每次发布时，为该工作流版本自动创建独立 Dify
-              应用、生成独立 Service API Key，并将密钥加密保存；页面不会回显明文密钥。若服务端已配置
+            <Typography.Text
+              type="tertiary"
+              style={{ display: "block", marginBottom: 12 }}
+            >
+              只需完成一次管理员授权。futureFlow
+              会在每次发布时，为该工作流版本自动创建独立 Dify 应用、生成独立
+              Service API
+              Key，并将密钥加密保存；页面不会回显明文密钥。若服务端已配置
               LLM_API_KEY，还会在 Provider 缺失时安全同步到 Dify。
             </Typography.Text>
             {difyStatus && (
@@ -1902,22 +2232,31 @@ export const WorkflowListPage = () => {
                   marginBottom: 16,
                   padding: 12,
                   borderRadius: 8,
-                  background: 'var(--ff-surface-muted)',
+                  background: "var(--ff-surface-muted)",
                 }}
               >
-                <Tag color={difyStatus.connectionAuthorized ? 'green' : 'orange'}>
-                  {difyStatus.connectionAuthorized ? '已授权' : '未授权'}
+                <Tag
+                  color={difyStatus.connectionAuthorized ? "green" : "orange"}
+                >
+                  {difyStatus.connectionAuthorized ? "已授权" : "未授权"}
                 </Tag>
                 <Typography.Text style={{ marginLeft: 8 }}>
                   已管理 {difyStatus.managedWorkflowAppCount} 个独立发布版本
                 </Typography.Text>
                 {!difyStatus.encryptionReady && (
-                  <Typography.Text type="warning" style={{ display: 'block', marginTop: 8 }}>
-                    请先在 .env 设置至少 32 位且非示例值的 DIFY_KEY_ENCRYPTION_SECRET。
+                  <Typography.Text
+                    type="warning"
+                    style={{ display: "block", marginTop: 8 }}
+                  >
+                    请先在 .env 设置至少 32 位且非示例值的
+                    DIFY_KEY_ENCRYPTION_SECRET。
                   </Typography.Text>
                 )}
                 {difyStatus.modelProvider && (
-                  <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 8 }}>
+                  <Typography.Text
+                    type="tertiary"
+                    style={{ display: "block", marginTop: 8 }}
+                  >
                     模型 Provider：{difyStatus.modelProvider.message}
                   </Typography.Text>
                 )}
@@ -1928,18 +2267,22 @@ export const WorkflowListPage = () => {
                 marginBottom: 16,
                 padding: 12,
                 borderRadius: 8,
-                border: '1px solid var(--ff-border)',
+                border: "1px solid var(--ff-border)",
               }}
             >
-              <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
+              <Typography.Text
+                strong
+                style={{ display: "block", marginBottom: 4 }}
+              >
                 零成本安全预检
               </Typography.Text>
               <Typography.Text
                 type="tertiary"
                 size="small"
-                style={{ display: 'block', marginBottom: 10 }}
+                style={{ display: "block", marginBottom: 10 }}
               >
-                仅检查 Dify 服务可达性和本地加密配置；不会读取或保存管理员凭据，不会创建应用、Key
+                仅检查 Dify
+                服务可达性和本地加密配置；不会读取或保存管理员凭据，不会创建应用、Key
                 或执行模型。
               </Typography.Text>
               <Button
@@ -1950,35 +2293,43 @@ export const WorkflowListPage = () => {
                 运行安全预检
               </Button>
               {difyPreflight && (
-                <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+                <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
                   {[
-                    ['Dify API', difyPreflight.checks.apiHealth],
-                    ['Console 接口', difyPreflight.checks.consoleEndpoint],
-                    ['凭据加密', difyPreflight.checks.credentialEncryption],
-                    ['已保存授权', difyPreflight.checks.storedAuthorization],
-                    ['资源创建', difyPreflight.checks.provisioning],
-                    ['模型执行', difyPreflight.checks.modelExecution],
+                    ["Dify API", difyPreflight.checks.apiHealth],
+                    ["Console 接口", difyPreflight.checks.consoleEndpoint],
+                    ["凭据加密", difyPreflight.checks.credentialEncryption],
+                    ["已保存授权", difyPreflight.checks.storedAuthorization],
+                    ["资源创建", difyPreflight.checks.provisioning],
+                    ["模型执行", difyPreflight.checks.modelExecution],
                   ].map(([label, check]) => {
                     const item = check as DifyPreflightCheck;
                     const color =
-                      item.state === 'passed' ? 'green' : item.state === 'failed' ? 'red' : 'grey';
+                      item.state === "passed"
+                        ? "green"
+                        : item.state === "failed"
+                          ? "red"
+                          : "grey";
                     const stateLabel =
-                      item.state === 'passed'
-                        ? '通过'
-                        : item.state === 'failed'
-                        ? '需处理'
-                        : '未执行';
+                      item.state === "passed"
+                        ? "通过"
+                        : item.state === "failed"
+                          ? "需处理"
+                          : "未执行";
                     return (
                       <div
                         key={label as string}
-                        style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 8,
+                        }}
                       >
                         <Tag size="small" color={color}>
                           {stateLabel}
                         </Tag>
                         <Typography.Text size="small" style={{ flex: 1 }}>
                           {label as string}：{item.message}
-                          {item.version ? `（${item.version}）` : ''}
+                          {item.version ? `（${item.version}）` : ""}
                         </Typography.Text>
                       </div>
                     );
@@ -1991,7 +2342,7 @@ export const WorkflowListPage = () => {
             </div>
             <Form
               onSubmit={(values) => {
-                void (difySubmitMode.current === 'validate'
+                void (difySubmitMode.current === "validate"
                   ? validateDifyAuthorization(values)
                   : bootstrapDify(values));
               }}
@@ -2019,13 +2370,13 @@ export const WorkflowListPage = () => {
                 label="Dify Console Token（可选）"
                 placeholder="邮箱密码或 Token 至少填写一种"
               />
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <Button
                   htmlType="submit"
                   loading={difyProvisioning}
                   style={{ flex: 1, borderRadius: 8 }}
                   onClick={() => {
-                    difySubmitMode.current = 'validate';
+                    difySubmitMode.current = "validate";
                   }}
                 >
                   验证管理员授权（不保存）
@@ -2037,7 +2388,7 @@ export const WorkflowListPage = () => {
                   loading={difyProvisioning}
                   style={{ flex: 1, borderRadius: 8 }}
                   onClick={() => {
-                    difySubmitMode.current = 'save';
+                    difySubmitMode.current = "save";
                   }}
                 >
                   保存授权并启用自动建应用 / Key
@@ -2046,9 +2397,10 @@ export const WorkflowListPage = () => {
               <Typography.Text
                 type="tertiary"
                 size="small"
-                style={{ display: 'block', marginTop: 10 }}
+                style={{ display: "block", marginTop: 10 }}
               >
-                保存授权只启用后续发布的资源自动创建；若首次同步模型 Provider，Dify
+                保存授权只启用后续发布的资源自动创建；若首次同步模型
+                Provider，Dify
                 会发送一次凭据验证请求，可能产生极少量模型用量。真实工作流仍需由你显式运行。
               </Typography.Text>
             </Form>
@@ -2057,31 +2409,41 @@ export const WorkflowListPage = () => {
       </Modal>
 
       <Modal
-        title={`${apiWorkflow?.name || ''} · API 调用`}
+        title={`${apiWorkflow?.name || ""} · API 调用`}
         visible={!!apiWorkflow}
         onCancel={() => setApiWorkflow(null)}
         footer={
-          <Button type="primary" theme="solid" onClick={() => setApiWorkflow(null)}>
+          <Button
+            type="primary"
+            theme="solid"
+            onClick={() => setApiWorkflow(null)}
+          >
             完成
           </Button>
         }
       >
-        <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>
+        <Typography.Text
+          type="tertiary"
+          style={{ display: "block", marginBottom: 12 }}
+        >
           已发布版本可通过平台 API Key 调用；编辑草稿不会影响当前线上版本。
         </Typography.Text>
         <CodeBlock>{`curl -X POST ${GATEWAY_URL}/workflows/${
-          apiWorkflow?.id || '<WORKFLOW_ID>'
+          apiWorkflow?.id || "<WORKFLOW_ID>"
         }/execute \\
   -H "Authorization: Bearer ff-xxxxxxxxxxxxxxxx" \\
   -H "Content-Type: application/json" \\
   -d '{"inputs":{"query":"你好"}}'`}</CodeBlock>
-        <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 12 }}>
+        <Typography.Text
+          type="tertiary"
+          style={{ display: "block", marginTop: 12 }}
+        >
           返回为 SSE 流。请在「个人中心」创建或管理 API Key。
         </Typography.Text>
       </Modal>
 
       <Modal
-        title={`${runsWorkflow?.name || ''} · 运行记录`}
+        title={`${runsWorkflow?.name || ""} · 运行记录`}
         visible={!!runsWorkflow}
         onCancel={() => setRunsWorkflow(null)}
         footer={<Button onClick={() => setRunsWorkflow(null)}>关闭</Button>}
@@ -2101,27 +2463,27 @@ export const WorkflowListPage = () => {
                   <Tag
                     size="small"
                     color={
-                      run.status === 'succeeded'
-                        ? 'green'
-                        : run.status === 'failed'
-                        ? 'red'
-                        : run.status === 'running'
-                        ? 'blue'
-                        : 'grey'
+                      run.status === "succeeded"
+                        ? "green"
+                        : run.status === "failed"
+                          ? "red"
+                          : run.status === "running"
+                            ? "blue"
+                            : "grey"
                     }
                   >
                     {
                       {
-                        pending: '等待中',
-                        running: '运行中',
-                        succeeded: '成功',
-                        failed: '失败',
-                        cancelled: '已取消',
+                        pending: "等待中",
+                        running: "运行中",
+                        succeeded: "成功",
+                        failed: "失败",
+                        cancelled: "已取消",
                       }[run.status]
                     }
                   </Tag>
                   <Typography.Text type="tertiary" size="small">
-                    {new Date(run.createdAt).toLocaleString('zh-CN')}
+                    {new Date(run.createdAt).toLocaleString("zh-CN")}
                   </Typography.Text>
                 </RunHeader>
                 <RunMeta>
@@ -2130,8 +2492,8 @@ export const WorkflowListPage = () => {
                       {RUN_SOURCE_LABELS[run.source] || run.source}
                     </Tag>
                   )}
-                  {run.totalTokens} 令牌 · {run.totalSteps} 步 ·{' '}
-                  {run.elapsedTime?.toFixed(2) || '0.00'} 秒 · ¥
+                  {run.totalTokens} 令牌 · {run.totalSteps} 步 ·{" "}
+                  {run.elapsedTime?.toFixed(2) || "0.00"} 秒 · ¥
                   {Number(run.actualCost || 0).toFixed(4)}
                 </RunMeta>
                 {run.errorMessage && <RunError>{run.errorMessage}</RunError>}
@@ -2141,13 +2503,16 @@ export const WorkflowListPage = () => {
         )}
       </Modal>
       <Modal
-        title={`${versionsWorkflow?.name || ''} · 发布版本历史`}
+        title={`${versionsWorkflow?.name || ""} · 发布版本历史`}
         visible={!!versionsWorkflow}
         onCancel={() => setVersionsWorkflow(null)}
         footer={<Button onClick={() => setVersionsWorkflow(null)}>关闭</Button>}
         style={{ width: 680 }}
       >
-        <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>
+        <Typography.Text
+          type="tertiary"
+          style={{ display: "block", marginBottom: 12 }}
+        >
           恢复只会写入当前草稿，不会自动替换线上已发布版本；确认后请在画布检查并重新发布。
         </Typography.Text>
         {versionsLoading ? (
@@ -2165,10 +2530,10 @@ export const WorkflowListPage = () => {
                     v{version.version} · {version.name}
                   </Typography.Text>
                   <Typography.Text type="tertiary" size="small">
-                    {new Date(version.publishedAt).toLocaleString('zh-CN')}
+                    {new Date(version.publishedAt).toLocaleString("zh-CN")}
                   </Typography.Text>
                 </RunHeader>
-                <RunMeta>{version.description || '无描述'}</RunMeta>
+                <RunMeta>{version.description || "无描述"}</RunMeta>
                 <Popconfirm
                   title={`恢复 v${version.version} 为当前草稿？`}
                   content="线上已发布版本不会自动改变。"
@@ -2190,34 +2555,46 @@ export const WorkflowListPage = () => {
         )}
       </Modal>
       <Modal
-        title={`${triggerWorkflow?.name || ''} · 触发器`}
+        title={`${triggerWorkflow?.name || ""} · 触发器`}
         visible={!!triggerWorkflow}
         onCancel={() => setTriggerWorkflow(null)}
         footer={<Button onClick={() => setTriggerWorkflow(null)}>关闭</Button>}
         style={{ width: 680 }}
       >
-        <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>
+        <Typography.Text
+          type="tertiary"
+          style={{ display: "block", marginBottom: 12 }}
+        >
           Webhook 适合外部系统事件；定时触发器按固定分钟间隔执行已发布快照。
         </Typography.Text>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <Button
             theme="solid"
             type="primary"
             loading={triggerCreating}
-            onClick={() => void createTrigger('webhook')}
+            onClick={() => void createTrigger("webhook")}
           >
             创建 Webhook
           </Button>
-          <Button loading={triggerCreating} onClick={() => void createTrigger('schedule-daily')}>
+          <Button
+            loading={triggerCreating}
+            onClick={() => void createTrigger("schedule-daily")}
+          >
             创建每日定时（09:00）
           </Button>
-          <Button loading={triggerCreating} onClick={() => void createTrigger('schedule-cron')}>
+          <Button
+            loading={triggerCreating}
+            onClick={() => void createTrigger("schedule-cron")}
+          >
             创建 Cron 调度
           </Button>
         </div>
         {newWebhookUrl && (
           <>
-            <Typography.Text type="warning" style={{ display: 'block', marginBottom: 6 }}>
+            <Typography.Text
+              type="warning"
+              style={{ display: "block", marginBottom: 6 }}
+            >
               请立即保存此地址；轮换后旧地址立即失效。
             </Typography.Text>
             <CodeBlock>{newWebhookUrl}</CodeBlock>
@@ -2235,27 +2612,36 @@ export const WorkflowListPage = () => {
               <RunRow key={trigger.id}>
                 <RunHeader>
                   <Typography.Text strong>{trigger.name}</Typography.Text>
-                  <Tag size="small" color={trigger.type === 'webhook' ? 'blue' : 'orange'}>
-                    {trigger.type === 'webhook' ? 'Webhook' : '定时'}
+                  <Tag
+                    size="small"
+                    color={trigger.type === "webhook" ? "blue" : "orange"}
+                  >
+                    {trigger.type === "webhook" ? "Webhook" : "定时"}
                   </Tag>
                 </RunHeader>
                 <RunMeta>
-                  {trigger.type === 'schedule' ? (
-                    trigger.scheduleType === 'cron' ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {trigger.type === "schedule" ? (
+                    trigger.scheduleType === "cron" ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         <span>Cron</span>
                         <input
-                          defaultValue={trigger.cronExpression ?? ''}
-                          disabled={trigger.status !== 'active'}
+                          defaultValue={trigger.cronExpression ?? ""}
+                          disabled={trigger.status !== "active"}
                           aria-label="修改 Cron 表达式"
                           placeholder="分 时 日 月 周"
                           style={{
                             width: 120,
-                            border: '1px solid var(--ff-border-strong)',
+                            border: "1px solid var(--ff-border-strong)",
                             borderRadius: 4,
-                            padding: '1px 4px',
+                            padding: "1px 4px",
                             fontSize: 12,
-                            fontFamily: 'monospace',
+                            fontFamily: "monospace",
                           }}
                           onChange={(event) =>
                             setCronEdits((prev) => ({
@@ -2265,10 +2651,12 @@ export const WorkflowListPage = () => {
                           }
                         />
                         <span>
-                          · 下次{' '}
+                          · 下次{" "}
                           {trigger.nextRunAt
-                            ? new Date(trigger.nextRunAt).toLocaleString('zh-CN')
-                            : '-'}
+                            ? new Date(trigger.nextRunAt).toLocaleString(
+                                "zh-CN",
+                              )
+                            : "-"}
                         </span>
                         {cronEdits[trigger.id] &&
                           cronEdits[trigger.id] !== trigger.cronExpression && (
@@ -2279,11 +2667,13 @@ export const WorkflowListPage = () => {
                               onClick={() => {
                                 const expression = cronEdits[trigger.id].trim();
                                 if (expression.split(/\s+/).length !== 5) {
-                                  Toast.error('Cron 表达式必须是 5 个字段（分 时 日 月 周）');
+                                  Toast.error(
+                                    "Cron 表达式必须是 5 个字段（分 时 日 月 周）",
+                                  );
                                   return;
                                 }
                                 void updateTrigger(trigger, {
-                                  scheduleType: 'cron',
+                                  scheduleType: "cron",
                                   cronExpression: expression,
                                 });
                               }}
@@ -2292,18 +2682,25 @@ export const WorkflowListPage = () => {
                             </Button>
                           )}
                       </span>
-                    ) : trigger.scheduleType === 'daily' && trigger.dailyTime ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    ) : trigger.scheduleType === "daily" &&
+                      trigger.dailyTime ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         <span>每天</span>
                         <input
                           type="time"
                           defaultValue={trigger.dailyTime}
-                          disabled={trigger.status !== 'active'}
+                          disabled={trigger.status !== "active"}
                           aria-label="修改每日执行时间"
                           style={{
-                            border: '1px solid var(--ff-border-strong)',
+                            border: "1px solid var(--ff-border-strong)",
                             borderRadius: 4,
-                            padding: '1px 4px',
+                            padding: "1px 4px",
                             fontSize: 12,
                           }}
                           onChange={(event) =>
@@ -2314,10 +2711,12 @@ export const WorkflowListPage = () => {
                           }
                         />
                         <span>
-                          · 下次{' '}
+                          · 下次{" "}
                           {trigger.nextRunAt
-                            ? new Date(trigger.nextRunAt).toLocaleString('zh-CN')
-                            : '-'}
+                            ? new Date(trigger.nextRunAt).toLocaleString(
+                                "zh-CN",
+                              )
+                            : "-"}
                         </span>
                         {dailyTimeEdits[trigger.id] &&
                           dailyTimeEdits[trigger.id] !== trigger.dailyTime && (
@@ -2327,7 +2726,7 @@ export const WorkflowListPage = () => {
                               loading={triggerUpdatingId === trigger.id}
                               onClick={() =>
                                 void updateTrigger(trigger, {
-                                  scheduleType: 'daily',
+                                  scheduleType: "daily",
                                   dailyTime: dailyTimeEdits[trigger.id],
                                 })
                               }
@@ -2337,20 +2736,26 @@ export const WorkflowListPage = () => {
                           )}
                       </span>
                     ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
                         <span>每</span>
                         <input
                           type="number"
                           min={1}
                           max={43200}
                           defaultValue={trigger.intervalMinutes ?? 60}
-                          disabled={trigger.status !== 'active'}
+                          disabled={trigger.status !== "active"}
                           aria-label="修改执行间隔（分钟）"
                           style={{
                             width: 64,
-                            border: '1px solid var(--ff-border-strong)',
+                            border: "1px solid var(--ff-border-strong)",
                             borderRadius: 4,
-                            padding: '1px 4px',
+                            padding: "1px 4px",
                             fontSize: 12,
                           }}
                           onChange={(event) =>
@@ -2361,24 +2766,37 @@ export const WorkflowListPage = () => {
                           }
                         />
                         <span>
-                          分钟 · 下次{' '}
+                          分钟 · 下次{" "}
                           {trigger.nextRunAt
-                            ? new Date(trigger.nextRunAt).toLocaleString('zh-CN')
-                            : '-'}
+                            ? new Date(trigger.nextRunAt).toLocaleString(
+                                "zh-CN",
+                              )
+                            : "-"}
                         </span>
                         {intervalEdits[trigger.id] &&
-                          String(trigger.intervalMinutes) !== intervalEdits[trigger.id] && (
+                          String(trigger.intervalMinutes) !==
+                            intervalEdits[trigger.id] && (
                             <Button
                               size="small"
                               theme="borderless"
                               loading={triggerUpdatingId === trigger.id}
                               onClick={() => {
-                                const minutes = Number(intervalEdits[trigger.id]);
-                                if (!Number.isInteger(minutes) || minutes < 1 || minutes > 43200) {
-                                  Toast.error('执行间隔必须是 1 到 43200 之间的整数分钟');
+                                const minutes = Number(
+                                  intervalEdits[trigger.id],
+                                );
+                                if (
+                                  !Number.isInteger(minutes) ||
+                                  minutes < 1 ||
+                                  minutes > 43200
+                                ) {
+                                  Toast.error(
+                                    "执行间隔必须是 1 到 43200 之间的整数分钟",
+                                  );
                                   return;
                                 }
-                                void updateTrigger(trigger, { intervalMinutes: minutes });
+                                void updateTrigger(trigger, {
+                                  intervalMinutes: minutes,
+                                });
                               }}
                             >
                               保存间隔
@@ -2387,42 +2805,47 @@ export const WorkflowListPage = () => {
                       </span>
                     )
                   ) : (
-                    '使用专属安全地址调用'
+                    "使用专属安全地址调用"
                   )}
                   {trigger.lastRunStatus
-                    ? ` · 上次 ${trigger.lastRunStatus === 'succeeded' ? '成功' : '失败'}`
-                    : ''}
+                    ? ` · 上次 ${trigger.lastRunStatus === "succeeded" ? "成功" : "失败"}`
+                    : ""}
                   {/* 连续失败次数原先已由接口返回、但界面不展示，导致「一直失败」的
                       定时任务在页面上看只是「上次失败」，无法察觉严重程度。 */}
                   {trigger.failureCount && trigger.failureCount > 0
                     ? ` · 连续失败 ${trigger.failureCount} 次`
-                    : ''}
+                    : ""}
                 </RunMeta>
-                <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                   <Button
                     theme="borderless"
                     size="small"
                     loading={triggerUpdatingId === trigger.id}
                     onClick={() =>
                       void updateTrigger(trigger, {
-                        status: trigger.status === 'active' ? 'paused' : 'active',
+                        status:
+                          trigger.status === "active" ? "paused" : "active",
                       })
                     }
                   >
-                    {trigger.status === 'active' ? '暂停' : '启用'}
+                    {trigger.status === "active" ? "暂停" : "启用"}
                   </Button>
-                  {trigger.staticInputs && Object.keys(trigger.staticInputs).length > 0 && (
-                    <Button
-                      theme="borderless"
-                      size="small"
-                      onClick={() =>
-                        setStaticInputsEdit({ trigger, values: { ...trigger.staticInputs } })
-                      }
-                    >
-                      编辑入参
-                    </Button>
-                  )}
-                  {trigger.type === 'webhook' && (
+                  {trigger.staticInputs &&
+                    Object.keys(trigger.staticInputs).length > 0 && (
+                      <Button
+                        theme="borderless"
+                        size="small"
+                        onClick={() =>
+                          setStaticInputsEdit({
+                            trigger,
+                            values: { ...trigger.staticInputs },
+                          })
+                        }
+                      >
+                        编辑入参
+                      </Button>
+                    )}
+                  {trigger.type === "webhook" && (
                     <Button
                       theme="borderless"
                       size="small"
@@ -2447,7 +2870,7 @@ export const WorkflowListPage = () => {
         )}
       </Modal>
       <Modal
-        title={`编辑静态入参 · ${staticInputsEdit?.trigger.name || ''}`}
+        title={`编辑静态入参 · ${staticInputsEdit?.trigger.name || ""}`}
         visible={!!staticInputsEdit}
         onCancel={() => setStaticInputsEdit(null)}
         footer={null}
@@ -2458,14 +2881,16 @@ export const WorkflowListPage = () => {
             key={staticInputsEdit.trigger.id}
             onSubmit={(values: Record<string, any>) => {
               void (async () => {
-                await updateTrigger(staticInputsEdit.trigger, { staticInputs: values });
-                Toast.success('静态入参已更新');
+                await updateTrigger(staticInputsEdit.trigger, {
+                  staticInputs: values,
+                });
+                Toast.success("静态入参已更新");
                 setTriggers((items) =>
                   items.map((item) =>
                     item.id === staticInputsEdit.trigger.id
                       ? { ...item, staticInputs: values }
-                      : item
-                  )
+                      : item,
+                  ),
                 );
                 setStaticInputsEdit(null);
               })();
@@ -2476,7 +2901,9 @@ export const WorkflowListPage = () => {
               <Form.Input key={name} field={name} label={name} />
             ))}
             {Object.keys(staticInputsEdit.values).length === 0 && (
-              <Typography.Text type="tertiary">此触发器没有静态入参。</Typography.Text>
+              <Typography.Text type="tertiary">
+                此触发器没有静态入参。
+              </Typography.Text>
             )}
             <div className="modal-actions">
               <Button onClick={() => setStaticInputsEdit(null)}>取消</Button>
@@ -2552,7 +2979,7 @@ const TabButton = styled.button<{ $active: boolean }>`
   padding: 0 2px;
   border: 0;
   background: transparent;
-  color: ${(props) => (props.$active ? 'var(--ff-primary)' : 'var(--ff-text-secondary)')};
+  color: ${(props) => (props.$active ? "var(--ff-primary)" : "var(--ff-text-secondary)")};
   cursor: pointer;
   font-size: 15px;
   font-weight: ${(props) => (props.$active ? 600 : 500)};
@@ -2566,7 +2993,7 @@ const TabButton = styled.button<{ $active: boolean }>`
     left: 0;
     height: 2px;
     border-radius: 2px;
-    background: ${(props) => (props.$active ? 'var(--ff-primary)' : 'transparent')};
+    background: ${(props) => (props.$active ? "var(--ff-primary)" : "transparent")};
     content: '';
   }
 
@@ -2576,31 +3003,6 @@ const TabButton = styled.button<{ $active: boolean }>`
 `;
 
 /** 本页专用工具条：筛选/搜索/操作同一行左对齐 */
-const CreatePreview = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  background: var(--ff-surface);
-
-  strong {
-    display: block;
-    color: var(--ff-text);
-    font-size: 15px;
-  }
-
-  span {
-    display: block;
-    margin-top: 4px;
-    color: var(--ff-muted);
-    font-size: 13px;
-    line-height: 20px;
-  }
-`;
-
 const ResourceCard = styled.section`
   /* 卡片撑满滚动区，数据区自己滚、分页条固定在卡片底部 */
   display: flex;
@@ -2622,7 +3024,13 @@ const ResourceTableScroll = styled.div`
 `;
 
 /** 表格列：资源自适应（至少 40%），类型/编辑时间/操作固定宽度 */
-const TABLE_GRID = 'minmax(40%, 1fr) 140px 180px 90px';
+const TABLE_GRID = "36px minmax(38%, 1fr) 130px 170px 90px";
+
+const SelectCell = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
 
 const TableHeader = styled.div`
   position: sticky;
@@ -2675,11 +3083,11 @@ const ResourceRowItem = styled.div<{ $clickable?: boolean }>`
   padding: 12px 18px;
   border-top: 1px solid var(--ff-border);
   background: var(--ff-surface);
-  cursor: ${(props) => (props.$clickable ? 'pointer' : 'default')};
+  cursor: ${(props) => (props.$clickable ? "pointer" : "default")};
   transition: background-color 120ms ease;
 
   &:hover {
-    background: ${(props) => (props.$clickable ? 'var(--ff-primary-soft)' : 'var(--ff-surface)')};
+    background: ${(props) => (props.$clickable ? "var(--ff-primary-soft)" : "var(--ff-surface)")};
   }
 
   @media (max-width: 720px) {
@@ -2787,8 +3195,8 @@ const RowIconButton = styled.button<{ $danger?: boolean }>`
   transition: background-color 120ms ease, color 120ms ease;
 
   &:hover {
-    background: ${(props) => (props.$danger ? 'var(--ff-danger-soft)' : 'var(--ff-surface-muted)')};
-    color: ${(props) => (props.$danger ? 'var(--ff-danger)' : 'var(--ff-text)')};
+    background: ${(props) => (props.$danger ? "var(--ff-danger-soft)" : "var(--ff-surface-muted)")};
+    color: ${(props) => (props.$danger ? "var(--ff-danger)" : "var(--ff-text)")};
   }
 `;
 
@@ -2800,11 +3208,11 @@ const LoadingCenter = styled.div`
 
 /** 资源行首字母底色：按名称稳定取色，让同一列表里的条目彼此可辨 */
 const CARD_TINTS = [
-  { bg: '#eef4ff', fg: '#2563eb' },
-  { bg: '#ecfdf3', fg: '#16803c' },
-  { bg: '#fff6e8', fg: '#b54708' },
-  { bg: '#e9f7fa', fg: '#0e7490' },
-  { bg: '#f1f3f7', fg: '#4e5969' },
+  { bg: "#eef4ff", fg: "#2563eb" },
+  { bg: "#ecfdf3", fg: "#16803c" },
+  { bg: "#fff6e8", fg: "#b54708" },
+  { bg: "#e9f7fa", fg: "#0e7490" },
+  { bg: "#f1f3f7", fg: "#4e5969" },
 ];
 
 const cardTint = (seed: string) => {
