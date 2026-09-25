@@ -269,6 +269,20 @@ export const WorkflowListPage = () => {
   const [creating, setCreating] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<Workflow | null>(null);
+  /** 重命名目标：三种资源统一一个对话框（kind 决定调用哪个端点）。 */
+  const [renameTarget, setRenameTarget] = useState<
+    { kind: 'workflow' | 'dataset' | 'file'; id: string; name: string } | null
+  >(null);
+  const [renameName, setRenameName] = useState('');
+  const [deleteDataset, setDeleteDataset] = useState<KnowledgeDataset | null>(null);
+  const [deleteFile, setDeleteFile] = useState<StoredFile | null>(null);
+  // 知识库 / 文件 tab 的创建入口（原在个人中心，收敛到工作流页对应 tab）
+  const [datasetCreateVisible, setDatasetCreateVisible] = useState(false);
+  const [datasetName, setDatasetName] = useState('');
+  const [uploadDocTarget, setUploadDocTarget] = useState<KnowledgeDataset | null>(null);
+  const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadDocText, setUploadDocText] = useState('');
+  const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [apiWorkflow, setApiWorkflow] = useState<Workflow | null>(null);
   const [runsWorkflow, setRunsWorkflow] = useState<Workflow | null>(null);
@@ -825,6 +839,112 @@ export const WorkflowListPage = () => {
     [loadWorkflows]
   );
 
+  const handleRename = useCallback(
+    async (kind: 'workflow' | 'dataset' | 'file', id: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        Toast.error('名称不能为空');
+        return;
+      }
+      try {
+        if (kind === 'workflow') {
+          await apiJson(`/workflows/${id}`, { method: 'PUT', body: { name: trimmed } });
+          await loadWorkflows(true);
+        } else if (kind === 'dataset') {
+          await apiJson(`/knowledge/datasets/${id}`, { method: 'PATCH', body: { name: trimmed } });
+          await loadDatasets(true);
+        } else {
+          await apiJson(`/files/${id}`, { method: 'PATCH', body: { name: trimmed } });
+          await loadFiles(true);
+        }
+        Toast.success('已重命名');
+      } catch (error: any) {
+        Toast.error(error.message || '重命名失败');
+      }
+    },
+    [loadWorkflows, loadDatasets, loadFiles],
+  );
+
+  const confirmDeleteDataset = useCallback(async () => {
+    if (!deleteDataset) return;
+    await handleDeleteDataset(deleteDataset);
+    setDeleteDataset(null);
+  }, [deleteDataset, handleDeleteDataset]);
+
+  const confirmDeleteFile = useCallback(async () => {
+    if (!deleteFile) return;
+    await handleDeleteFile(deleteFile);
+    setDeleteFile(null);
+  }, [deleteFile, handleDeleteFile]);
+
+  const confirmRename = useCallback(async () => {
+    if (!renameTarget) return;
+    await handleRename(renameTarget.kind, renameTarget.id, renameName);
+    setRenameTarget(null);
+  }, [renameTarget, renameName, handleRename]);
+
+  const handleCreateDataset = useCallback(
+    async (name: string, description: string) => {
+      try {
+        await apiJson('/knowledge/datasets', {
+          method: 'POST',
+          body: { name, description, indexing_technique: 'economy' },
+        });
+        Toast.success('知识库已创建');
+        await loadDatasets(true);
+      } catch (error: any) {
+        Toast.error(error.message || '创建知识库失败');
+      }
+    },
+    [loadDatasets],
+  );
+
+  const handleUploadFile = useCallback(
+    async (file: File) => {
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        await apiJson('/files/upload', { method: 'POST', body });
+        Toast.success('文件已上传');
+        await loadFiles(true);
+      } catch (error: any) {
+        Toast.error(error.message || '上传失败');
+      }
+    },
+    [loadFiles],
+  );
+
+  const handleUploadDocument = useCallback(
+    async (datasetId: string, name: string, text: string) => {
+      try {
+        await apiJson(`/knowledge/datasets/${datasetId}/documents`, {
+          method: 'POST',
+          body: { name, text },
+        });
+        Toast.success('文档已上传');
+        await loadDatasets(true);
+      } catch (error: any) {
+        Toast.error(error.message || '文档上传失败');
+      }
+    },
+    [loadDatasets],
+  );
+
+  const handleDuplicateDatasetFile = useCallback(
+    async (kind: 'dataset' | 'file', id: string) => {
+      try {
+        if (kind === 'file') {
+          await apiJson(`/files/${id}/duplicate`, { method: 'POST' });
+          await loadFiles(true);
+          Toast.success('已复制');
+        }
+      } catch (error: any) {
+        Toast.error(error.message || '复制失败');
+      }
+    },
+    [loadFiles],
+  );
+
   const handlePublish = useCallback(
     async (id: string) => {
       setPublishingId(id);
@@ -1064,6 +1184,15 @@ export const WorkflowListPage = () => {
               >
                 打开画布
               </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRenameName(workflow.name || '');
+                  setRenameTarget({ kind: 'workflow', id: workflow.id, name: workflow.name || '' });
+                }}
+              >
+                重命名
+              </Dropdown.Item>
               {workflow.publishedVersion ? (
                 <Dropdown.Item
                   disabled={publishingId === workflow.id}
@@ -1165,51 +1294,97 @@ export const WorkflowListPage = () => {
     if (row.kind === 'dataset' && row.dataset) {
       const dataset = row.dataset;
       return (
-        <>
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setUploadDocName('');
+                  setUploadDocText('');
+                  setUploadDocTarget(dataset);
+                }}
+              >
+                上传文档
+              </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRenameName(dataset.name || '');
+                  setRenameTarget({ kind: 'dataset', id: dataset.id, name: dataset.name || '' });
+                }}
+              >
+                重命名
+              </Dropdown.Item>
+              <Dropdown.Item
+                type="danger"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDeleteDataset(dataset);
+                }}
+              >
+                删除
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          }
+        >
           <RowIconButton
             type="button"
-            aria-label="在个人中心管理"
-            title="在个人中心管理"
-            onClick={() => navigate('/profile')}
+            aria-label="更多操作"
+            onClick={(event) => event.stopPropagation()}
           >
-            <IconUser />
+            <IconMore />
           </RowIconButton>
-          <Popconfirm
-            title="确认删除此知识库？"
-            okText="删除"
-            cancelText="取消"
-            onConfirm={() => void handleDeleteDataset(dataset)}
-          >
-            <RowIconButton
-              type="button"
-              $danger
-              aria-label="删除知识库"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <IconDelete />
-            </RowIconButton>
-          </Popconfirm>
-        </>
+        </Dropdown>
       );
     }
     if (row.kind === 'file' && row.file) {
       const file = row.file;
       return (
-        <Popconfirm
-          title="确认删除此文件？"
-          okText="删除"
-          cancelText="取消"
-          onConfirm={() => void handleDeleteFile(file)}
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setRenameName(file.originalName || '');
+                  setRenameTarget({ kind: 'file', id: file.id, name: file.originalName || '' });
+                }}
+              >
+                重命名
+              </Dropdown.Item>
+              <Dropdown.Item
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleDuplicateDatasetFile('file', file.id);
+                }}
+              >
+                创建副本
+              </Dropdown.Item>
+              <Dropdown.Item
+                type="danger"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDeleteFile(file);
+                }}
+              >
+                删除
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          }
         >
           <RowIconButton
             type="button"
-            $danger
-            aria-label="删除文件"
+            aria-label="更多操作"
             onClick={(event) => event.stopPropagation()}
           >
-            <IconDelete />
+            <IconMore />
           </RowIconButton>
-        </Popconfirm>
+        </Dropdown>
       );
     }
     return null;
@@ -1254,22 +1429,61 @@ export const WorkflowListPage = () => {
       {/* 工具条：操作按钮在左，搜索与筛选在右 */}
       <div className="list-toolbar page-fixed">
         <div className="toolbar-actions">
-          <Button
-            type="primary"
-            theme="solid"
-            icon={<IconPlus />}
-            onClick={() => setCreateVisible(true)}
-          >
-            创建画布
-          </Button>
-          <Button
-            theme="light"
-            icon={<IconUpload />}
-            loading={importing}
-            onClick={() => importInputRef.current?.click()}
-          >
-            导入
-          </Button>
+          {/* 创建画布 / 导入只属于工作流：知识库 / 文件 tab 不显示（避免误导性入口） */}
+          {(activeTab === 'all' || activeTab === 'workflow') && (
+            <>
+              <Button
+                type="primary"
+                theme="solid"
+                icon={<IconPlus />}
+                onClick={() => setCreateVisible(true)}
+              >
+                创建画布
+              </Button>
+              <Button
+                theme="light"
+                icon={<IconUpload />}
+                loading={importing}
+                onClick={() => importInputRef.current?.click()}
+              >
+                导入
+              </Button>
+            </>
+          )}
+          {activeTab === 'dataset' && (
+            <Button
+              type="primary"
+              theme="solid"
+              icon={<IconPlus />}
+              onClick={() => {
+                setDatasetName('');
+                setDatasetCreateVisible(true);
+              }}
+            >
+              新建知识库
+            </Button>
+          )}
+          {activeTab === 'file' && (
+            <Button
+              type="primary"
+              theme="solid"
+              icon={<IconUpload />}
+              onClick={() => uploadFileInputRef.current?.click()}
+            >
+              上传文件
+            </Button>
+          )}
+          {/* 文件 tab 的隐藏上传 input（与工作流导入同款交互） */}
+          <input
+            ref={uploadFileInputRef}
+            type="file"
+            style={{ display: 'none' }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleUploadFile(file);
+              event.target.value = '';
+            }}
+          />
           {/* 导入走隐藏的 file input：浏览器无法用脚本预填文件框，只能由用户选择 */}
           <input
             ref={importInputRef}
@@ -1496,6 +1710,114 @@ export const WorkflowListPage = () => {
             ? `「${deleteCandidate.name}」删除后无法恢复，发布版本与运行记录将一并移除。`
             : ''}
         </Typography.Text>
+      </Modal>
+
+      {/* 重命名（工作流 / 知识库 / 文件 三种资源共用） */}
+      <Modal
+        title={renameTarget?.kind === 'workflow' ? '重命名工作流' : renameTarget?.kind === 'dataset' ? '重命名知识库' : '重命名文件'}
+        visible={!!renameTarget}
+        onCancel={() => setRenameTarget(null)}
+        onOk={() => void confirmRename()}
+        okText="确定"
+      >
+        <Input
+          value={renameName}
+          maxLength={128}
+          onChange={(value) => setRenameName(value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') void confirmRename();
+          }}
+        />
+      </Modal>
+
+      {/* 知识库删除确认 */}
+      <Modal
+        title="确认删除此知识库？"
+        visible={!!deleteDataset}
+        onCancel={() => setDeleteDataset(null)}
+        onOk={() => void confirmDeleteDataset()}
+        okText="删除"
+        type="warning"
+      >
+        <Typography.Text type="tertiary">
+          {deleteDataset ? `「${deleteDataset.name}」及其文档将一并删除，无法恢复。` : ''}
+        </Typography.Text>
+      </Modal>
+
+      {/* 文件删除确认 */}
+      <Modal
+        title="确认删除此文件？"
+        visible={!!deleteFile}
+        onCancel={() => setDeleteFile(null)}
+        onOk={() => void confirmDeleteFile()}
+        okText="删除"
+        type="warning"
+      >
+        <Typography.Text type="tertiary">
+          {deleteFile ? `「${deleteFile.originalName}」删除后无法恢复。` : ''}
+        </Typography.Text>
+      </Modal>
+
+      {/* 新建知识库（原个人中心功能收敛到工作流页知识库 tab） */}
+      <Modal
+        title="新建知识库"
+        visible={datasetCreateVisible}
+        onCancel={() => setDatasetCreateVisible(false)}
+        onOk={() => {
+          if (!datasetName.trim()) {
+            Toast.error('知识库名称不能为空');
+            return;
+          }
+          void handleCreateDataset(datasetName.trim(), '');
+          setDatasetCreateVisible(false);
+          setDatasetName('');
+        }}
+        okText="创建"
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Input
+            placeholder="知识库名称"
+            value={datasetName}
+            maxLength={40}
+            onChange={(value) => setDatasetName(value)}
+          />
+        </div>
+      </Modal>
+
+      {/* 上传文档（按文本创建；文件型文档仍在个人中心管理） */}
+      <Modal
+        title={`上传文档到「${uploadDocTarget?.name || ''}」`}
+        visible={!!uploadDocTarget}
+        onCancel={() => setUploadDocTarget(null)}
+        onOk={() => {
+          if (!uploadDocName.trim() || !uploadDocText.trim()) {
+            Toast.error('请填写文档名称与内容');
+            return;
+          }
+          void handleUploadDocument(
+            uploadDocTarget?.id || '',
+            uploadDocName.trim(),
+            uploadDocText,
+          );
+          setUploadDocTarget(null);
+        }}
+        okText="上传"
+        width={560}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Input
+            placeholder="文档名称"
+            value={uploadDocName}
+            maxLength={200}
+            onChange={(value) => setUploadDocName(value)}
+          />
+          <Input.TextArea
+            placeholder="粘贴文档内容（纯文本）"
+            value={uploadDocText}
+            autosize={{ minRows: 6, maxRows: 16 }}
+            onChange={(value) => setUploadDocText(value)}
+          />
+        </div>
       </Modal>
 
       <Modal

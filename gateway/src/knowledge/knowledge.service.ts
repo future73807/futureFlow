@@ -23,7 +23,7 @@ export interface KnowledgeDocumentSummary {
 }
 
 interface ConsoleJsonInit {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: Record<string, unknown>;
   timeoutMs?: number;
   /**
@@ -138,6 +138,22 @@ export class KnowledgeService {
       tolerateMissing: true,
     });
     await this.ownerRepo.delete({ datasetId });
+  }
+
+  /** 改名：代理 Dify Console 的 PATCH /datasets/{id}（归属校验同删除）。 */
+  async renameDataset(
+    userId: string,
+    datasetId: string,
+    name: string,
+    requireAdmin = false,
+  ): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('知识库名称不能为空');
+    await this.assertOwned(userId, datasetId, requireAdmin);
+    await this.consoleJson(`/datasets/${encodeURIComponent(datasetId)}`, {
+      method: 'PATCH',
+      body: { name: trimmed },
+    });
   }
 
   async listDocuments(userId: string, datasetId: string, requireAdmin = false): Promise<KnowledgeDocumentSummary[]> {
@@ -318,7 +334,14 @@ export class KnowledgeService {
 
   private async consoleFetchRaw(url: string, init: RequestInit): Promise<Response> {
     try {
-      return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+      return await fetch(url, {
+        ...init,
+        headers: {
+          ...(init.headers as Record<string, string> | undefined),
+          ...this.dify.consoleSessionHeaders(url),
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
     } catch (error) {
       throw new ServiceUnavailableException(`Dify Console 不可达：${this.safeError(error)}`);
     }
@@ -341,7 +364,12 @@ export class KnowledgeService {
     try {
       response = await fetch(`${auth.consoleBase}${path}`, {
         method,
-        headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          'Content-Type': 'application/json',
+          // Dify ≥1.17：已认证请求还要会话 cookie + CSRF 头（缺一即 401）
+          ...this.dify.consoleSessionHeaders(`${auth.consoleBase}${path}`),
+        },
         body: init.body === undefined ? undefined : JSON.stringify(init.body),
         signal: AbortSignal.timeout(init.timeoutMs || 15_000),
       });

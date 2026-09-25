@@ -1,4 +1,5 @@
 import {
+  Patch,
   BadRequestException,
   Body,
   Controller,
@@ -6,6 +7,7 @@ import {
   Get,
   Injectable,
   Param,
+  ParseUUIDPipe,
   Post,
   Request,
   UseGuards,
@@ -59,6 +61,20 @@ export class KnowledgeController {
       this.currentUserId(req),
       dto.name.trim(),
       dto.description?.trim() || '',
+      this.isAdmin(req),
+    );
+  }
+
+  @Patch('datasets/:datasetId')
+  renameDataset(
+    @Request() req: any,
+    @Param('datasetId', ParseUUIDPipe) datasetId: string,
+    @Body() body: { name?: string },
+  ) {
+    return this.knowledge.renameDataset(
+      this.currentUserId(req),
+      datasetId,
+      String(body?.name || ''),
       this.isAdmin(req),
     );
   }

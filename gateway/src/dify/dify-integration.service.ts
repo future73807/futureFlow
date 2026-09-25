@@ -1450,7 +1450,12 @@ export class DifyIntegrationService implements OnModuleInit {
    * （**头与 cookie 必须同时给出**，服务端取两者比对，缺一即 401「CSRF token is
    * missing or invalid」）。旧版 Dify 没有会话记录时这里什么都不加，行为不变。
    */
-  private consoleSessionHeaders(url: string): Record<string, string> {
+  /**
+   * Dify ≥1.17 的 console 请求头（会话 cookie + CSRF）：所有直连 console 的调用
+ * （网关内各服务：知识库 / 草稿运行 / 发布导入等）统一经这里取头——1.17 起每个
+ * 已认证请求都校验 CSRF（头与 cookie 同时给出且相等），只发 Bearer 会 401。
+   */
+  consoleSessionHeaders(url: string): Record<string, string> {
     for (const [base, session] of this.consoleSessions) {
       if (!url.startsWith(base)) continue;
       const cookies = [`access_token=${session.accessToken}`];

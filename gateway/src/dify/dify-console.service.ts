@@ -222,6 +222,7 @@ export class DifyConsoleService implements OnModuleInit {
       headers: {
         Authorization: `Bearer ${authorization.token}`,
         'Content-Type': 'application/json',
+        ...this.integration.consoleSessionHeaders(`${authorization.consoleBase}/apps/imports`),
       },
       body: JSON.stringify({
         mode: 'yaml-content',
@@ -240,7 +241,12 @@ export class DifyConsoleService implements OnModuleInit {
       `${authorization.consoleBase}/apps/imports/${encodeURIComponent(importId)}/confirm`,
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${authorization.token}` },
+        headers: {
+          Authorization: `Bearer ${authorization.token}`,
+          ...this.integration.consoleSessionHeaders(
+            `${authorization.consoleBase}/apps/imports/${encodeURIComponent(importId)}/confirm`,
+          ),
+        },
         signal: AbortSignal.timeout(30_000),
       },
     );
@@ -255,6 +261,9 @@ export class DifyConsoleService implements OnModuleInit {
       headers: {
         Authorization: `Bearer ${authorization.token}`,
         'Content-Type': 'application/json',
+        ...this.integration.consoleSessionHeaders(
+          `${authorization.consoleBase}/apps/${appId}/workflows/publish`,
+        ),
       },
       signal: AbortSignal.timeout(30_000),
     });

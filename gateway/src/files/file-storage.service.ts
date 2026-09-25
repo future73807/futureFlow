@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { Repository } from 'typeorm';
 import { isPathInside } from '../common/path-safety';
@@ -113,6 +114,31 @@ export class FileStorageService {
     const { record, absolutePath } = await this.open(userId, fileId, requireAdmin);
     await unlink(absolutePath).catch(() => undefined);
     await this.repo.remove(record);
+  }
+
+  /** 改名：只更新展示名（originalName），存储路径不变。 */
+  async rename(
+    userId: string,
+    fileId: string,
+    name: string,
+    requireAdmin = false,
+  ): Promise<StoredFile> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('文件名不能为空');
+    const { record } = await this.open(userId, fileId, requireAdmin);
+    record.originalName = trimmed;
+    const saved = await this.repo.save(record);
+    return this.toStored(saved);
+  }
+
+  /** 副本：同一存储内容落一条新记录（新 id），展示名加「 副本」后缀。 */
+  async duplicate(userId: string, fileId: string, requireAdmin = false): Promise<StoredFile> {
+    const { record } = await this.open(userId, fileId, requireAdmin);
+    const buffer = await readFile(
+      isAbsolute(record.localPath) ? record.localPath : join(this.root, record.localPath),
+    );
+    const copyName = `${record.originalName} 副本`;
+    return this.store(userId, copyName, record.mimeType, buffer);
   }
 
   async countAll(): Promise<number> {

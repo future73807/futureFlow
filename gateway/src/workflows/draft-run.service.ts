@@ -231,7 +231,12 @@ export class DraftRunService {
       const response = await fetch(
         `${auth.consoleBase}/apps/${encodeURIComponent(appId)}`,
         {
-          headers: { Authorization: `Bearer ${auth.token}` },
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+            ...this.dify.consoleSessionHeaders(
+              `${auth.consoleBase}/apps/${encodeURIComponent(appId)}`,
+            ),
+          },
           signal: AbortSignal.timeout(15_000),
         },
       );
@@ -272,7 +277,11 @@ export class DraftRunService {
     try {
       response = await fetch(`${auth.consoleBase}${path}`, {
         method,
-        headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          'Content-Type': 'application/json',
+          ...this.dify.consoleSessionHeaders(`${auth.consoleBase}${path}`),
+        },
         body: init.body === undefined ? undefined : JSON.stringify(init.body),
         signal: AbortSignal.timeout(init.timeoutMs || 30_000),
       });

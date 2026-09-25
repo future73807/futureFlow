@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
+  Patch,
   NotFoundException,
   Param,
   Post,
@@ -101,6 +103,25 @@ export class FilesController {
       res.once('close', resolve);
       stream.pipe(res);
     });
+  }
+
+  @Patch(':fileId')
+  async rename(
+    @Request() req: any,
+    @Param('fileId', FILE_ID_PIPE) fileId: string,
+    @Body() body: { name?: string },
+  ) {
+    return this.storage.rename(
+      this.currentUserId(req),
+      fileId,
+      String(body?.name || ''),
+      this.isAdmin(req),
+    );
+  }
+
+  @Post(':fileId/duplicate')
+  async duplicate(@Request() req: any, @Param('fileId', FILE_ID_PIPE) fileId: string) {
+    return this.storage.duplicate(this.currentUserId(req), fileId, this.isAdmin(req));
   }
 
   @Delete(':fileId')
