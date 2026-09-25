@@ -20,7 +20,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconClock, IconPlus, IconRefresh } from '@douyinfe/semi-icons';
+import { IconPlus, IconRefresh } from '@douyinfe/semi-icons';
 import styled from 'styled-components';
 
 import { apiJson } from '../../utils/api';
@@ -463,14 +463,9 @@ export const TaskCenterPage = () => {
             </TaskList>
           )
         ) : asyncRuns.length === 0 ? (
-          <SimpleEmptyState>
-            <IconClock size="large" />
-            <strong>暂无异步任务</strong>
-            <p>在工作流里配置 Webhook 或定时触发计划后，每次触发都会在这里留下运行记录。</p>
-            <Button theme="borderless" type="primary" onClick={() => navigate('/')}>
-              去配置触发方式
-            </Button>
-          </SimpleEmptyState>
+          <AsyncEmptyState
+            onConfigure={() => navigate('/')}
+          />
         ) : (
           <TaskList>
             {asyncRuns.map((run) => (
@@ -664,7 +659,66 @@ const BatchEmptyState = ({ onCreate, onGuide }: { onCreate: () => void; onGuide:
   </EmptyWrap>
 );
 
+/**
+ * 异步任务空态：与批量任务同款的步骤图示。
+ * 异步只有两步（配置触发方式 → 触发后留下运行记录），故用两步 + 双路径示意。
+ */
+const AsyncEmptyState = ({ onConfigure }: { onConfigure: () => void }) => (
+  <EmptyWrap>
+    <EmptyTitle>futureFlow 异步任务，让我们开始吧！</EmptyTitle>
+    <EmptySubtitle>
+      异步任务让你把工作流挂到 Webhook 或定时计划上，触发即自动执行，运行记录留在这里。
+    </EmptySubtitle>
+    <StepRow>
+      <Step>
+        <StepArt>
+          <StepArtHook />
+        </StepArt>
+        <strong>配置 Webhook 触发</strong>
+        <p>为工作流生成一个 Webhook 地址，外部系统一调用就执行。</p>
+      </Step>
+      <StepArrow>→</StepArrow>
+      <Step>
+        <StepArt>
+          <StepArtClock />
+        </StepArt>
+        <strong>或定时触发</strong>
+        <p>按 Cron 计划定时执行，适合周期性报表与巡检。</p>
+      </Step>
+      <StepArrow>→</StepArrow>
+      <Step>
+        <StepArt>
+          <StepArtPick />
+        </StepArt>
+        <strong>查看运行记录</strong>
+        <p>每次触发都留有记录：状态、输入与输出一目了然。</p>
+      </Step>
+    </StepRow>
+    <Button theme="solid" type="primary" onClick={onConfigure}>
+      去配置触发方式
+    </Button>
+  </EmptyWrap>
+);
+
 /** 四步引导插图：扁平线稿 + 单一强调色，避免为帮助区引入位图资源 */
+const StepArtHook = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <rect x="14" y="20" width="44" height="30" rx="6" fill="#eef4ff" stroke="#c7d7fb" />
+    <path d="M24 35h24M24 41h16" stroke="#c7d7fb" strokeWidth="2.4" strokeLinecap="round" />
+    <path d="M58 35h22" stroke="#2563eb" strokeWidth="2.4" strokeLinecap="round" />
+    <circle cx="94" cy="35" r="12" fill="#ecfdf3" stroke="#b6e2c8" />
+    <path d="M88 35h12M94 29v12" stroke="#16803c" strokeWidth="2.4" strokeLinecap="round" />
+  </svg>
+);
+
+const StepArtClock = () => (
+  <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
+    <circle cx="64" cy="36" r="22" fill="#eef4ff" stroke="#c7d7fb" strokeWidth="2.4" />
+    <path d="M64 24v12l9 7" stroke="#2563eb" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M40 62h48" stroke="#dbe0e8" strokeWidth="2.4" strokeLinecap="round" />
+  </svg>
+);
+
 const StepArtPick = () => (
   <svg width="128" height="76" viewBox="0 0 128 76" fill="none" aria-hidden="true">
     <rect x="10" y="14" width="58" height="14" rx="4" fill="#ecfdf3" />
