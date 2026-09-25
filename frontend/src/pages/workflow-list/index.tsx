@@ -1793,6 +1793,7 @@ export const WorkflowListPage = () => {
                 setPublishFilter(String(value) as PublishFilter);
                 setPage(1);
               }}
+              showArrow={false}
               style={{ width: 122 }}
               aria-label="发布状态筛选"
               optionList={[
