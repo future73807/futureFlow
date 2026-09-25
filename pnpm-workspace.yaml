@@ -1,11 +1,13 @@
 packages:
   - 'gateway'
   - 'frontend'
+  - 'sdk'
 
 # pnpm 11+ 使用 allowBuilds 控制哪些依赖可执行 build scripts
 # 设为 true 表示允许,false 表示禁止
 allowBuilds:
   '@nestjs/core': true
+  esbuild: true
   'core-js': true
   'unrs-resolver': true
 

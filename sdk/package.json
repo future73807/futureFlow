@@ -1,0 +1,31 @@
+{
+  "name": "@futureflow/ff-embed-host-sdk",
+  "version": "0.1.0",
+  "description": "ff-embed/v1 宿主端 SDK：把 futureFlow 嵌进任意宿主应用（iframe + 握手 + 身份注入 + 事件）。",
+  "type": "module",
+  "main": "dist/cjs/index.cjs",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node -e \"const fs=require('fs');for(const f of fs.readdirSync('dist/cjs')) if(f.endsWith('.js')) fs.renameSync('dist/cjs/'+f, 'dist/cjs/'+f.replace(/\\.js$/, '.cjs'))\"",
+    "test": "tsx test/smoke.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "jsdom": "^26.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "tsx": "^4.23.13"
+  }
+}

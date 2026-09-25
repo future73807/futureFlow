@@ -9,6 +9,7 @@ import {
   IconSearch,
   IconTickCircle,
   IconUpload,
+  IconDownload,
 } from "@douyinfe/semi-icons";
 import {
   Button,
@@ -1742,6 +1743,7 @@ export const WorkflowListPage = () => {
           ) : null}
           <Button
             theme="light"
+            icon={<IconDownload aria-hidden="true" />}
             disabled={selectedKeys.size === 0}
             loading={exporting}
             onClick={() => void handleExportSelected()}
@@ -1810,7 +1812,7 @@ export const WorkflowListPage = () => {
             {/* 空数据时不渲染表头，只留一块最小高度的 Empty，避免大片空白 */}
             {(currentLoading || resourceRows.length > 0) && (
               <TableHeader>
-                <span>
+                <SelectCell>
                   <Checkbox
                     aria-label="全选本页"
                     checked={
@@ -1823,7 +1825,7 @@ export const WorkflowListPage = () => {
                       !pagedRows.every((row) => selectedKeys.has(row.key))
                     }
                     onChange={(event) => {
-                      const checked = event.target.checked;
+                      const checked = (event.target as HTMLInputElement).checked;
                       const next = new Set(selectedKeys);
                       for (const row of pagedRows) {
                         if (checked) next.add(row.key);
@@ -1832,7 +1834,7 @@ export const WorkflowListPage = () => {
                       setSelectedKeys(next);
                     }}
                   />
-                </span>
+                </SelectCell>
                 <span>资源</span>
                 <span>类型</span>
                 <span>编辑时间</span>
@@ -3054,7 +3056,7 @@ const TableHeader = styled.div`
   }
 
   @media (max-width: 720px) {
-    grid-template-columns: minmax(0, 1fr) 84px 118px 72px;
+    grid-template-columns: 28px minmax(0, 1fr) 100px 120px 72px;
     padding: 0 14px;
   }
 `;
@@ -3091,7 +3093,7 @@ const ResourceRowItem = styled.div<{ $clickable?: boolean }>`
   }
 
   @media (max-width: 720px) {
-    grid-template-columns: minmax(0, 1fr) 84px 118px 72px;
+    grid-template-columns: 28px minmax(0, 1fr) 100px 120px 72px;
     padding: 12px 14px;
   }
 `;

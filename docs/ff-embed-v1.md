@@ -183,6 +183,10 @@ POST {url}  { "protocolVersion": "v1",
    应答 `hello-ack` → `identity`（把你的会话令牌放 `hostToken`）→ 可选 `theme`。
 4. **收消息**：监听 `message`，按 `event.origin ∈ 白名单` 与 `type` 前缀 `ff-embed/`
    过滤；`ready` 后可按 `run-event` 的 `seq` 做断线重放，`navigation` 用于刷新你的列表。
+**SDK**：以上第 3–4 步的握手细节已封装为宿主端 SDK——`flow/sdk`（`@futureflow/ff-embed-host-sdk`，
+零依赖 TS，ESM/CJS 双格式），`mountFlowEmbed({ container, frontendUrl, getIdentity, onNavigate, onRunEvent })`
+一个调用完成 iframe + 握手 + 事件转发；离线冒烟见 `sdk/test/smoke.ts`。
+
 5. **（可选）接三个回调缝**：凭证（§4.2，**部署级**——你配置一台 Dify/BYOK 实例供本
    网关全体用户，宿主侧只需给共享密钥）、计费（§4.3，`flow:<runId>:<op>` 幂等键去重 +
    `hostSubject` 归属）、事件（§4.4）。
