@@ -21,7 +21,7 @@ import { isLoggedIn, getUser } from './utils/auth';
 import { AUTH_EXPIRED_EVENT } from './utils/api';
 import { applyTheme, resolveInitialTheme } from './utils/theme';
 import { initFfEmbed } from './embed/client';
-import { FfEmbedNavigateBridge, FfEmbedNotice } from './embed/react';
+import { FfEmbedNavigateBridge, FfEmbedNotice, FfEmbedSessionBridge } from './embed/react';
 
 /**
  * React 18/19 polyfill for form-materials
@@ -75,6 +75,7 @@ app.render(
   <BrowserRouter>
     <AuthExpiredWatcher />
     <FfEmbedNavigateBridge />
+    <FfEmbedSessionBridge />
     <FfEmbedNotice />
     <Routes>
       <Route path="/login" element={<LoginRegisterPage />} />

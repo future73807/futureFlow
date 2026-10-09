@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSyncExternalStore } from 'react';
 
 import {
@@ -40,6 +40,27 @@ export function FfEmbedNavigateBridge() {
       setFfEmbedNavigateHandler(() => {});
     };
   }, [navigate]);
+  return null;
+}
+
+/**
+ * 内嵌会话桥：宿主身份交换成功（状态进入 embedded）后，若此刻还停在登录页，
+ * 立即送回工作区。
+ *
+ * 为什么需要它：首帧渲染往往**快于**交换往返，`LoginRegisterPage` 的登录态检查
+ * 只在挂载时跑一次；交换把 token 写进本地存储时页面已经渲染在 /login 上，
+ * 没有这一跳就会停在登录页——身份其实已经换好了，只是没人把这件事告诉路由。
+ * 必须挂在 BrowserRouter 内。
+ */
+export function FfEmbedSessionBridge() {
+  const status = useFfEmbedStatus();
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    if (status.state === 'embedded' && location.pathname === '/login') {
+      navigate('/', { replace: true });
+    }
+  }, [status.state, location.pathname, navigate]);
   return null;
 }
 
