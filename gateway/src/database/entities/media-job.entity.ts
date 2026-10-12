@@ -1,3 +1,4 @@
+import type { HostProjectBinding } from '../../host/host.types';
 import {
   Column,
   CreateDateColumn,
@@ -17,7 +18,8 @@ export type MediaJobStatus =
   | 'queued'
   | 'processing'
   | 'succeeded'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 @Entity('media_jobs')
 @Index('IDX_media_jobs_user_created', ['userId', 'createdAt'])
@@ -25,6 +27,14 @@ export type MediaJobStatus =
   unique: true,
 })
 export class MediaJob {
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  hostProjectBinding: HostProjectBinding | null;
+
+  @Column({ type: 'uuid', nullable: true }) hostProjectId: string | null;
+  @Column({ type: 'int', nullable: true }) hostGeneration: number | null;
+
+  @Column({ type: 'varchar', length: 24, nullable: true }) remoteStatus: 'outstanding' | 'stopped' | 'finished' | 'stop_requested' | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

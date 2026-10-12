@@ -9,6 +9,14 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 
+/** 冻结的执行目标索引；连接密钥只保留在实际运行的内存闭包中。 */
+export interface StoredDifyExecutionTarget {
+  apiBase: string | null;
+  workflowId: string | null;
+  workflowVersion: number | null;
+  draftSandbox: boolean;
+}
+
 /**
  * 工作流运行记录
  * 跟踪每次工作流执行的状态、token 用量和费用
@@ -21,6 +29,13 @@ import { User } from './user.entity';
   where: '"idempotencyKey" IS NOT NULL',
 })
 export class WorkflowRun {
+  @Column({ type: 'uuid', nullable: true }) hostProjectId: string | null;
+  @Column({ type: 'int', nullable: true }) hostGeneration: number | null;
+
+  @Column({ type: 'varchar', length: 24, nullable: true }) remoteStatus: 'outstanding' | 'stopped' | 'finished' | 'stop_requested' | null;
+
+  @Column({ type: 'jsonb', nullable: true, select: false }) hostExecutionTarget: StoredDifyExecutionTarget | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

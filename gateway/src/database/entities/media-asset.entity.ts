@@ -14,6 +14,9 @@ import { MediaJob } from './media-job.entity';
 @Entity('media_assets')
 @Index('IDX_media_assets_user_created', ['userId', 'createdAt'])
 export class MediaAsset {
+  @Column({ type: 'uuid', nullable: true })
+  hostProjectId: string | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

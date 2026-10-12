@@ -12,6 +12,9 @@ import { User } from './user.entity';
 @Entity('file_uploads')
 @Index('IDX_file_uploads_user_created', ['userId', 'createdAt'])
 export class FileUpload {
+  @Column({ type: 'uuid', nullable: true })
+  hostProjectId: string | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

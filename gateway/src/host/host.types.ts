@@ -46,6 +46,7 @@ export interface HostIdentity {
   subject: string;
   displayName?: string;
   email?: string;
+  projectFiles?: HostProjectBinding;
 }
 
 /**
@@ -113,6 +114,8 @@ export interface HostBillingProvider {
 
 /** 一条要透出给宿主的运行事件（带该 run 内单调递增的 seq，供宿主做断线重放）。 */
 export interface HostRunEvent {
+  hostProjectId?: string;
+  hostGeneration?: number;
   runId: string;
   seq: number;
   type: string;
@@ -167,3 +170,12 @@ export const LOCAL_CAPABILITIES: HostCapabilities = {
   theme: false,
   navigation: false,
 };
+
+/** 验签得到的项目能力；不得进入用户资料、日志或对外工作流 JSON。 */
+export interface HostProjectBinding {
+  version: 'v1';
+  projectId: string;
+  generation: number;
+  bindingToken: string;
+}
+export const HOST_PROJECT_FILES = Symbol('HOST_PROJECT_FILES');

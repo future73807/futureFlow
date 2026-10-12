@@ -16,6 +16,9 @@ import { User } from './user.entity';
  */
 @Entity('workflows')
 export class Workflow {
+  @Column({ type: 'uuid', nullable: true })
+  hostProjectId: string | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -32,6 +35,9 @@ export class Workflow {
 
   @Column({ type: 'text', nullable: true })
   description: string;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  hostLayoutVersion: string | null;
 
   @Column({ type: 'jsonb' })
   flowgramJson: Record<string, any>;

@@ -1,3 +1,6 @@
+import { HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord } from './entities/host-project-gate.entity';
+import { AddHostProjectControl1791770000000 } from './migrations/1791770000000-add-host-project-control';
+import { AddHostProjectFiles1791763200000 } from './migrations/1791763200000-add-host-project-files';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DataSource } from 'typeorm';
@@ -70,6 +73,7 @@ export default new DataSource({
   password: postgresPassword,
   database: process.env.POSTGRES_DB || 'futureflow',
   entities: [
+    HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord,
     User,
     ApiKey,
     BalanceLog,
@@ -108,6 +112,8 @@ export default new DataSource({
     AddWorkflowRunOutputs1723350400000,
     AddUserHostSubject1790280000000,
     AddUserDisplayName1790290000000,
+    AddHostProjectFiles1791763200000,
+    AddHostProjectControl1791770000000,
   ],
   synchronize: false,
   logging: false,

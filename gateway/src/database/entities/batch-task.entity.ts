@@ -1,3 +1,4 @@
+import type { HostProjectBinding } from '../../host/host.types';
 import {
   Column,
   CreateDateColumn,
@@ -30,6 +31,11 @@ export interface BatchTaskRowResult {
 @Index('IDX_batch_tasks_user_created_at', ['userId', 'createdAt'])
 @Index('IDX_batch_tasks_user_status', ['userId', 'status'])
 export class BatchTask {
+  @Column({ type: 'uuid', nullable: true }) hostProjectId: string | null;
+  @Column({ type: 'int', nullable: true }) hostGeneration: number | null;
+
+  @Column({ type: 'jsonb', nullable: true, select: false }) hostProjectBinding: HostProjectBinding | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

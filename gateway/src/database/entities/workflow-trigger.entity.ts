@@ -1,3 +1,4 @@
+import type { HostProjectBinding } from '../../host/host.types';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -14,6 +15,9 @@ import { User } from './user.entity';
 @Entity('workflow_triggers')
 @Index('IDX_workflow_triggers_due', ['type', 'status', 'nextRunAt'])
 export class WorkflowTrigger {
+  @Column({ type: 'jsonb', nullable: true, select: false })
+  hostProjectBinding: HostProjectBinding | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
