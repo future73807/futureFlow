@@ -1,3 +1,4 @@
+import { HostModule } from '../host/host.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -21,6 +22,7 @@ import { MediaExecutionGuard } from './media-execution.guard';
 
 @Module({
   imports: [
+    HostModule,
     AuthModule,
     TypeOrmModule.forFeature([User, MediaCredential, MediaJob, MediaAsset]),
   ],

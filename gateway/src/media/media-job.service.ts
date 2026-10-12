@@ -1,3 +1,8 @@
+import { ProjectControlService } from '../host/project-control.service';
+import { projectWorkContext, projectAbortSignal } from '../host/project-work-units';
+import { Inject, Optional } from '@nestjs/common';
+import { HOST_PROJECT_FILES } from '../host/host.types';
+import { StandaloneProjectFiles, type HostProjectFiles } from '../host/project-files.provider';
 import {
   ConflictException,
   Injectable,
@@ -25,6 +30,8 @@ export class MediaJobService {
     private readonly credentials: MediaCredentialService,
     private readonly providers: ProviderRegistry,
     private readonly assets: MediaAssetService,
+    @Optional() @Inject(HOST_PROJECT_FILES) private readonly projectFiles: HostProjectFiles = new StandaloneProjectFiles(),
+    @Optional() private readonly projectControl?: ProjectControlService,
   ) {}
 
   async generateImage(
@@ -33,17 +40,36 @@ export class MediaJobService {
     dto: GenerateImageDto,
     scope?: MediaExecutionScope,
   ) {
+    return this.withWork(userId, () => this.generateImageCore(userId, idempotencyKey, dto, scope));
+  }
+
+  private async generateImageCore(
+    userId: string,
+    idempotencyKey: string,
+    dto: GenerateImageDto,
+    scope?: MediaExecutionScope,
+  ) {
     const credential = await this.credentials.decryptOwned(userId, dto.credentialId);
     const claimed = await this.claim(userId, idempotencyKey, 'image', credential.provider, dto, scope);
+    if (projectWorkContext.getStore()) {
+      projectWorkContext.getStore()!.runId = claimed.job.id;
+      await this.projectControl?.attachRun(projectWorkContext.getStore()!, claimed.job.id);
+    }
+    await projectWorkContext.getStore()?.assertCurrent();
     if (!claimed.created) return this.toPublic(await this.reconcileAsset(claimed.job));
     try {
       const adapter = this.providers.get(credential.provider);
+      if (claimed.job.hostProjectId) await this.jobs.update(claimed.job.id, { remoteStatus: 'outstanding' });
+      claimed.job.remoteStatus = 'outstanding';
       const source = await adapter.createImage(credential.apiKey, dto);
-      const asset = await this.assets.persist(userId, claimed.job.id, 'image', source);
+      const asset = await this.assets.persist(userId, claimed.job.id, 'image', source, claimed.job.hostProjectBinding ?? undefined);
+      await projectWorkContext.getStore()?.assertCurrent();
+      claimed.job.remoteStatus = 'finished';
       claimed.job.status = 'succeeded';
       claimed.job.assetId = asset.id;
       claimed.job.completedAt = new Date();
-      return this.toPublic(await this.jobs.save(claimed.job));
+      await projectWorkContext.getStore()?.assertCurrent();
+      return this.toPublic(await this.saveJob(claimed.job));
     } catch (error) {
       return this.fail(claimed.job, error);
     }
@@ -55,35 +81,63 @@ export class MediaJobService {
     dto: GenerateVideoDto,
     scope?: MediaExecutionScope,
   ) {
+    return this.withWork(userId, () => this.generateVideoCore(userId, idempotencyKey, dto, scope));
+  }
+
+  private async generateVideoCore(
+    userId: string,
+    idempotencyKey: string,
+    dto: GenerateVideoDto,
+    scope?: MediaExecutionScope,
+  ) {
     const credential = await this.credentials.decryptOwned(userId, dto.credentialId);
     const claimed = await this.claim(userId, idempotencyKey, 'video', credential.provider, dto, scope);
+    if (projectWorkContext.getStore()) {
+      projectWorkContext.getStore()!.runId = claimed.job.id;
+      await this.projectControl?.attachRun(projectWorkContext.getStore()!, claimed.job.id);
+    }
+    await projectWorkContext.getStore()?.assertCurrent();
     if (!claimed.created) return this.toPublic(await this.reconcileAsset(claimed.job));
     try {
       const adapter = this.providers.get(credential.provider);
+      if (claimed.job.hostProjectId) await this.jobs.update(claimed.job.id, { remoteStatus: 'outstanding' });
+      claimed.job.remoteStatus = 'outstanding';
       const result = await adapter.createVideo(credential.apiKey, dto);
       claimed.job.providerTaskId = result.taskId;
       if (result.status === 'failed') {
+        claimed.job.remoteStatus = 'finished';
         claimed.job.status = 'failed';
         claimed.job.errorCode = 'provider_failed';
         claimed.job.completedAt = new Date();
       } else if (result.status === 'succeeded' && result.source) {
-        const asset = await this.assets.persist(userId, claimed.job.id, 'video', result.source);
+        claimed.job.remoteStatus = 'finished';
+        const asset = await this.assets.persist(userId, claimed.job.id, 'video', result.source, claimed.job.hostProjectBinding ?? undefined);
         claimed.job.status = 'succeeded';
         claimed.job.assetId = asset.id;
         claimed.job.completedAt = new Date();
       } else {
         claimed.job.status = result.status;
       }
-      return this.toPublic(await this.jobs.save(claimed.job));
+      await projectWorkContext.getStore()?.assertCurrent();
+      return this.toPublic(await this.saveJob(claimed.job));
     } catch (error) {
       return this.fail(claimed.job, error);
     }
   }
 
   async getAndPoll(userId: string, id: string, scope?: MediaExecutionScope) {
-    let job = await this.jobs.findOne({ where: { id, userId } });
+    return this.withWork(userId, () => this.getAndPollCore(userId, id, scope));
+  }
+
+  private async getAndPollCore(userId: string, id: string, scope?: MediaExecutionScope) {
+    let job = await this.findScopedJob({ id, userId });
     if (!job) throw new NotFoundException('媒体任务不存在');
+    this.assertProject(job);
     this.assertExecutionScope(job, scope);
+    if (projectWorkContext.getStore()) {
+      projectWorkContext.getStore()!.runId = job.id;
+      await this.projectControl?.attachRun(projectWorkContext.getStore()!, job.id);
+    }
     job = await this.reconcileAsset(job);
     if (
       job.kind !== 'video'
@@ -98,14 +152,14 @@ export class MediaJobService {
       job.status = 'failed';
       job.errorCode = 'credential_unavailable';
       job.completedAt = new Date();
-      return this.toPublic(await this.jobs.save(job));
+      return this.toPublic(await this.saveJob(job));
     }
     const credential = await this.credentials.decryptOwned(userId, credentialId);
     if (credential.provider !== job.provider) {
       job.status = 'failed';
       job.errorCode = 'credential_provider_mismatch';
       job.completedAt = new Date();
-      return this.toPublic(await this.jobs.save(job));
+      return this.toPublic(await this.saveJob(job));
     }
     try {
       const result = await this.providers
@@ -113,18 +167,22 @@ export class MediaJobService {
         .getVideoStatus(credential.apiKey, job.providerTaskId);
       if (result.status === 'succeeded') {
         if (!result.source) throw new ProviderContractError('provider_invalid_response');
-        const asset = await this.assets.persist(userId, job.id, 'video', result.source);
+        const asset = await this.assets.persist(userId, job.id, 'video', result.source, job.hostProjectBinding ?? undefined);
         job.assetId = asset.id;
+        await projectWorkContext.getStore()?.assertCurrent();
+        job.remoteStatus = 'finished';
         job.status = 'succeeded';
         job.completedAt = new Date();
       } else if (result.status === 'failed') {
+        job.remoteStatus = 'finished';
         job.status = 'failed';
         job.errorCode = 'provider_failed';
         job.completedAt = new Date();
       } else {
         job.status = result.status;
       }
-      return this.toPublic(await this.jobs.save(job));
+      await projectWorkContext.getStore()?.assertCurrent();
+      return this.toPublic(await this.saveJob(job));
     } catch (error) {
       // Polling is a safe GET. A transient provider/network failure does not
       // terminally fail the paid task and can be retried by the next status read.
@@ -142,15 +200,19 @@ export class MediaJobService {
     input: GenerateImageDto | GenerateVideoDto,
     scope?: MediaExecutionScope,
   ): Promise<{ job: MediaJob; created: boolean }> {
+    const binding = this.projectFiles.binding();
     const requestHash = this.requestHash(kind, provider, input);
-    const existing = await this.jobs.findOne({ where: { userId, idempotencyKey } });
+    const existing = await this.findScopedJob({ userId, idempotencyKey });
     if (existing) {
+      this.assertProject(existing);
       this.assertSameRequest(existing, requestHash);
       this.assertExecutionScope(existing, scope);
       return { job: existing, created: false };
     }
     const job = this.jobs.create({
       userId,
+      hostProjectBinding: binding ?? null,
+      hostProjectId: binding?.projectId ?? null, hostGeneration: binding?.generation ?? null, remoteStatus: null,
       credentialId: input.credentialId,
       provider,
       kind,
@@ -167,15 +229,41 @@ export class MediaJobService {
       completedAt: null,
     });
     try {
-      return { job: await this.jobs.save(job), created: true };
+      return { job: await this.saveJob(job), created: true };
     } catch (error: any) {
       if (error?.code !== '23505') throw error;
-      const concurrent = await this.jobs.findOne({ where: { userId, idempotencyKey } });
+      const concurrent = await this.findScopedJob({ userId, idempotencyKey });
       if (!concurrent) throw error;
+      this.assertProject(concurrent);
       this.assertSameRequest(concurrent, requestHash);
       this.assertExecutionScope(concurrent, scope);
       return { job: concurrent, created: false };
     }
+  }
+
+  private async saveJob(job: MediaJob): Promise<MediaJob> {
+    if (job.hostProjectBinding && this.projectControl) return this.projectControl.write(job.userId, job.hostProjectBinding,
+      (manager) => manager.getRepository(MediaJob).save(job));
+    return this.jobs.save(job);
+  }
+
+  private async withWork<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+    const binding = this.projectFiles.binding();
+    const unit = binding && this.projectControl ? await this.projectControl.begin(userId, binding) : undefined;
+    try { return unit ? await projectWorkContext.run(unit, operation) : await operation(); }
+    finally { await unit?.finish(); }
+  }
+
+  private findScopedJob(where: { id?: string; userId?: string; idempotencyKey?: string }) {
+    return this.jobs.findOne({ where, select: { id: true, userId: true, credentialId: true, provider: true,
+      kind: true, idempotencyKey: true, requestHash: true, model: true, executionRunId: true,
+      executionWorkflowId: true, executionWorkflowVersion: true, status: true, providerTaskId: true,
+      assetId: true, errorCode: true, completedAt: true, createdAt: true, updatedAt: true, hostProjectBinding: true, hostProjectId: true, hostGeneration: true, remoteStatus: true } });
+  }
+  private assertProject(job: MediaJob): void {
+    const binding = this.projectFiles.binding();
+    if (binding && (job.hostProjectBinding?.projectId !== binding.projectId || job.hostGeneration !== binding.generation)) throw new NotFoundException('媒体任务不存在');
+    if (!binding && job.hostProjectBinding) throw new NotFoundException('媒体任务不存在');
   }
 
   private assertSameRequest(job: MediaJob, requestHash: string): void {
@@ -223,13 +311,14 @@ export class MediaJobService {
   }
 
   private async reconcileAsset(job: MediaJob): Promise<MediaJob> {
-    if (job.assetId || job.status === 'failed') return job;
+    if (job.assetId || job.status === 'failed' || job.status === 'cancelled') return job;
     const asset = await this.assets.findByJob(job.userId, job.id);
     if (!asset) return job;
     job.assetId = asset.id;
+    job.remoteStatus = 'finished';
     job.status = 'succeeded';
     job.completedAt ||= new Date();
-    return this.jobs.save(job);
+    return this.saveJob(job);
   }
 
   /**
@@ -304,11 +393,15 @@ export class MediaJobService {
   }
 
   private async fail(job: MediaJob, error: unknown) {
+    if (projectAbortSignal()?.aborted) {
+      await this.jobs.update(job.id, { status: 'cancelled', errorCode: 'project_scope_revoked', completedAt: new Date() });
+      return this.toPublic({ ...job, status: 'cancelled', errorCode: 'project_scope_revoked' });
+    }
     job.status = 'failed';
     job.errorCode = this.errorCode(error);
     job.completedAt = new Date();
     this.logger.warn(`媒体创建失败: provider=${job.provider}, kind=${job.kind}, code=${job.errorCode}`);
-    return this.toPublic(await this.jobs.save(job));
+    return this.toPublic(await this.saveJob(job));
   }
 
   private errorCode(error: unknown): string {

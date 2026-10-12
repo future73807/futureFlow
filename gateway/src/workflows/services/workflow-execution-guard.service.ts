@@ -1,3 +1,5 @@
+import { HostProjectGate } from '../../database/entities/host-project-gate.entity';
+import { ForbiddenException } from '@nestjs/common';
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +17,8 @@ export interface RunAdmissionOptions {
   id: string;
   userId: string;
   workflowId?: string;
+  hostProjectId?: string;
+  hostGeneration?: number;
   flowgramJson: Record<string, any>;
   estimatedCost: number;
   source?: string;
@@ -56,6 +60,13 @@ export class WorkflowExecutionGuardService {
           await manager.findOne(User, { where: { id: options.userId } });
         }
 
+        if (options.hostProjectId) {
+          const user = await manager.findOne(User, { where: { id: options.userId } });
+          const gate = user?.hostSubject ? await manager.findOne(HostProjectGate, {
+            where: { hostSubject: user.hostSubject, projectId: options.hostProjectId }, lock: { mode: 'pessimistic_write' },
+          }) : null;
+          if (!gate || gate.draining || gate.generation !== options.hostGeneration) throw new ForbiddenException('项目作用域已失效');
+        }
         if (idempotencyKey) {
           const duplicate = await manager.findOne(WorkflowRun, {
             where: { userId: options.userId, idempotencyKey },
@@ -99,6 +110,7 @@ export class WorkflowExecutionGuardService {
           WorkflowRun,
           manager.create(WorkflowRun, {
             id: options.id,
+            hostProjectId: options.hostProjectId ?? null, hostGeneration: options.hostGeneration ?? null,
             userId: options.userId,
             workflowId: options.workflowId || null,
             triggerId: options.triggerId || null,

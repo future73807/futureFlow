@@ -1,3 +1,7 @@
+import { projectAbortSignal, projectWorkContext } from '../host/project-work-units';
+import { Inject, Optional, ForbiddenException } from '@nestjs/common';
+import { HOST_PROJECT_FILES, type HostProjectBinding } from '../host/host.types';
+import { StandaloneProjectFiles, type HostProjectFiles } from '../host/project-files.provider';
 import {
   BadGatewayException,
   Injectable,
@@ -131,6 +135,7 @@ export class MediaAssetService {
     @InjectRepository(MediaAsset)
     private readonly assets: Repository<MediaAsset>,
     private readonly config: ConfigService,
+    @Optional() @Inject(HOST_PROJECT_FILES) private readonly projectFiles: HostProjectFiles = new StandaloneProjectFiles(),
   ) {
     const configured = config.get<string>('MEDIA_ASSET_ROOT')?.trim();
     this.root = resolve(configured || join(process.cwd(), '.futureflow-media'));
@@ -141,9 +146,14 @@ export class MediaAssetService {
     jobId: string,
     kind: MediaKind,
     source: ProviderMediaSource,
+    projectBinding?: HostProjectBinding,
   ): Promise<MediaAsset> {
+    const binding = this.projectFiles.binding(projectBinding);
     const existing = await this.assets.findOne({ where: { userId, jobId } });
-    if (existing) return existing;
+    if (existing) {
+      if (binding && existing.hostProjectId !== binding.projectId) throw new ForbiddenException('媒体项目不匹配');
+      return existing;
+    }
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     const temporary = join(this.root, `.download-${randomUUID()}.tmp`);
     try {
@@ -154,11 +164,21 @@ export class MediaAssetService {
       if (!detected || detected.kind !== kind) {
         throw new UnsupportedMediaTypeException('供应商返回的媒体格式不受支持');
       }
-      const assetId = randomUUID();
+      await projectWorkContext.getStore()?.assertCurrent();
+      const assetId = binding ? jobId : randomUUID();
+      const fileName = `${assetId}.${detected.extension}`;
+      if (binding) {
+        const receipt = await this.projectFiles.upload(binding, { assetId,
+          relativePath: `media/${fileName}`, mimeType: detected.mimeType, writeFingerprint: downloaded.sha256 }, downloaded.path);
+        const row = this.assets.create({ id: assetId, userId, jobId, hostProjectId: binding.projectId,
+          mimeType: detected.mimeType, sizeBytes: String(downloaded.size), sha256: receipt.version,
+          fileName, localPath: receipt.relativePath });
+        try { await projectWorkContext.getStore()?.assertCurrent(); return await this.assets.save(row); }
+        finally { await unlink(temporary).catch(() => undefined); }
+      }
       const tenantDir = resolve(this.root, userId);
       this.assertWithinRoot(tenantDir);
       await mkdir(tenantDir, { recursive: true, mode: 0o700 });
-      const fileName = `${assetId}.${detected.extension}`;
       const finalPath = resolve(tenantDir, fileName);
       this.assertWithinRoot(finalPath);
       await rename(downloaded.path, finalPath);
@@ -192,6 +212,7 @@ export class MediaAssetService {
     asset: MediaAsset;
     absolutePath: string;
     size: number;
+    binding?: HostProjectBinding;
   }> {
     const query = this.assets
       .createQueryBuilder('asset')
@@ -212,6 +233,14 @@ export class MediaAssetService {
     }
     const asset = await query.getOne();
     if (!asset) throw new NotFoundException('媒体资产不存在');
+    const binding = this.projectFiles.binding();
+    if (binding) {
+      if (asset.hostProjectId !== binding.projectId) throw new NotFoundException('媒体资产不存在');
+      const metadata = await this.projectFiles.metadata(binding, asset.id);
+      if (metadata.version !== asset.sha256) throw new ForbiddenException('媒体文件已改变');
+      return { asset, absolutePath: '', size: metadata.sizeBytes, binding };
+    }
+    if (asset.hostProjectId) throw new ForbiddenException('媒体资产属于宿主项目');
     const absolutePath = resolve(this.root, asset.localPath);
     this.assertWithinRoot(absolutePath);
     const metadata = await stat(absolutePath).catch(() => null);
@@ -228,6 +257,7 @@ export class MediaAssetService {
       .getMany();
     let removed = 0;
     for (const row of rows) {
+      if (row.hostProjectId) throw new ForbiddenException('请先在宿主项目内删除媒体');
       const absolutePath = resolve(this.root, row.localPath);
       // 同 file-storage：前缀比较会把根目录的同级目录放进来
       if (!isPathInside(this.root, absolutePath)) continue;
@@ -239,6 +269,11 @@ export class MediaAssetService {
 
   async findByJob(userId: string, jobId: string): Promise<MediaAsset | null> {
     return this.assets.findOne({ where: { userId, jobId } });
+  }
+
+  async fileStream(file: Awaited<ReturnType<MediaAssetService['ownedFile']>>, start: number, end: number) {
+    if (file.binding) return this.projectFiles.stream(file.binding, file.asset.id, file.asset.sha256, `bytes=${start}-${end}`);
+    return this.createReadStream(file.absolutePath, start, end);
   }
 
   createReadStream(path: string, start?: number, end?: number) {
@@ -359,6 +394,11 @@ export class MediaAssetService {
     };
     return new Promise((resolveRequest, reject) => {
       const request = httpsRequest(options, resolveRequest);
+      const signal = projectAbortSignal();
+      const abort = () => request.destroy(new Error('project cancelled'));
+      if (signal?.aborted) abort();
+      else signal?.addEventListener('abort', abort, { once: true });
+      request.once('close', () => signal?.removeEventListener('abort', abort));
       request.once('timeout', () => request.destroy(new Error('timeout')));
       request.once('error', () => reject(new BadGatewayException('媒体资源下载失败')));
       request.end();
@@ -377,6 +417,7 @@ export class MediaAssetService {
     let size = 0;
     try {
       for await (const rawChunk of response) {
+        if (projectAbortSignal()?.aborted) throw new BadGatewayException('项目已停止');
         const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
         size += chunk.length;
         if (size > maxBytes) {

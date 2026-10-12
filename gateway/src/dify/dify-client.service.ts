@@ -199,6 +199,7 @@ export class DifyClientService {
     target: DifyExecutionTarget = {},
     sensitiveValues: readonly string[] = [],
     abortSignal?: AbortSignal,
+    onTarget?: (target: { apiBase: string; apiKey: string }) => void | Promise<void>,
   ): AsyncGenerator<DifySSEEvent> {
     // 二次校验配置
     if (!(await this.isConfigured(target))) {
@@ -210,6 +211,7 @@ export class DifyClientService {
 
     const { apiBase } = await this.resolveEngineBase();
     const apiKey = await this.resolveApiKey(target);
+    await onTarget?.({ apiBase, apiKey });
     const url = `${apiBase}/workflows/run`;
 
     this.logger.log(
@@ -394,6 +396,7 @@ export class DifyClientService {
         });
       }
     } finally {
+      await reader.cancel().catch(() => undefined);
       reader.releaseLock();
     }
   }

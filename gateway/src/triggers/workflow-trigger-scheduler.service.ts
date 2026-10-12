@@ -1,3 +1,5 @@
+import { projectBoundStream } from '../host/project-files.provider';
+import { ForbiddenException } from '@nestjs/common';
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { describeError } from '../common/describe-error';
@@ -107,7 +109,7 @@ export class WorkflowTriggerSchedulerService implements OnModuleInit, OnModuleDe
       },
     );
     let succeeded = false;
-    for await (const event of stream) {
+    for await (const event of projectBoundStream(trigger.projectBinding, stream)) {
       if (event.event === 'workflow_finished' && event.data?.status === 'succeeded') succeeded = true;
     }
     return succeeded;
@@ -126,7 +128,7 @@ export class WorkflowTriggerSchedulerService implements OnModuleInit, OnModuleDe
       try {
         succeeded = await this.runOnce(triggerId);
       } catch (error) {
-        if (error instanceof NotFoundException) {
+        if (error instanceof NotFoundException || error instanceof ForbiddenException) {
           retryable = false;
           lastError = error;
           this.logger.warn(`定时触发已不可运行（已删除或已暂停），不再重试: trigger=${triggerId}`);

@@ -1,3 +1,4 @@
+import { projectAbortSignal } from '../host/project-work-units';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { MediaProvider } from '../database/entities/media-credential.entity';
@@ -46,7 +47,7 @@ export class ProviderHttpClient implements ProviderHttpTransport {
         headers,
         body,
         redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: projectAbortSignal() ? AbortSignal.any([AbortSignal.timeout(timeoutMs), projectAbortSignal()!]) : AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === 'TimeoutError') {

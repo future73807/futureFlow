@@ -1,3 +1,6 @@
+import { ProjectControlService } from '../host/project-control.service';
+import { projectWorkContext, projectAbortSignal } from '../host/project-work-units';
+import { projectBindingContext } from '../host/project-files.provider';
 import {
   Inject,
   Injectable,
@@ -95,6 +98,7 @@ export class WorkflowsService {
     @Optional()
     @Inject(HOST_SUBJECT_LOOKUP)
     private readonly hostSubjects?: HostSubjectLookup,
+    @Optional() private readonly projectControl?: ProjectControlService,
   ) {}
 
   /**
@@ -116,6 +120,45 @@ export class WorkflowsService {
       /** The HTTP client left; stop waiting on Dify and refund the reservation. */
       abortSignal?: AbortSignal;
     } = {},
+  ): AsyncGenerator<DifySSEEvent> {
+    const binding = projectBindingContext.getStore();
+    const inheritedSignal = projectAbortSignal();
+    const unit = binding && this.projectControl ? await this.projectControl.begin(user.id, binding, uuidv4()) : undefined;
+    const signals = [executionContext.abortSignal, inheritedSignal, unit?.controller.signal].filter((signal): signal is AbortSignal => !!signal);
+    const context = { ...executionContext, ...(signals.length ? { abortSignal: AbortSignal.any(signals) } : {}) };
+    const stream = this.runWorkflowCore(flowgram, user, inputOverrides, workflowId, context, unit?.runId);
+    if (unit) unit.cancel = async () => {
+      try { await projectWorkContext.run(unit, () => stream.return(undefined)); }
+      finally { await unit.finish(); }
+    };
+    const next = () => unit ? projectWorkContext.run(unit, () => stream.next()) : stream.next();
+    try {
+      while (true) {
+        const item = await next(); if (item.done) return;
+        yield item.value;
+      }
+    } finally {
+      try { if (unit) await projectWorkContext.run(unit, () => stream.return(undefined)); else await stream.return(undefined); }
+      finally { await unit?.finish(); }
+    }
+  }
+
+  private async *runWorkflowCore(
+    flowgram: FlowGramJSON,
+    user: User,
+    inputOverrides: Record<string, string | number | boolean> = {},
+    workflowId?: string,
+    executionContext: {
+      source?: string;
+      triggerId?: string;
+      idempotencyKey?: string;
+      workflowVersion?: number;
+      /** 草稿云端试运行：沙箱应用 Service API Key（内存传递）。 */
+      sandboxApiKey?: string;
+      /** The HTTP client left; stop waiting on Dify and refund the reservation. */
+      abortSignal?: AbortSignal;
+    } = {},
+    suppliedRunId?: string,
   ): AsyncGenerator<DifySSEEvent> {
     const executableFlowgram = this.applyInputOverrides(flowgram, inputOverrides);
     // Keep the run-input field structure for auditing, but never persist any
@@ -163,10 +206,13 @@ export class WorkflowsService {
     );
 
     // ── 3. 创建运行记录 ──
-    const runId = uuidv4();
+    await projectWorkContext.getStore()?.assertCurrent();
+    const runId = suppliedRunId ?? uuidv4();
+    const binding = projectBindingContext.getStore();
     if (this.executionGuard) {
       await this.executionGuard.reserve({
         id: runId,
+        hostProjectId: binding?.projectId, hostGeneration: binding?.generation,
         userId: user.id,
         workflowId,
         flowgramJson: runSnapshot,
@@ -178,6 +224,7 @@ export class WorkflowsService {
     } else {
       const run = this.runRepo.create({
         id: runId,
+        hostProjectId: binding?.projectId ?? null, hostGeneration: binding?.generation ?? null,
         userId: user.id,
         workflowId: workflowId || null,
         triggerId: executionContext.triggerId || null,
@@ -268,8 +315,10 @@ export class WorkflowsService {
     }
     const publishHostEvent = async (event: DifySSEEvent) => {
       if (!this.hostEvents) return;
+      await projectWorkContext.getStore()?.assertCurrent();
       hostEventSeq += 1;
       await this.hostEvents.publish({
+        ...(binding ? { hostProjectId: binding.projectId, hostGeneration: binding.generation } : {}),
         runId,
         seq: hostEventSeq,
         type: event.event,
@@ -298,23 +347,48 @@ export class WorkflowsService {
         difyInputs,
       );
 
+      let frozenDifyTarget: { apiBase: string; apiKey: string } | undefined;
+      await projectWorkContext.getStore()?.assertCurrent();
       const stream = this.difyClient.runWorkflowStream(
         difyInputs,
         user.username,
         difyTarget,
         sensitiveValues,
         executionContext.abortSignal,
+        async (target) => {
+          frozenDifyTarget = target;
+          if (binding) await this.runRepo.update(runId, { remoteStatus: 'outstanding',
+            hostExecutionTarget: { apiBase: target.apiBase, workflowId: difyTarget.workflowId ?? null,
+              workflowVersion: difyTarget.workflowVersion ?? null, draftSandbox: !!difyTarget.apiKey } });
+          await projectWorkContext.getStore()?.assertCurrent();
+        },
       );
       for await (const event of stream) {
+        if (event.event === 'workflow_started' && event.task_id) {
+          await this.runRepo.update(runId, {
+            difyWorkflowId: event.workflow_run_id || event.data?.id,
+            difyTaskId: event.task_id,
+            hostExecutionTarget: { apiBase: frozenDifyTarget?.apiBase ?? null, workflowId: difyTarget.workflowId ?? null,
+              workflowVersion: difyTarget.workflowVersion ?? null, draftSandbox: !!difyTarget.apiKey },
+          });
+          const unit = projectWorkContext.getStore();
+          if (unit) {
+            const stop = await this.difyClient.prepareStop(event.task_id, event.workflow_run_id || event.data?.id, user.username, difyTarget, frozenDifyTarget);
+            unit.remoteStop = async () => {
+              const intent = await this.runRepo.createQueryBuilder().update().set({ remoteStatus: 'stop_requested' })
+                .where('id = :id AND "remoteStatus" = :status', { id: runId, status: 'outstanding' }).execute();
+              if (!intent.affected) return false;
+              const stopped = await stop();
+              await this.runRepo.update(runId, { remoteStatus: stopped ? 'stopped' : 'stop_requested' });
+              return stopped;
+            };
+          }
+        }
+        await projectWorkContext.getStore()?.assertCurrent();
         recordEvent(event);
+        if (event.event === 'workflow_finished') await this.runRepo.update(runId, { remoteStatus: 'finished' });
         await publishHostEvent(event);
         yield event;
-        if (event.event === 'workflow_started' && event.workflow_run_id) {
-          await this.runRepo.update(runId, {
-            difyWorkflowId: event.data?.id,
-            difyTaskId: event.task_id,
-          });
-        }
       }
       streamDrained = true;
     } catch (err) {
@@ -341,6 +415,7 @@ export class WorkflowsService {
       );
       const executionSucceeded = streamDrained
         && !executionError
+        && !executionContext.abortSignal?.aborted
         && result.status === 'succeeded';
       if (!executionSucceeded) {
         await this.billing.refund(user.id, frozenAmount, runId);
@@ -389,7 +464,7 @@ export class WorkflowsService {
           },
         );
 
-        await this.runRepo.update(runId, {
+        const publishSuccess = async (repository: Repository<WorkflowRun>) => repository.update(runId, {
           status: 'succeeded',
           totalTokens: result.totalTokens,
           totalSteps: result.totalSteps,
@@ -401,6 +476,9 @@ export class WorkflowsService {
           difyTaskId: result.taskId,
           finishedAt: new Date(),
         });
+        if (binding && this.projectControl) await this.projectControl.write(user.id, binding,
+          (manager) => publishSuccess(manager.getRepository(WorkflowRun)));
+        else await publishSuccess(this.runRepo);
 
         this.logger.log(
           `工作流完成: runId=${runId}, tokens=${result.totalTokens}, cost=${actualCost}, model=${modelName}, engine=dify`,
@@ -584,6 +662,7 @@ export class WorkflowsService {
         {
           sub: user.id,
           type: 'media_execution',
+          ...(projectBindingContext.getStore() ? { projectFiles: projectBindingContext.getStore() } : {}),
           workflowId,
           workflowVersion: tokenWorkflowVersion,
           runId,

@@ -1,3 +1,4 @@
+import { HostModule } from '../host/host.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -16,6 +17,7 @@ import { TasksService } from './tasks.service';
  */
 @Module({
   imports: [
+    HostModule,
     TypeOrmModule.forFeature([BatchTask, WorkflowRun, Workflow, User]),
     WorkflowsModule,
     AuthModule,

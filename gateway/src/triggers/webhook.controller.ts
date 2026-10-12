@@ -1,3 +1,4 @@
+import { projectBoundStream } from '../host/project-files.provider';
 import { BadRequestException, Body, Controller, Headers, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { WorkflowsService } from '../workflows/workflows.service';
@@ -47,7 +48,7 @@ export class WebhookController {
       this.rateLimit.assertAllowed(triggerId);
       const bodyInputs = body?.inputs && typeof body.inputs === 'object' ? body.inputs : {};
       const inputs = { ...(runnable.trigger.staticInputs || {}), ...bodyInputs };
-      const stream = this.workflows.runWorkflow(
+      const stream = projectBoundStream(runnable.projectBinding, this.workflows.runWorkflow(
         runnable.workflow.publishedFlowgramJson as any,
         runnable.user,
         inputs,
@@ -58,7 +59,7 @@ export class WebhookController {
           idempotencyKey,
           workflowVersion: runnable.workflow.publishedVersion || undefined,
         },
-      );
+      ));
 
       const first = await stream.next();
       this.openSse(res);

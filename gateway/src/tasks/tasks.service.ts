@@ -1,3 +1,7 @@
+import { Optional } from '@nestjs/common';
+import { ProjectControlService } from '../host/project-control.service';
+import { projectBindingContext } from '../host/project-files.provider';
+import { projectWorkContext, projectAbortSignal } from '../host/project-work-units';
 import {
   BadRequestException,
   ForbiddenException,
@@ -73,6 +77,7 @@ export class TasksService {
     private readonly workflowCrud: WorkflowCrudService,
     private readonly converter: DifyConverterService,
     private readonly draftRun: DraftRunService,
+    @Optional() private readonly projectControl?: ProjectControlService,
   ) {}
 
   async listBatchTasks(
@@ -82,7 +87,8 @@ export class TasksService {
     status?: string,
   ) {
     const pagination = this.normalizePagination(page, pageSize);
-    const where: FindOptionsWhere<BatchTask> = { userId };
+    const binding = projectBindingContext.getStore();
+    const where: FindOptionsWhere<BatchTask> = { userId, ...(binding ? { hostProjectId: binding.projectId } : {}) };
     if (status) where.status = status;
     const [items, total] = await this.batchTaskRepo.findAndCount({
       where,
@@ -122,7 +128,9 @@ export class TasksService {
       }
     }
 
+    const binding = projectBindingContext.getStore();
     const task = this.batchTaskRepo.create({
+      hostProjectBinding: binding ?? null, hostProjectId: binding?.projectId ?? null, hostGeneration: binding?.generation ?? null,
       userId,
       workflowId: workflow.id,
       workflowName: workflow.name,
@@ -132,7 +140,8 @@ export class TasksService {
       totalCount: inputs.length,
       inputs,
     });
-    const saved = await this.batchTaskRepo.save(task);
+    const saved = binding && this.projectControl ? await this.projectControl.write(userId, binding,
+      (manager) => manager.getRepository(BatchTask).save(task)) : await this.batchTaskRepo.save(task);
     this.startBatchExecution(saved.id, userId);
     return this.toSummary(saved);
   }
@@ -141,7 +150,7 @@ export class TasksService {
     const task = await this.batchTaskRepo.findOne({
       where: { id: taskId, userId },
     });
-    if (!task) throw new NotFoundException('任务不存在');
+    if (!task || (projectBindingContext.getStore() && task.hostProjectId !== projectBindingContext.getStore()!.projectId)) throw new NotFoundException('任务不存在');
     return {
       id: task.id,
       name: task.name,
@@ -169,7 +178,7 @@ export class TasksService {
     const task = await this.batchTaskRepo.findOne({
       where: { id: taskId, userId },
     });
-    if (!task) throw new NotFoundException('任务不存在');
+    if (!task || (projectBindingContext.getStore() && task.hostProjectId !== projectBindingContext.getStore()!.projectId)) throw new NotFoundException('任务不存在');
     if (TERMINAL_TASK_STATUSES.has(task.status)) return { ok: true };
 
     const cancellation = this.cancellations.get(taskId) ?? { cancelled: false };
@@ -191,8 +200,10 @@ export class TasksService {
     source?: string,
   ) {
     const pagination = this.normalizePagination(page, pageSize);
+    const binding = projectBindingContext.getStore();
     const where: FindOptionsWhere<WorkflowRun> = {
       userId,
+      ...(binding ? { hostProjectId: binding.projectId } : {}),
       source: source || In([...ASYNC_RUN_SOURCES]),
     };
     const [items, total] = await this.runRepo.findAndCount({
@@ -248,6 +259,16 @@ export class TasksService {
   }
 
   private async runBatchTask(taskId: string, userId: string): Promise<void> {
+    const frozen = await this.batchTaskRepo.findOne({ where: { id: taskId, userId }, select: ['id', 'hostProjectBinding'] });
+    const binding = frozen?.hostProjectBinding ?? undefined;
+    const unit = binding && this.projectControl ? await this.projectControl.begin(userId, binding, taskId) : undefined;
+    try {
+      await projectBindingContext.run(binding, () => unit
+        ? projectWorkContext.run(unit, () => this.runBatchTaskCore(taskId, userId)) : this.runBatchTaskCore(taskId, userId));
+    } finally { await unit?.finish(); }
+  }
+
+  private async runBatchTaskCore(taskId: string, userId: string): Promise<void> {
     const cancellation: BatchTaskCancellation = { cancelled: false };
     this.cancellations.set(taskId, cancellation);
     try {
@@ -264,6 +285,7 @@ export class TasksService {
         throw new Error('任务缺少关联工作流');
       }
 
+      await projectWorkContext.getStore()?.assertCurrent();
       await this.batchTaskRepo.update(taskId, { status: 'running' });
 
       // 工作流定义只解析一次：整批数据基于同一版本执行，避免执行途中发布新版本造成前后不一致。
@@ -274,6 +296,7 @@ export class TasksService {
       let failedCount = 0;
 
       for (let index = 0; index < task.inputs.length; index += 1) {
+        if (projectAbortSignal()?.aborted) cancellation.cancelled = true;
         if (cancellation.cancelled) break;
         const controller = new AbortController();
         cancellation.controller = controller;
@@ -285,12 +308,13 @@ export class TasksService {
             plan,
             task.inputs[index],
             index,
-            controller.signal,
+            projectAbortSignal() ? AbortSignal.any([controller.signal, projectAbortSignal()!]) : controller.signal,
           );
         } finally {
           cancellation.controller = undefined;
         }
         // 取消发生在当前行执行期间：该行按取消处理、不计入统计（终止/退款由工作流服务完成）。
+        if (projectAbortSignal()?.aborted) cancellation.cancelled = true;
         if (cancellation.cancelled) break;
 
         // 草稿重新导入/发布后，Dify 应用的首次调用偶尔会瞬时失败；
@@ -311,25 +335,29 @@ export class TasksService {
               plan,
               task.inputs[index],
               index,
-              retryController.signal,
+              projectAbortSignal() ? AbortSignal.any([retryController.signal, projectAbortSignal()!]) : retryController.signal,
             );
           } finally {
             cancellation.controller = undefined;
           }
+          if (projectAbortSignal()?.aborted) cancellation.cancelled = true;
           if (cancellation.cancelled) break;
         }
+        await projectWorkContext.getStore()?.assertCurrent();
         results.push(rowResult);
         if (rowResult.status === 'succeeded') succeededCount += 1;
         else failedCount += 1;
         // 每行结束立即落库，前端轮询详情即可看到实时进度。
-        await this.batchTaskRepo.update(taskId, {
+        await this.publishBatch(task, {
           succeededCount,
           failedCount,
           results,
         });
       }
 
-      await this.batchTaskRepo.update(taskId, {
+      if (projectAbortSignal()?.aborted) cancellation.cancelled = true;
+      if (!cancellation.cancelled) await projectWorkContext.getStore()?.assertCurrent();
+      const final = {
         status: cancellation.cancelled
           ? 'cancelled'
           : failedCount === 0
@@ -339,13 +367,15 @@ export class TasksService {
         failedCount,
         results,
         finishedAt: new Date(),
-      });
+      };
+      if (cancellation.cancelled) await this.batchTaskRepo.update(taskId, final);
+      else await this.publishBatch(task, final);
     } catch (error) {
       const message = describeError(error);
       this.logger.error(`批量任务执行失败: taskId=${taskId}, ${message}`);
       try {
         await this.batchTaskRepo.update(taskId, {
-          status: cancellation.cancelled ? 'cancelled' : 'failed',
+          status: cancellation.cancelled || projectAbortSignal()?.aborted ? 'cancelled' : 'failed',
           error: message.slice(0, MAX_ROW_TEXT_LENGTH),
           finishedAt: new Date(),
         });
@@ -357,6 +387,13 @@ export class TasksService {
     } finally {
       this.cancellations.delete(taskId);
     }
+  }
+
+  private async publishBatch(task: BatchTask, values: Partial<BatchTask>): Promise<void> {
+    const binding = projectBindingContext.getStore();
+    if (binding && this.projectControl) {
+      await this.projectControl.write(task.userId, binding, (manager) => manager.getRepository(BatchTask).update(task.id, values));
+    } else await this.batchTaskRepo.update(task.id, values);
   }
 
   private async resolveExecutionPlan(

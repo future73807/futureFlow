@@ -4,6 +4,8 @@
   "description": "futureFlow 控制层网关 - FlowGram JSON 转 Dify DSL、权限校验、扣费、流式透传",
   "private": true,
   "scripts": {
+    "test:host-project-files": "ts-node -r tsconfig-paths/register test/host-project-files-smoke.ts",
+    "test:media-remote-terminal-relink": "ts-node -r tsconfig-paths/register test/media-remote-terminal-relink-smoke.ts",
     "test:host-project-file-layout": "ts-node -r tsconfig-paths/register test/host-project-file-layout-smoke.ts",
     "build": "nest build",
     "start": "nest start",

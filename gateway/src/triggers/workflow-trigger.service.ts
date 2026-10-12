@@ -1,9 +1,15 @@
+import { ProjectControlService } from '../host/project-control.service';
+import { Inject, ForbiddenException } from '@nestjs/common';
+import { HOST_PROJECT_FILES, type HostProjectBinding } from '../host/host.types';
+import { StandaloneProjectFiles, projectBindingContext, type HostProjectFiles } from '../host/project-files.provider';
+import { WorkflowCrudService } from '../workflows/workflow-crud.service';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -24,6 +30,7 @@ export interface RunnableTrigger {
   trigger: WorkflowTrigger;
   workflow: Workflow;
   user: User;
+  projectBinding?: HostProjectBinding;
 }
 
 @Injectable()
@@ -38,6 +45,9 @@ export class WorkflowTriggerService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly config: ConfigService,
+    @Optional() private readonly workflowCrud?: WorkflowCrudService,
+    @Optional() @Inject(HOST_PROJECT_FILES) private readonly projectFiles: HostProjectFiles = new StandaloneProjectFiles(),
+    @Optional() private readonly projectControl?: ProjectControlService,
   ) {}
 
   async list(userId: string, workflowId: string) {
@@ -95,6 +105,7 @@ export class WorkflowTriggerService {
     const trigger = this.triggerRepo.create({
       userId,
       workflowId,
+      hostProjectBinding: this.projectFiles.binding() ?? null,
       name,
       type: dto.type,
       staticInputs: dto.staticInputs || {},
@@ -123,6 +134,15 @@ export class WorkflowTriggerService {
 
   async update(userId: string, triggerId: string, dto: UpdateWorkflowTriggerDto) {
     const trigger = await this.getOwned(userId, triggerId);
+    // 手动更新才重新授权；不把过去漏掉的调度补跑。
+    const binding = this.projectFiles.binding();
+    if (binding) await this.getOwnedPublishedWorkflow(userId, trigger.workflowId);
+    trigger.hostProjectBinding = binding ?? null;
+    if (trigger.lastRunStatus === 'authorization_required' && dto.status === 'active') {
+      trigger.nextRunAt = trigger.type === 'schedule' ? this.nextRun(this.scheduleSpec(trigger.scheduleType, trigger, null), new Date()) : null;
+      trigger.lastRunStatus = null;
+      trigger.failureCount = 0;
+    }
     if (dto.name !== undefined) trigger.name = this.normalizeName(dto.name);
     if (dto.status !== undefined) trigger.status = dto.status;
     if (dto.staticInputs !== undefined) {
@@ -259,10 +279,23 @@ export class WorkflowTriggerService {
   }
 
   async toRunnable(trigger: WorkflowTrigger): Promise<RunnableTrigger> {
-    const workflow = await this.getOwnedPublishedWorkflow(trigger.userId, trigger.workflowId);
+    const frozen = await this.triggerRepo.findOne({ where: { id: trigger.id }, select: ['id', 'hostProjectBinding'] });
+    const binding = frozen?.hostProjectBinding ?? undefined;
+    let workflow: Workflow;
+    try {
+      const verified = this.projectFiles.binding(binding);
+      if (verified) await this.projectControl?.assert(trigger.userId, verified);
+      workflow = await projectBindingContext.run(verified, () => this.getOwnedPublishedWorkflow(trigger.userId, trigger.workflowId));
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        await this.triggerRepo.update(trigger.id, { status: 'paused', lastRunStatus: 'authorization_required' });
+        throw new ForbiddenException('项目授权失效，请手动重新启用触发器');
+      }
+      throw error;
+    }
     const user = await this.userRepo.findOne({ where: { id: trigger.userId, status: 'active' } });
     if (!user) throw new ConflictException('触发器所有者不可用');
-    return { trigger, workflow, user };
+    return { trigger, workflow, user, ...(binding ? { projectBinding: binding } : {}) };
   }
 
   async toRunnableById(triggerId: string): Promise<RunnableTrigger> {
@@ -285,7 +318,7 @@ export class WorkflowTriggerService {
    */
   async recordResult(triggerId: string, succeeded: boolean): Promise<void> {
     const trigger = await this.triggerRepo.findOne({ where: { id: triggerId } });
-    if (!trigger) return;
+    if (!trigger || trigger.lastRunStatus === 'authorization_required') return;
     trigger.lastTriggeredAt = new Date();
     trigger.lastRunStatus = succeeded ? 'succeeded' : 'failed';
     trigger.failureCount = succeeded ? 0 : trigger.failureCount + 1;
@@ -320,10 +353,15 @@ export class WorkflowTriggerService {
   private async getOwned(userId: string, triggerId: string) {
     const trigger = await this.triggerRepo.findOne({ where: { id: triggerId, userId } });
     if (!trigger) throw new NotFoundException('触发器不存在');
+    if (this.projectFiles.binding()) await this.getOwnedPublishedWorkflow(userId, trigger.workflowId);
     return trigger;
   }
 
   private async getOwnedPublishedWorkflow(userId: string, workflowId: string) {
+    if (this.projectFiles.binding()) {
+      if (!this.workflowCrud) throw new ConflictException('工作流项目文件服务未接通');
+      return this.workflowCrud.getPublished(workflowId, userId);
+    }
     const workflow = await this.workflowRepo.findOne({ where: { id: workflowId, userId, status: 'active' } });
     if (!workflow) throw new NotFoundException('工作流不存在');
     if (!workflow.publishedFlowgramJson) {
@@ -396,7 +434,7 @@ export class WorkflowTriggerService {
   }
 
   private serialize(trigger: WorkflowTrigger) {
-    const { webhookSecretHash, ...safe } = trigger;
+    const { webhookSecretHash, hostProjectBinding, ...safe } = trigger;
     return safe;
   }
 

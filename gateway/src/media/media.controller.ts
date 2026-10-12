@@ -137,7 +137,7 @@ export class MediaController {
     response.status(partial ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
     response.setHeader('Content-Length', end - start + 1);
     if (partial) response.setHeader('Content-Range', `bytes ${start}-${end}/${file.size}`);
-    const stream = this.assets.createReadStream(file.absolutePath, start, end);
+    const stream = await this.assets.fileStream(file, start, end);
     await new Promise<void>((resolve, reject) => {
       stream.once('error', reject);
       response.once('finish', resolve);

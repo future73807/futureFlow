@@ -1,3 +1,4 @@
+import { HostModule } from '../host/host.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -13,6 +14,7 @@ import { WebhookRateLimitService } from './webhook-rate-limit.service';
 
 @Module({
   imports: [
+    HostModule,
     TypeOrmModule.forFeature([WorkflowTrigger, Workflow, User]),
     AuthModule,
     WorkflowsModule,
