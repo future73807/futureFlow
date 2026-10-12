@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { WorkflowCrudService } from '../workflows/workflow-crud.service';
+import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Workflow } from '../database/entities/workflow.entity';
@@ -13,6 +14,7 @@ export class WorkflowTemplateService implements OnModuleInit {
     @InjectRepository(Workflow)
     private readonly workflowRepo: Repository<Workflow>,
     private readonly converter: DifyConverterService,
+    @Optional() private readonly workflowCrud?: WorkflowCrudService,
   ) {}
 
   async onModuleInit() {
@@ -37,6 +39,10 @@ export class WorkflowTemplateService implements OnModuleInit {
 
     const flowgramJson = this.cloneJson(template.flowgramJson);
     this.converter.validateFlowGram(flowgramJson as any);
+    if (this.workflowCrud) return this.workflowCrud.create(userId, {
+      name: (name || template.name).trim().slice(0, 128), description: template.description,
+      flowgram: JSON.stringify(flowgramJson),
+    });
     const workflow = this.workflowRepo.create({
       userId,
       name: (name || template.name).trim().slice(0, 128),

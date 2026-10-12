@@ -17,7 +17,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { FILE_ID_PIPE } from '../security/uuid-param.pipe';
@@ -67,12 +66,13 @@ export class FilesController {
 
   @Get(':fileId/download')
   async download(@Request() req: any, @Param('fileId', FILE_ID_PIPE) fileId: string, @Res() res: Response) {
-    const { record, absolutePath } = await this.storage.open(
+    const file = await this.storage.open(
       this.currentUserId(req),
       fileId,
       this.isAdmin(req),
     );
 
+    const { record, absolutePath, binding } = file;
     // 先确认物理文件真的在盘上，再发响应头。
     //
     // 少了这一步，文件缺失时 createReadStream 会发出一个**没人处理**的 'error'，
@@ -81,7 +81,7 @@ export class FilesController {
     // 半截的 200，看不到任何有用信息。DB 行在、文件不在并不罕见：手工清盘、
     // 或从备份恢复时媒体目录不完整，都会造成这种状态。
     try {
-      await stat(absolutePath);
+      if (!binding) await stat(absolutePath);
     } catch {
       throw new NotFoundException('文件内容已丢失，请重新上传');
     }
@@ -96,7 +96,7 @@ export class FilesController {
     // 再给流挂一个 error 处理作为兜底：stat 通过之后、读取之前文件仍可能被删掉
     // （TOCTOU）。没有它，同一个未处理错误依旧会掀掉进程。
     // 写法与 media.controller.ts 的 Range 下载保持一致。
-    const stream = createReadStream(absolutePath);
+    const stream = await this.storage.downloadStream(file);
     await new Promise<void>((resolve, reject) => {
       stream.once('error', reject);
       res.once('finish', resolve);

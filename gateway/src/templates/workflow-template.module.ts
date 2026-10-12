@@ -1,3 +1,4 @@
+import { WorkflowsModule } from '../workflows/workflows.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -8,7 +9,7 @@ import { WorkflowTemplateController } from './workflow-template.controller';
 import { WorkflowTemplateService } from './workflow-template.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WorkflowTemplate, Workflow]), ConverterModule, AuthModule],
+  imports: [WorkflowsModule, TypeOrmModule.forFeature([WorkflowTemplate, Workflow]), ConverterModule, AuthModule],
   controllers: [WorkflowTemplateController],
   providers: [WorkflowTemplateService],
 })

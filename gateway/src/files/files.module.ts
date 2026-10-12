@@ -1,3 +1,4 @@
+import { HostModule } from '../host/host.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -6,7 +7,7 @@ import { FilesController } from './files.controller';
 import { FileStorageService } from './file-storage.service';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([FileUpload])],
+  imports: [HostModule, AuthModule, TypeOrmModule.forFeature([FileUpload])],
   controllers: [FilesController],
   providers: [FileStorageService],
   exports: [FileStorageService],

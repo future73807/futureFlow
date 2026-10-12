@@ -1,3 +1,7 @@
+import { Inject, Optional, ConflictException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { HOST_PROJECT_FILES } from '../host/host.types';
+import { StandaloneProjectFiles, type HostProjectFiles } from '../host/project-files.provider';
 import {
   Injectable,
   NotFoundException,
@@ -41,13 +45,16 @@ export class WorkflowCrudService {
     private readonly difyIntegration: DifyIntegrationService,
     private readonly knowledge: KnowledgeService,
     private readonly permissionChecker: PermissionChecker,
+    @Optional() @Inject(HOST_PROJECT_FILES) private readonly projectFiles: HostProjectFiles = new StandaloneProjectFiles(),
   ) {}
 
   async listByUser(userId: string): Promise<Workflow[]> {
-    return this.workflowRepo.find({
-      where: { userId, status: 'active' },
+    const binding = this.projectFiles.binding();
+    const rows = await this.workflowRepo.find({
+      where: { userId, status: 'active', ...(binding ? { hostProjectId: binding.projectId } : {}) },
       order: { updatedAt: 'DESC' },
     });
+    return Promise.all(rows.map((row) => this.loadLayout(row)));
   }
 
   async getById(id: string, userId: string): Promise<Workflow> {
@@ -55,7 +62,7 @@ export class WorkflowCrudService {
     if (!wf) throw new NotFoundException('工作流不存在');
     if (wf.userId !== userId) throw new ForbiddenException('无权访问此工作流');
     if (wf.status === 'deleted') throw new NotFoundException('工作流不存在');
-    return wf;
+    return this.loadLayout(wf);
   }
 
   async create(userId: string, dto: CreateWorkflowDto): Promise<Workflow> {
@@ -65,7 +72,7 @@ export class WorkflowCrudService {
       description: dto.description || '',
       flowgramJson: this.parseFlowgram(dto.flowgram),
     });
-    return this.workflowRepo.save(wf);
+    return this.createLayout(wf);
   }
 
   async update(id: string, userId: string, dto: UpdateWorkflowDto): Promise<Workflow> {
@@ -78,7 +85,18 @@ export class WorkflowCrudService {
         wf.name = name;
       }
       if (dto.description !== undefined) wf.description = dto.description;
-      if (dto.flowgram !== undefined) wf.flowgramJson = this.parseFlowgram(dto.flowgram);
+      if (dto.flowgram !== undefined) {
+        if (wf.hostProjectId && dto.hostLayoutVersion !== wf.hostLayoutVersion) {
+          throw new ConflictException('工作流已改变，请刷新后重试');
+        }
+        const content = this.parseFlowgram(dto.flowgram);
+        const binding = this.projectFiles.binding();
+        if (binding) {
+          const layout = await this.projectFiles.writeLayout(binding, wf.id, content, wf.hostLayoutVersion);
+          wf.hostLayoutVersion = layout.version;
+        }
+        wf.flowgramJson = content;
+      }
       if (dto.status !== undefined) {
         if (!['active', 'archived'].includes(dto.status)) {
           throw new BadRequestException('无效的工作流状态');
@@ -86,7 +104,7 @@ export class WorkflowCrudService {
         wf.status = dto.status;
       }
       wf.version = Number(wf.version) + 1;
-      return workflowRepo.save(wf);
+      return this.saveIndex(workflowRepo, wf);
     });
   }
 
@@ -99,7 +117,7 @@ export class WorkflowCrudService {
       // processes cannot create a new app between cleanup and soft deletion.
       await this.difyIntegration.deleteWorkflowIntegrations(wf.id);
       wf.status = 'deleted';
-      await manager.getRepository(Workflow).save(wf);
+      await this.saveIndex(manager.getRepository(Workflow), wf);
     });
   }
 
@@ -111,7 +129,7 @@ export class WorkflowCrudService {
       description: wf.description,
       flowgramJson: wf.flowgramJson,
     });
-    return this.workflowRepo.save(copy);
+    return this.createLayout(copy);
   }
 
   /**
@@ -159,7 +177,7 @@ export class WorkflowCrudService {
       wf.publishedFlowgramJson = this.cloneJson(wf.flowgramJson);
       wf.publishedVersion = wf.version;
       wf.publishedAt = publishedAt;
-      const published = await workflowRepo.save(wf);
+      const published = await this.saveIndex(workflowRepo, wf);
 
       // 版本号统一从版本表顺延（与「另存为版本」同一条规则）：草稿修订号会被
       // 保存动作推高，直接拿它当版本号会让版本列表跳号（1.4 却没有 1.1~1.3）。
@@ -170,7 +188,7 @@ export class WorkflowCrudService {
       if (latest && this.isSameSnapshot(latest, published)) {
         // 内容没变（例如刚另存过）：沿用最新版本号作为线上版本，不新增历史行。
         published.publishedVersion = latest.version;
-        await workflowRepo.save(published);
+        await this.saveIndex(workflowRepo, published);
       } else {
         const nextVersion = (latest?.version ?? 0) + 1;
         await this.createVersionRow(
@@ -182,7 +200,7 @@ export class WorkflowCrudService {
         );
         // publishedVersion 必须始终指向真实存在的历史行，否则「当前线上版本」标记会丢失。
         published.publishedVersion = nextVersion;
-        await workflowRepo.save(published);
+        await this.saveIndex(workflowRepo, published);
       }
 
       // The same PostgreSQL row lock must cover remote provisioning/import.
@@ -220,7 +238,7 @@ export class WorkflowCrudService {
       wf.publishedFlowgramJson = null;
       wf.publishedVersion = null;
       wf.publishedAt = null;
-      return workflowRepo.save(wf);
+      return this.saveIndex(workflowRepo, wf);
     });
   }
 
@@ -378,9 +396,15 @@ export class WorkflowCrudService {
 
       wf.name = history.name;
       wf.description = history.description;
-      wf.flowgramJson = this.cloneJson(history.flowgramJson);
+      const content = this.cloneJson(history.flowgramJson);
+      const binding = this.projectFiles.binding();
+      if (binding) {
+        const layout = await this.projectFiles.writeLayout(binding, wf.id, content, wf.hostLayoutVersion);
+        wf.hostLayoutVersion = layout.version;
+      }
+      wf.flowgramJson = content;
       wf.version = Number(wf.version) + 1;
-      const restored = await workflowRepo.save(wf);
+      const restored = await this.saveIndex(workflowRepo, wf);
       // 带上展示标签，前端才能直接提示「已回退到 v1.2」。
       return Object.assign(restored, { label: formatVersionLabel(history.version) });
     });
@@ -407,7 +431,7 @@ export class WorkflowCrudService {
       description: dto.description || '',
       flowgramJson: this.cloneJson(flowgram),
     });
-    return this.workflowRepo.save(wf);
+    return this.createLayout(wf);
   }
 
   private parseFlowgram(value: string): Record<string, any> {
@@ -439,7 +463,39 @@ export class WorkflowCrudService {
     if (workflow.userId !== userId) {
       throw new ForbiddenException('无权访问此工作流');
     }
+    return this.loadLayout(workflow);
+  }
+
+  private async loadLayout(workflow: Workflow): Promise<Workflow> {
+    const binding = this.projectFiles.binding();
+    if (!binding) {
+      if (workflow.hostProjectId) throw new NotFoundException('工作流不存在');
+      return workflow;
+    }
+    if (workflow.hostProjectId !== binding.projectId) throw new NotFoundException('工作流不存在');
+    const layout = await this.projectFiles.readLayout(binding, workflow.id);
+    workflow.flowgramJson = layout.content;
+    workflow.hostLayoutVersion = layout.version;
     return workflow;
+  }
+
+  private async createLayout(workflow: Workflow): Promise<Workflow> {
+    const binding = this.projectFiles.binding();
+    if (binding) {
+      workflow.id = randomUUID();
+      const layout = await this.projectFiles.writeLayout(binding, workflow.id, workflow.flowgramJson, null);
+      workflow.hostProjectId = binding.projectId;
+      workflow.hostLayoutVersion = layout.version;
+    }
+    return this.saveIndex(this.workflowRepo, workflow);
+  }
+
+  /** embedded 草稿只有文件一处权威；版本快照仍由既有版本表持有。 */
+  private async saveIndex(repo: Repository<Workflow>, workflow: Workflow): Promise<Workflow> {
+    if (!workflow.hostProjectId) return repo.save(workflow);
+    const content = workflow.flowgramJson;
+    const saved = await repo.save({ ...workflow, flowgramJson: {} });
+    return Object.assign(saved, { flowgramJson: content });
   }
 
   private cloneJson(value: Record<string, any>): Record<string, any> {
@@ -624,7 +680,7 @@ export class WorkflowCrudService {
         );
       }
       const target = await workflowRepo.findOne({ where: { id: targetId } });
-      if (!target || target.status !== 'active' || target.userId !== wf.userId) {
+      if (!target || target.status !== 'active' || target.userId !== wf.userId || target.hostProjectId !== wf.hostProjectId) {
         throw new BadRequestException(
           `子工作流节点 ${node.id} 引用的目标工作流不存在、已删除或不属于当前用户`,
         );

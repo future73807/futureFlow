@@ -102,17 +102,10 @@ function makeDownloadResponse() {
  */
 async function testDownloadWithMissingFile() {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-dl-'));
-  const presentFile = path.join(tmpRoot, 'present.txt');
-  fs.writeFileSync(presentFile, 'download-body', 'utf8');
-  const missingFile = path.join(tmpRoot, 'gone.txt');
-
-  const record = {
-    id: 'f1', userId: 'u1', originalName: 'a.txt',
-    mimeType: 'text/plain', sizeBytes: 13, localPath: presentFile, createdAt: new Date(),
-  };
-  const controller = new FilesController({
-    open: async () => ({ record, absolutePath: presentFile }),
-  } as any);
+  const storage = new FileStorageService(makeRepo(), new ConfigService({ FUTUREFLOW_FILES_DIR: tmpRoot }));
+  const stored = await storage.store('u1', 'a.txt', 'text/plain', Buffer.from('download-body'));
+  const { absolutePath } = await storage.open('u1', stored.id);
+  const controller = new FilesController(storage);
   const req = { user: { id: 'u1', role: 'user' } };
 
   try {
@@ -122,15 +115,10 @@ async function testDownloadWithMissingFile() {
     //    还会把整个测试进程掀掉。放在后面的话，前面那条断言会先失败，
     //    掩盖掉真正要守的行为。
     {
-      const missingController = new FilesController({
-        open: async () => ({
-          record: { ...record, localPath: missingFile },
-          absolutePath: missingFile,
-        }),
-      } as any);
+      fs.unlinkSync(absolutePath);
       const { res } = makeDownloadResponse();
       await assert.rejects(
-        () => missingController.download(req, 'f1', res),
+        () => controller.download(req, stored.id, res),
         (error: unknown) => error instanceof NotFoundException,
         '物理文件缺失必须返回 404；修复前这里会因未处理的流错误让进程退出',
       );
@@ -139,7 +127,8 @@ async function testDownloadWithMissingFile() {
     // 2. 文件存在：正常流式返回，确认修复没有破坏正常路径
     {
       const { res, body } = makeDownloadResponse();
-      await controller.download(req, 'f1', res);
+      fs.writeFileSync(absolutePath, 'download-body', 'utf8');
+      await controller.download(req, stored.id, res);
       assert.equal(body(), 'download-body', '正常下载应返回文件内容');
       assert.equal(res.headers['Content-Length'], '13');
     }

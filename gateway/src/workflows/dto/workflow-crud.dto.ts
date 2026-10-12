@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsOptional, IsIn, IsObject } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsIn, IsObject, Matches } from 'class-validator';
 
 export class CreateWorkflowDto {
   @IsString()
@@ -15,6 +15,10 @@ export class CreateWorkflowDto {
 }
 
 export class UpdateWorkflowDto {
+  @IsOptional()
+  @Matches(/^[a-f0-9]{64}$/)
+  hostLayoutVersion?: string;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
