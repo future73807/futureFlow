@@ -135,12 +135,33 @@ function testOutboundMessages() {
     seq: 7,
     type: 'node_finished',
     payload: { node_id: 'n1' },
+    hostProjectId: '11111111-1111-4111-8111-111111111111',
+    hostGeneration: 3,
   });
   assert.equal(runEvent.type, 'ff-embed/run-event');
   assert.equal(runEvent.seq, 7);
   assert.equal(runEvent.runId, 'run-1');
   assert.equal(runEvent.eventType, 'node_finished');
+  assert.equal(runEvent.hostProjectId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(runEvent.hostGeneration, 3);
   assert.match(String(runEvent.at), /^\d{4}-\d{2}-\d{2}T/, '事件要带时间戳（宿主按它排序）');
+  assert.throws(
+    () => buildRunEventMessage({
+      runId: 'run-old',
+      seq: 8,
+      type: 'node_finished',
+      payload: {},
+      hostProjectId: '11111111-1111-4111-8111-111111111111',
+      hostGeneration: 0,
+    }),
+    /冻结项目代际/,
+    '旧代或无效代际不能构造宿主事件',
+  );
+  assert.throws(
+    () => buildRunEventMessage({} as unknown as Parameters<typeof buildRunEventMessage>[0]),
+    /冻结项目代际/,
+    '缺绑定的事件必须拒绝构造',
+  );
 }
 
 function main() {

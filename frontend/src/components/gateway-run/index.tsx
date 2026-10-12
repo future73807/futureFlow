@@ -13,8 +13,8 @@ import { IconClose, IconDownload, IconPlay } from '@douyinfe/semi-icons';
 import { useClientContext, useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useParams } from 'react-router-dom';
 import './gateway-run.css';
-import { apiFetch, apiJson } from '../../utils/api';
-import { publishRunEvent } from '../../embed/client';
+import { apiFetch, apiFetchWithToken, apiJson } from '../../utils/api';
+import { captureFlowRunContext, publishRunEvent } from '../../embed/client';
 import { callSaveHook } from '../../utils/save-registry';
 import { downloadResultArchive } from '../../utils/result-archive';
 import { getFieldLabel } from '../../form-components/field-labels';
@@ -315,11 +315,17 @@ export const GatewayRunButton = ({
       const endpoint = mode === 'draft'
         ? `/workflows/${workflowId}/draft-run`
         : `/workflows/${workflowId}/execute`;
-      const response = await apiFetch(endpoint, {
+      // Gateway 请求使用该 session 的 JWT 项目绑定，拦截器把同一 project/generation
+      // 冻结到本次 run；没有可信绑定时不向宿主发布项目事件。
+      const runContext = captureFlowRunContext();
+      const requestOptions = {
         method: 'POST',
         body: JSON.stringify(mode === 'draft' ? { inputs } : { inputs, publishedVersion }),
         signal: controller.signal,
-      });
+      };
+      const response = runContext
+        ? await apiFetchWithToken(endpoint, runContext.accessToken, requestOptions)
+        : await apiFetch(endpoint, requestOptions);
 
       if (!response.body) throw new Error('网关未返回可读取的执行结果');
       const reader = response.body.getReader();
@@ -351,11 +357,15 @@ export const GatewayRunButton = ({
             const event = JSON.parse(jsonText);
             // 内嵌形态：把每个运行事件透出给宿主通道（带 seq，宿主可断线重放）；
             // 独立形态是空操作，不额外开销。
-            publishRunEvent({
-              runId: event.workflow_run_id || workflowId || 'draft',
-              type: event.event,
-              payload: event,
-            });
+            if (runContext) {
+              publishRunEvent({
+                runId: event.workflow_run_id || workflowId || 'draft',
+                type: event.event,
+                payload: event,
+                hostProjectId: runContext.hostProjectId,
+                hostGeneration: runContext.hostGeneration,
+              });
+            }
             if (receivedTerminalEvent) {
               throw new Error('执行流在终态之后仍返回事件，结果不可信');
             }

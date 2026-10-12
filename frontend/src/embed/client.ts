@@ -54,6 +54,7 @@ export type FfEmbedStatus =
   | { state: 'degraded'; reason: string };
 
 interface GatewayCapabilities {
+  extensions?: { projectFiles?: 'v1' };
   protocolVersion: string;
   mode: 'standalone' | 'embedded';
   capabilities: FfEmbedCapabilities;
@@ -84,6 +85,22 @@ export function getFfEmbedStatus(): FfEmbedStatus {
   return status;
 }
 
+/** The verified binding for the active embedded session, never decoded from a token. */
+export function captureFlowRunContext(): {
+  accessToken: string;
+  hostProjectId: string;
+  hostGeneration: number;
+} | null {
+  const current = status.state === 'embedded' ? session : null;
+  if (!current?.projectFiles || !current.accessToken) return null;
+  const binding = current.projectFiles;
+  return {
+    accessToken: current.accessToken,
+    hostProjectId: binding.projectId,
+    hostGeneration: binding.generation,
+  };
+}
+
 export function subscribeFfEmbed(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -104,6 +121,8 @@ interface EmbedSession {
   capabilities: FfEmbedCapabilities;
   allowedOrigins: readonly string[];
   brand: boolean;
+  accessToken: string | null;
+  projectFiles: { projectId: string; generation: number } | null;
 }
 
 let session: EmbedSession | null = null;
@@ -165,6 +184,11 @@ function resolveParentOrigin(
 
 async function exchangeIdentity(hostToken: string, message: FfEmbedIdentityMessage): Promise<void> {
   const path = session?.sessionPath ?? '/host/ff-embed/v1/session';
+  if (session) {
+    session.accessToken = null;
+    session.projectFiles = null;
+  }
+  setStatus({ state: 'handshaking' });
   try {
     const response = await gatewayFetch(path, {
       method: 'POST',
@@ -179,16 +203,47 @@ async function exchangeIdentity(hostToken: string, message: FfEmbedIdentityMessa
       });
       return;
     }
-    const payload = (await response.json()) as { accessToken: string; user: unknown };
+    const payload = (await response.json()) as {
+      accessToken: string;
+      user: unknown;
+      projectFiles?: { version: string; projectId: string; generation: number };
+    };
+    let projectBinding: { projectId: string; generation: number } | null = null;
+    if (payload.projectFiles !== undefined) {
+      const candidate = payload.projectFiles;
+      if (
+        candidate.version !== 'v1' ||
+        typeof candidate.projectId !== 'string' ||
+        !candidate.projectId ||
+        !Number.isSafeInteger(candidate.generation) ||
+        candidate.generation < 1
+      ) {
+        const reason = '宿主项目绑定信息无效，Flow 项目事件已停用。';
+        setStatus({ state: 'degraded', reason });
+        post(buildMessage('ff-embed/error', { reason }));
+        return;
+      }
+      projectBinding = {
+        projectId: candidate.projectId,
+        generation: candidate.generation,
+      };
+    }
     setToken(payload.accessToken);
     setUser(payload.user);
 
     if (session) {
       const brand = typeof message.brand === 'boolean' ? message.brand : session.brand;
       session.brand = brand;
+      session.accessToken = payload.accessToken;
+      session.projectFiles = projectBinding;
       setStatus({ state: 'embedded', capabilities: session.capabilities, brand });
     }
-    post(buildMessage('ff-embed/ready', { user: payload.user }));
+    post(buildMessage('ff-embed/ready', { user: payload.user,
+      ...(projectBinding ? {
+        extensions: { projectFiles: 'v1' },
+        projectId: projectBinding.projectId,
+        generation: projectBinding.generation,
+      } : {}) }));
   } catch (err) {
     setStatus({
       state: 'degraded',
@@ -279,6 +334,8 @@ export async function initFfEmbed(): Promise<boolean> {
     capabilities: capabilities.capabilities,
     allowedOrigins: capabilities.allowedOrigins,
     brand: false,
+    accessToken: null,
+    projectFiles: null,
   };
   setStatus({ state: 'handshaking' });
 
@@ -303,10 +360,23 @@ export function publishRunEvent(input: {
   seq?: number;
   type: string;
   payload: unknown;
-}): void {
-  if (status.state !== 'embedded') return;
-  runSeq = typeof input.seq === 'number' ? input.seq : runSeq + 1;
-  post(buildRunEventMessage({ ...input, seq: runSeq }));
+  hostProjectId: string;
+  hostGeneration: number;
+}): boolean {
+  const binding = session?.projectFiles;
+  if (
+    status.state !== 'embedded' ||
+    !binding ||
+    input.hostProjectId !== binding.projectId ||
+    input.hostGeneration !== binding.generation
+  ) {
+    return false;
+  }
+  const seq = input.seq ?? runSeq + 1;
+  if (!Number.isSafeInteger(seq) || seq < 1) return false;
+  runSeq = seq;
+  post(buildRunEventMessage({ ...input, seq }));
+  return true;
 }
 
 /** 导航通知：让宿主知道 flow 里发生了什么（例如新建了工作流）。 */

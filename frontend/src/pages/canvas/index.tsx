@@ -63,6 +63,7 @@ export const CanvasPage = () => {
   const [editorReady, setEditorReady] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeRevision, setChangeRevision] = useState(0);
+  const hostLayoutVersionRef = useRef<string | null>(null);
   const editorRef = useRef<FreeLayoutPluginContext | null>(null);
   const revisionRef = useRef(0);
   const savedRevisionRef = useRef(0);
@@ -90,7 +91,9 @@ export const CanvasPage = () => {
           description?: string;
           publishedVersion?: number | null;
           flowgramJson?: any;
+          hostLayoutVersion?: string | null;
         }>('/workflows/' + id);
+        hostLayoutVersionRef.current = workflow.hostLayoutVersion ?? null;
         setWorkflowName(workflow.name);
         setWorkflowDescription(workflow.description || '');
         setPublishedVersion(workflow.publishedVersion || null);
@@ -153,14 +156,16 @@ export const CanvasPage = () => {
         ...context.document.toJSON(),
         globalVariable: context.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
       };
-      await apiJson('/workflows/' + id, {
+      const saved = await apiJson<{ hostLayoutVersion?: string | null }>('/workflows/' + id, {
         method: 'PUT',
         body: JSON.stringify({
           name: trimmedName,
           flowgram: JSON.stringify(flowgramJson),
+          ...(hostLayoutVersionRef.current ? { hostLayoutVersion: hostLayoutVersionRef.current } : {}),
         }),
       });
 
+      hostLayoutVersionRef.current = saved.hostLayoutVersion ?? null;
       savedRevisionRef.current = revisionToSave;
       setLastSavedAt(new Date());
       if (revisionRef.current === revisionToSave) {
@@ -289,10 +294,11 @@ export const CanvasPage = () => {
   const handleRestored = useCallback(() => {
     // 回退只改服务端草稿，画布必须重新拉一次，否则用户还在看旧图
     if (!id) return;
-    apiJson<{ name: string; description?: string; publishedVersion?: number | null; flowgramJson?: any }>(
+    apiJson<{ name: string; description?: string; publishedVersion?: number | null; flowgramJson?: any; hostLayoutVersion?: string | null }>(
       '/workflows/' + id,
     )
       .then((workflow) => {
+        hostLayoutVersionRef.current = workflow.hostLayoutVersion ?? null;
         setWorkflowName(workflow.name);
         setWorkflowDescription(workflow.description || '');
         setPublishedVersion(workflow.publishedVersion || null);

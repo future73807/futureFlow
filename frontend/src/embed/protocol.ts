@@ -207,12 +207,23 @@ export function buildRunEventMessage(input: {
   seq: number;
   type: string;
   payload: unknown;
+  hostProjectId: string;
+  hostGeneration: number;
 }): FfEmbedMessage {
+  if (
+    !input.hostProjectId ||
+    !Number.isSafeInteger(input.hostGeneration) ||
+    input.hostGeneration < 1
+  ) {
+    throw new Error('run-event 必须带有效的冻结项目代际');
+  }
   return buildMessage('ff-embed/run-event', {
     runId: input.runId,
     seq: input.seq,
     eventType: input.type,
     payload: input.payload,
+    hostProjectId: input.hostProjectId,
+    hostGeneration: input.hostGeneration,
     at: new Date().toISOString(),
   });
 }

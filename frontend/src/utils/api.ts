@@ -40,7 +40,15 @@ async function readErrorMessage(response: Response): Promise<string> {
 }
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const token = getToken();
+  return apiFetchWithToken(path, getToken(), options);
+}
+
+/** Execute with a token captured alongside the request's project binding. */
+export async function apiFetchWithToken(
+  path: string,
+  token: string | null,
+  options: RequestInit = {},
+): Promise<Response> {
   if (!token) {
     notifyAuthExpired();
     throw new ApiError('登录已过期，请重新登录', 401);

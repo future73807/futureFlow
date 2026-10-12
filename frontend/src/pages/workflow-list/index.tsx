@@ -2810,9 +2810,11 @@ export const WorkflowListPage = () => {
                   ) : (
                     "使用专属安全地址调用"
                   )}
-                  {trigger.lastRunStatus
-                    ? ` · 上次 ${trigger.lastRunStatus === "succeeded" ? "成功" : "失败"}`
-                    : ""}
+                  {trigger.lastRunStatus === "authorization_required"
+                    ? " · 待授权"
+                    : trigger.lastRunStatus
+                      ? ` · 上次 ${trigger.lastRunStatus === "succeeded" ? "成功" : "失败"}`
+                      : ""}
                   {/* 连续失败次数原先已由接口返回、但界面不展示，导致「一直失败」的
                       定时任务在页面上看只是「上次失败」，无法察觉严重程度。 */}
                   {trigger.failureCount && trigger.failureCount > 0
