@@ -1,3 +1,9 @@
+import { HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord } from '../src/database/entities/host-project-gate.entity';
+import { WorkflowRun } from '../src/database/entities/workflow-run.entity';
+import { MediaJob } from '../src/database/entities/media-job.entity';
+import { MediaCredential } from '../src/database/entities/media-credential.entity';
+import { BatchTask } from '../src/database/entities/batch-task.entity';
+import { WorkflowTrigger } from '../src/database/entities/workflow-trigger.entity';
 import 'reflect-metadata';
 
 import assert from 'node:assert/strict';
@@ -31,7 +37,7 @@ import { HostModule } from '../src/host/host.module';
  *   - 本地停用的宿主账号不被宿主登录态覆盖（本地处置优先）。
  */
 
-const ENTITIES = [User, ApiKey, BalanceLog];
+const ENTITIES = [User, ApiKey, BalanceLog, HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord, WorkflowRun, MediaJob, MediaCredential, BatchTask, WorkflowTrigger];
 
 /** 运行期拼接夹具口令，避免源码里出现可直接使用的凭据字面量。 */
 const fx = (...parts: string[]) => parts.filter(Boolean).join('-');

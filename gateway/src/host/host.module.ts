@@ -1,3 +1,13 @@
+import { ProjectControlService } from './project-control.service';
+import { HostProjectControlController, HostProjectControlGuard } from './project-control.controller';
+import { HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord } from '../database/entities/host-project-gate.entity';
+import { WorkflowRun } from '../database/entities/workflow-run.entity';
+import { MediaJob } from '../database/entities/media-job.entity';
+import { BatchTask } from '../database/entities/batch-task.entity';
+import { WorkflowTrigger } from '../database/entities/workflow-trigger.entity';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ProjectBindingInterceptor } from './project-binding.interceptor';
+import { EmbeddedProjectFiles, StandaloneProjectFiles } from './project-files.provider';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
@@ -26,6 +36,7 @@ import {
   StandaloneIdentityProvider,
 } from './standalone-providers';
 import {
+  HOST_PROJECT_FILES,
   HOST_BILLING,
   HOST_CONFIG,
   HOST_CREDENTIALS,
@@ -47,9 +58,10 @@ import {
  * `if (embedded)` 之类的模式分支。
  */
 @Module({
-  imports: [AuthModule, BillingModule, TypeOrmModule.forFeature([User])],
-  controllers: [HostController],
+  imports: [AuthModule, BillingModule, TypeOrmModule.forFeature([User, HostProjectGate, HostProjectControlRecord, HostProjectWorkRecord, WorkflowRun, MediaJob, BatchTask, WorkflowTrigger])],
+  controllers: [HostController, HostProjectControlController],
   providers: [
+    ProjectControlService, HostProjectControlGuard,
     {
       provide: HOST_CONFIG,
       useFactory: (config: ConfigService) => readHostConfig(config),
@@ -130,9 +142,14 @@ import {
           : new StandaloneEventSink(),
       inject: [HOST_CONFIG, HostHttpClient],
     },
+    { provide: HOST_PROJECT_FILES, useFactory: (config: HostConfig) => config.mode === 'embedded'
+      ? new EmbeddedProjectFiles(config) : new StandaloneProjectFiles(), inject: [HOST_CONFIG] },
+    { provide: APP_INTERCEPTOR, useClass: ProjectBindingInterceptor },
     HostSessionService,
   ],
   exports: [
+    ProjectControlService,
+    HOST_PROJECT_FILES,
     HOST_CONFIG,
     HOST_IDENTITY,
     HOST_CREDENTIALS,

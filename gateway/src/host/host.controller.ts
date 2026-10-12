@@ -40,6 +40,8 @@ export class HostController {
       allowedOrigins: this.config.allowedOrigins,
       sessionPath: '/host/ff-embed/v1/session',
       notes,
+      ...(this.config.mode === 'embedded' && this.config.endpoints.projectFiles
+        ? { extensions: { projectFiles: 'v1' } } : {}),
     };
   }
 

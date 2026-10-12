@@ -1,3 +1,5 @@
+import { Optional } from '@nestjs/common';
+import { ProjectControlService } from './project-control.service';
 import { createHash } from 'node:crypto';
 
 import {
@@ -40,18 +42,22 @@ export class HostSessionService {
     @Inject(HOST_CONFIG)
     private readonly config: HostConfig,
     private readonly authService: AuthService,
+    @Optional() private readonly control?: ProjectControlService,
   ) {}
 
   async exchange(hostToken: string): Promise<{
     accessToken: string;
     expiresIn: number;
     user: ReturnType<AuthService['toProfile']>;
+    projectFiles?: { version: 'v1'; projectId: string; generation: number };
   }> {
     // 独立模式下这里会明确拒绝（见 StandaloneIdentityProvider.resolveIdentity）。
     const identity = await this.identityProvider.resolveIdentity(hostToken);
     const user = await this.getOrCreate(identity);
-    const session = this.authService.issueSession(user);
-    return { ...session, user: this.authService.toProfile(user) };
+    if (identity.projectFiles) await this.control?.assert(user.id, identity.projectFiles);
+    const session = this.authService.issueSession(user, identity.projectFiles);
+    return { ...session, user: this.authService.toProfile(user),
+      ...(identity.projectFiles && this.config.endpoints.projectFiles ? { projectFiles: { version: identity.projectFiles.version, projectId: identity.projectFiles.projectId, generation: identity.projectFiles.generation } } : {}) };
   }
 
   private async getOrCreate(identity: HostIdentity): Promise<User> {

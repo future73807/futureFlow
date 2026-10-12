@@ -20,7 +20,7 @@ export class AuthMiddleware implements NestMiddleware {
     private readonly apiKeyService: ApiKeyService,
   ) {}
 
-  async use(req: Request & { user?: User }, res: Response, next: NextFunction) {
+  async use(req: Request & { user?: User; auth?: Record<string, unknown> }, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException('缺少 Authorization 头或格式不正确');
@@ -45,6 +45,7 @@ export class AuthMiddleware implements NestMiddleware {
       // tokenVersion 校验与 jwt.guard 同语义：改密码后旧 JWT 立即失效。
       if (user && user.status === 'active' && user.tokenVersion === (payload.tv ?? 0)) {
         req.user = user;
+        req.auth = payload;
         return next();
       }
     } catch {

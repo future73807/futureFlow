@@ -168,6 +168,31 @@ export class DifyClientService {
    * @returns AsyncGenerator 逐个 yield SSE 事件
    * @throws InternalServerErrorException 当 Dify 未配置或调用失败时
    */
+  /** 官方 OpenAPI: /workflows/tasks/{task_id}/stop + /workflows/run/{workflow_run_id}。
+   * success只是接收停止；读取到确切Run终态才计remoteStopped，不重试未知结果。
+   */
+  async prepareStop(taskId: string, workflowRunId: string | undefined, user: string, target: DifyExecutionTarget,
+    frozen?: { apiBase: string; apiKey: string }): Promise<() => Promise<boolean>> {
+    const connection = frozen ?? { ...(await this.resolveEngineBase()), apiKey: await this.resolveApiKey(target) };
+    return () => this.stopWorkflowTask(connection, taskId, workflowRunId, user);
+  }
+  async stopWorkflowTask(connection: { apiBase: string; apiKey: string }, taskId: string, workflowRunId: string | undefined, user: string): Promise<boolean> {
+    if (!taskId || !workflowRunId) return false;
+    try {
+      const headers = { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' };
+      const response = await fetch(`${connection.apiBase}/workflows/tasks/${encodeURIComponent(taskId)}/stop`, {
+        method: 'POST', headers, body: JSON.stringify({ user }), signal: AbortSignal.timeout(120000), redirect: 'error',
+      });
+      if (!response.ok || (await response.json()).result !== 'success') return false;
+      const status = await fetch(`${connection.apiBase}/workflows/run/${encodeURIComponent(workflowRunId)}`, {
+        headers, signal: AbortSignal.timeout(120000), redirect: 'error',
+      });
+      if (!status.ok) return false;
+      const detail = await status.json();
+      return detail.id === workflowRunId && ['stopped', 'failed', 'succeeded'].includes(detail.status);
+    } catch { return false; }
+  }
+
   async *runWorkflowStream(
     inputs: Record<string, any>,
     user: string,

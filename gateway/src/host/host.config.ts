@@ -24,6 +24,7 @@ export interface HostConfig {
   allowedOrigins: string[];
   /** 宿主提供的回调地址；'' 表示该缝未提供，走自带兜底。 */
   endpoints: {
+    projectFiles?: string;
     identity: string;
     credentials: string;
     billing: string;
@@ -111,6 +112,7 @@ export function readHostConfig(config: HostEnvReader): HostConfig {
   const mode = readMode(config.get<string>('HOST_MODE'));
   const sharedSecret = (config.get<string>('HOST_SHARED_SECRET') ?? '').trim();
   const endpoints = {
+    projectFiles: readEndpoint(config.get<string>('HOST_PROJECT_FILES_URL'), 'HOST_PROJECT_FILES_URL'),
     identity: readEndpoint(
       config.get<string>('HOST_IDENTITY_VERIFY_URL'),
       'HOST_IDENTITY_VERIFY_URL',
@@ -160,8 +162,11 @@ export function readHostConfig(config: HostEnvReader): HostConfig {
       );
     }
     const missing = Object.entries(endpoints)
-      .filter(([, value]) => !value)
+      .filter(([name, value]) => name !== 'projectFiles' && !value)
       .map(([name]) => name);
+    if (!endpoints.projectFiles) {
+      logger.warn('未配置 HOST_PROJECT_FILES_URL：内嵌项目文件操作将明确拒绝，不使用网关自带存储。');
+    }
     if (missing.length > 0) {
       logger.warn(
         `内嵌模式缺少回调地址：${missing.join(', ')}——对应缝回落自带实现`
@@ -242,6 +247,9 @@ export function hostCapabilities(config: HostConfig): {
   }
 
   notes.push('内嵌模式：身份由宿主签发（服务端验签后换 flow 会话）。');
+  if (!config.endpoints.projectFiles) {
+    notes.push('未配置 HOST_PROJECT_FILES_URL：项目文件操作不可用，不回落自带存储。');
+  }
   notes.push(
     capabilities.credentials
       ? '引擎凭证由宿主下发（宿主自己的 BYOK 实例或第三方网关）。'

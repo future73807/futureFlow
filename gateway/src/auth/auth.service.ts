@@ -1,3 +1,4 @@
+import type { HostProjectBinding } from '../host/host.types';
 import {
   Injectable,
   ConflictException,
@@ -147,8 +148,9 @@ export class AuthService {
    * 宿主适配层的身份缝也走这里（`HostSessionService` → 换取会话）：载荷形状、`tv`
    * 版本号语义只有一处定义，避免「宿主登录的会话不受改密码影响」这类漂移。
    */
-  issueSession(user: User) {
+  issueSession(user: User, projectFiles?: HostProjectBinding) {
     const payload = {
+      ...(projectFiles ? { projectFiles } : {}),
       sub: user.id,
       username: user.username,
       vipLevel: user.vipLevel,

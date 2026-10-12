@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import { BadRequestException } from '@nestjs/common';
 import {
   IsEmail,
@@ -5,6 +6,11 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateNested,
+  IsUUID,
+  Equals,
+  IsInt,
+  Min,
 } from 'class-validator';
 
 import type { HostConfig } from './host.config';
@@ -16,12 +22,24 @@ import type {
   HostIdentityProvider,
 } from './host.types';
 
+class ProjectBindingPayload {
+  @Equals('v1') version: 'v1';
+  @IsUUID() projectId: string;
+  @IsInt() @Min(1) generation: number;
+  @IsString() @IsNotEmpty() @MaxLength(2048) bindingToken: string;
+}
+
 /** 宿主身份回调的响应（宿主实现方按此形状返回）。 */
 class HostIdentityPayload {
   @IsString()
   @IsNotEmpty({ message: 'subject 不能为空' })
   @MaxLength(256, { message: 'subject 不能超过 256 字符' })
   subject: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProjectBindingPayload)
+  projectFiles?: ProjectBindingPayload;
 
   @IsOptional()
   @IsString()
@@ -70,6 +88,7 @@ export class EmbeddedIdentityProvider implements HostIdentityProvider {
 
     return {
       subject: payload.subject.trim(),
+      ...(payload.projectFiles ? { projectFiles: { version: payload.projectFiles.version, projectId: payload.projectFiles.projectId, generation: payload.projectFiles.generation, bindingToken: payload.projectFiles.bindingToken } } : {}),
       displayName: payload.displayName?.trim() || undefined,
       email: payload.email?.trim().toLowerCase() || undefined,
     };
