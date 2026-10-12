@@ -27,7 +27,7 @@
     "test:trigger-daily": "ts-node -r tsconfig-paths/register test/trigger-daily-smoke.ts",
     "test:login-limit": "ts-node -r tsconfig-paths/register test/login-rate-limit-smoke.ts",
     "test:integration": "ts-node -r tsconfig-paths/register test/platform.integration.ts",
-    "test:host": "ts-node -r tsconfig-paths/register test/host-adapter-smoke.ts && ts-node -r tsconfig-paths/register test/ff-embed-protocol-smoke.ts && ts-node -r tsconfig-paths/register test/host-embed.integration.ts",
+    "test:host": "ts-node -r tsconfig-paths/register test/host-adapter-smoke.ts && ts-node -r tsconfig-paths/register test/host-project-files-smoke.ts && ts-node -r tsconfig-paths/register test/host-project-file-layout-smoke.ts && ts-node -r tsconfig-paths/register test/host-project-control-smoke.ts && ts-node -r tsconfig-paths/register test/media-remote-terminal-relink-smoke.ts && ts-node -r tsconfig-paths/register test/ff-embed-protocol-smoke.ts && ts-node -r tsconfig-paths/register test/host-embed.integration.ts",
     "test:fuzz": "ts-node --transpile-only -r tsconfig-paths/register test/platform-fuzz.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",

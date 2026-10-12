@@ -209,3 +209,87 @@ POST {url}  { "protocolVersion": "v1",
 
 独立 Provider 是兜底：任一缝缺失或宿主不可信，flow 都降级到独立实现继续跑，
 而不是崩溃或半残；降级原因对用户（横幅）与宿主（notes / error 消息）双双可见。
+
+## 可选项目文件扩展 `projectFiles: v1`
+
+现有消息类型和六项 capabilities 保持不变。支持此扩展的内嵌网关在
+`GET /host/ff-embed/v1/capabilities` 返回顶层
+`extensions: { projectFiles: 'v1' }`（仅在配置 `HOST_PROJECT_FILES_URL` 后声明）。
+旧网关不会声明扩展，宿主不得把旧 ready 当作项目文件已接通。
+
+宿主身份回调可增加 `projectFiles: { version: 'v1', projectId, generation, bindingToken }`。
+宿主必须由已认证的实例和真实 Flow Project 签发绑定；前端只转发原有 opaque
+`hostToken`，不提供根目录。网关将回调验签结果签入每次会话 JWT 的
+`projectFiles` claim，已验签的请求通过 `req.auth.projectFiles` 使用它，不写入 User。
+
+会话交换响应只公开 `projectFiles: { version, projectId, generation }` 摘要。前端完成真实交换后，
+`ff-embed/ready` 可增加 `extensions: { projectFiles: 'v1' }, projectId, generation`；不得回显
+bindingToken。宿主核对当前选中项目后才标记连接完成；切换项目重新签票据并建立 iframe。
+
+网关显式配置 `HOST_PROJECT_FILES_URL` 为宿主项目文件基址，例如
+`http://127.0.0.1:3001/api/flow/host/project-files`。所有回调继续使用共享密钥
+Bearer、`x-ff-embed-protocol: v1`，另外在 `x-ff-project-binding` 发送绑定令牌。
+绑定缺失、过期、项目不匹配或回调未接通均明确失败，不落回 `.futureflow-*` 正式根。
+
+| 操作 | 相对路径 | 请求 / 回执 |
+| --- | --- | --- |
+| 上传 | `POST /upload` | multipart 单文件 `file`；字段 assetId(UUID)、relativePath、mimeType、writeFingerprint(SHA256)；回 `{assetId,relativePath,version}` |
+| 内容 | `GET /:assetId?version=sha` | 字节流，支持单 Range / suffix，206 / 416 |
+| 核现状 | `GET /:assetId/metadata` | `{assetId,relativePath,version,mimeType,sizeBytes}` |
+| 移动 | `POST /:assetId/move` | `{relativePath,expectedRelativePath,expectedVersion}`；回文件回执 |
+| 删除 | `DELETE /:assetId?version=sha` | 缺失幂等，外部内容变化拒绝，宿主保留审计索引 |
+| 读取布局 | `GET /layouts/:workflowId` | `{content,version}` 或404 |
+| 保存布局 | `PUT /layouts/:workflowId` | `{content,expectedVersion:string|null}`；回 `{content,version}`；正文至多4MiB |
+
+Flow DB 的文件索引以 `hostProjectId` 限定，不需要宿主列表端点；每次访问核对宿主文件
+现状。媒体下载仍沿用供应商 URL 安全验证，验证后的临时文件流式上传到宿主，清理临时文件，
+正式下载使用宿主文件流。MediaJob 提交时冻结绑定到非公开持久字段，轮询不能用当前会话
+切换原任务项目；不会自动重新提交供应商副作用。
+
+内嵌工作流草稿以布局文件为权威；工作流 DB 草稿 JSON 保存空索引，读取、草稿执行、
+发布和版本保存均读取文件。既有发布快照和 workflow_versions 历史格式不变。
+画布读取 hostLayoutVersion，保存工作流时回传同名字段；网关用该版本调用宿主 CAS。
+外部编辑后旧保存请求失败，用户刷新后才获得新版本。独立模式继续原数据库与文件存储。
+
+触发器创建/更新时冻结同一可信项目绑定到非公开列。定时调度和 Webhook 使用该冻结
+上下文读取布局并执行，AsyncGenerator 的每次 next 都保留绑定；绑定不会进 DTO、事件
+或日志。宿主拒绝项目授权时触发器暂停，`lastRunStatus=authorization_required`，不自动
+重试副作用。用户在正确项目中手动重新启用才换新绑定，仅安排未来时刻，不补跑停机期间
+的调度。旧内嵌触发器没有绑定时同样明确暂停等待重新授权，禁止猜测当前项目。
+
+## Project 控制与目录重新关联
+
+项目绑定新增 `generation: number`（整数，初代1），由宿主服务端签发并进入已验签JWT。
+文件端口以及网关持久准入gate都核对冻结代际。旧绑定缺代际或代际落后时明确拒绝，不猜测
+当前项目；重新关联后的新绑定才携带新代际。媒体、工作流Run和批量任务保存可信项目及代际。
+
+机器控制端点：`POST /host/ff-embed/v1/projects/:projectId/control`。
+头部沿用 `Authorization: Bearer <HOST_SHARED_SECRET>` 与 `x-ff-embed-protocol: v1`，
+不接受浏览器JWT代替宿主控制凭据。宿主必须显式持有可信网关基址，不从前端网址或端口猜测。
+
+请求 `{action:'snapshot'|'quiesce'|'complete-relink',hostSubject,operationId,expectedGeneration}`。
+hostSubject是宿主稳定instanceId，网关以 `User.hostSubject` 核归属，不能按整个Flow用户取消
+所有项目。回执 `{projectId,generation,draining,localSettled,activeRunIds,remoteStopped,
+remoteOutstanding,operationId,quiesceSettled}` 不含令牌、凭据或绝对根路径。
+
+- snapshot 使用 expectedGeneration=0发现现状；实时读取，不缓存旧快照。
+- quiesce 以G作CAS，持久递增到G+1并关闭准入，精准取消当前Project本地work units。
+  真实finally清理完成、持久work-unit登记释放后才证明localSettled；数据库status不作停止证明。
+- complete-relink 要求同operationId的quiesce已经停稳、expectedGeneration=G+1，仅解除draining。
+  远端WorkflowRun/MediaJob均已有终态证明（remoteOutstanding=0）才解除维护；
+  不再次增代、不补跑旧任务、不恢复旧触发器。触发器需用户在正确项目中手动重新授权。
+- quiesce及complete按Project、operationId、phase持久幂等；重复请求返回原回执，不重放远端停止。
+  网络结果未知时宿主观察snapshot的operationId/quiesceSettled，不盲重发副作用。
+
+Dify真实任务ID和冻结执行目标在外部事件发布/yield前保存。只用确切任务和实际连接执行一次
+停止请求，再查询确切Run终态；`result:success`只表示停止请求被接收，不能单独计remoteStopped。
+官方契约：
+[Stop Workflow Task](https://docs.dify.ai/en/api-reference/workflow-runs/stop-workflow-task)，
+[Get Workflow Run Detail](https://docs.dify.ai/en/api-reference/workflow-runs/get-workflow-run-detail)，
+[官方OpenAPI](https://docs.dify.ai/en/api-reference/openapi_service.json)。
+无法取消的媒体供应商任务保留remoteOutstanding、失效旧scope，禁止继续轮询/成果发布，不宣称
+撤回已发生的远端副作用。停止intent结果未知不自动重放。
+
+持久work-unit登记也防止其他网关进程/崩溃遗留被误当作已停止：未能证明owner完成清理的登记
+使localSettled=false。它不会通过全栈停机、端口kill或改写DB终态伪造停稳；需要可信owner终止
+证明时必须单独解决。独立模式不使用宿主gate，保留原执行行为。
