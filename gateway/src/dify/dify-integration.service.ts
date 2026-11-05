@@ -169,6 +169,38 @@ export class DifyIntegrationService implements OnModuleInit {
     );
   }
 
+  /**
+   * 宿主安装完引擎栈后通知网关补一次控制面授权（幂等）。
+   * 与 `onModuleInit` 同一套凭据口径，但作为独立服务调用存在：宿主走宿主共享密钥
+   * 鉴权的 `host/ff-embed/v1/dify/reauthorize`，不直连带 `AdminGuard` 的 `/admin/*`。
+   * 失败直接抛错，不静默跳过、不伪造 active。
+   */
+  async reauthorizeControlPlane(): Promise<void> {
+    if (!this.isEncryptionReady()) {
+      throw new Error(
+        'Dify 重新授权失败：DIFY_KEY_ENCRYPTION_SECRET 必须至少包含 32 个字符且不能使用示例值',
+      );
+    }
+    const consoleToken = this.config.get<string>('DIFY_CONSOLE_TOKEN', '').trim();
+    const adminEmail = this.config.get<string>('DIFY_ADMIN_EMAIL', '').trim()
+      || 'admin@futureflow.local';
+    const adminPassword = this.config.get<string>('DIFY_ADMIN_PASSWORD', '');
+    if (!consoleToken && !adminPassword) {
+      throw new Error(
+        'Dify 重新授权失败：必须提供 DIFY_CONSOLE_TOKEN 或 DIFY_ADMIN_PASSWORD',
+      );
+    }
+    const consoleBase = this.normalizeConsoleBase(
+      this.config.get<string>('DIFY_CONSOLE_BASE', 'http://localhost:5001/console/api'),
+    );
+    await this.ensureAutomaticConsoleAuthorization({
+      consoleBase,
+      consoleToken,
+      adminEmail,
+      adminPassword,
+    });
+  }
+
   isEncryptionReady(): boolean {
     const secret = this.encryptionSecret();
     return secret.length >= 32
